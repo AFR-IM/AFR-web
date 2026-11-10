@@ -1,0 +1,17 @@
+{
+  "name": "aiapp-web",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "test": "node --test packages/*/test/*.test.ts",
+    "test:afr": "node --test packages/afr/test/*.test.ts"
+  }
+}
