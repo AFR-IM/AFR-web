@@ -1,0 +1,72 @@
+# AFR scan pipeline (plan §5.6 T0). Runs on GitHub-hosted runners (public repo = free unlimited).
+# Schedule (daily 02:00 UTC) stays commented out until the first-run calibration is reviewed.
+name: scan
+
+on:
+  workflow_dispatch:
+    inputs:
+      topN:
+        description: "Number of Tranco top domains to scan"
+        required: false
+        default: "1000"
+  # schedule:
+  #   - cron: "0 2 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Checkout web repo
+        uses: actions/checkout@v4
+
+      - name: Checkout data repo
+        uses: actions/checkout@v4
+        with:
+          repository: imAiAPP/aiapp-data
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: data
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Fetch Tranco top list
+        run: |
+          curl -fsSL -o top-1m.csv.zip https://tranco-list.eu/top-1m.csv.zip
+          unzip -o -q top-1m.csv.zip
+          TOP_N="${{ inputs.topN || '1000' }}"
+          head -n "$TOP_N" top-1m.csv | cut -d, -f2 > targets.txt
+          echo "Targets: $(wc -l < targets.txt)"
+
+      - name: Scan
+        run: |
+          DATE=$(date -u +%Y/%m/%d)
+          mkdir -p "data/scans/$DATE"
+          node packages/scanner/src/cli.ts --file targets.txt --out "data/scans/$DATE" --concurrency 5 | tee scan-summary.txt
+
+      - name: Publish job summary
+        if: always()
+        run: |
+          {
+            echo "## AFR scan $(date -u +%F) (top ${{ inputs.topN || '1000' }})"
+            echo '```'
+            tail -n 8 scan-summary.txt 2>/dev/null || echo "scan output missing"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit snapshots to data repo
+        run: |
+          cd data
+          git config user.name "aiapp-bot"
+          git config user.email "dev@aiapp.im"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "scan $(date -u +%F) top${{ inputs.topN || '1000' }}"
+            git push
+          fi
