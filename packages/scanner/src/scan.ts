@@ -1,31 +1,32 @@
-// 单站扫描（方案书 §4）: 固定 ≤8 槽位公开 GET → ScanSignals（AFR 引擎输入）
+// Single-site scan (spec §4): fixed ≤8 slots of public GETs → ScanSignals (AFR engine input)
 //
-// 槽位:
-//   1 GET /robots.txt            （网络错误重试 1 次）
+// Slots:
+//   1 GET /robots.txt            (1 retry on network error)
 //   2 GET /llms.txt
 //   3 GET /llms-full.txt
-//   4 GET /                      （首页，网络错误重试 1 次）
-//   5 GET /sitemap.xml           （robots 声明的 Sitemap 优先）
-//   6 GET /agents.md             （404 → 回退 /AGENTS.md）
-//   7 GET /openapi.json          （首页链接到 swagger/openapi 时优先用链接）
+//   4 GET /                      (homepage, 1 retry on network error)
+//   5 GET /sitemap.xml           (Sitemap declared in robots.txt takes priority)
+//   6 GET /agents.md             (404 → fall back to /AGENTS.md)
+//   7 GET /openapi.json          (prefer the homepage link when it links to swagger/openapi)
 //   8 GET /.well-known/mcp
-// 礼貌: 每站实际请求 ≤12（硬上限，含回退与重试）、robots crawl-delay 生效（封顶 3s）、
-//       请求间默认 150ms 间隔、UA 透明、15s 超时。
+// Politeness: ≤12 actual requests per site (hard cap, incl. fallbacks and retries),
+//             robots crawl-delay honored (capped at 3s), 150ms gap between requests by default,
+//             transparent UA, 15s timeout.
 
 import type { AiFeatures, ScanSignals } from '../../shared/src/index.ts';
 import { normalizeDomain, politeGet, RequestCounter, SCANNER_VERSION, sleep, type FetchImpl } from './http.ts';
 
 export interface ScanOptions {
   fetchImpl?: FetchImpl;
-  /** 请求间基础间隔（默认 150ms） */
+  /** Base gap between requests (default 150ms) */
   gapMs?: number;
-  /** 上限时间（测试可调小） */
+  /** Response body cap (tests may lower it) */
   maxBytes?: number;
-  /** 覆盖当前时间（测试用） */
+  /** Override the current time (for tests) */
   now?: () => string;
 }
 
-/** 从首页 HTML 提取文档/OpenAPI 链接 */
+/** Extract doc/OpenAPI links from homepage HTML */
 export function extractLinks(html: string, pattern: RegExp): string[] {
   const out = new Set<string>();
   const re = /(?:href|src|content)\s*=\s*["']([^"']+)["']/gi;
@@ -37,7 +38,7 @@ export function extractLinks(html: string, pattern: RegExp): string[] {
   return [...out];
 }
 
-/** 站内 AI 功能启发式（M1 分布校准后可调） */
+/** In-site AI feature heuristics (tunable after M1 distribution calibration) */
 export function detectAiFeatures(html: string): AiFeatures {
   const chat =
     /intercom|crisp(-frame|_container)?|tidio|drift\.js|zendesk|hubspot.*chat|chatbot|chat-widget|chatscope|botpress|typebot|voiceflow|landbot|tawk\.to|purechat|watson|dialogflow|sendbird|userlike|olark|jivochat|gobot|chatra|livechat|whatsapp\.com\/wa|customerchat|fb-customerchat|<script[^>]+["'][^"']*\/chat[^"']*["']/i.test(html);
@@ -56,21 +57,21 @@ function statusOk(r: { status?: number }): boolean {
   return r.status !== undefined && r.status >= 200 && r.status < 300;
 }
 
-/** 扫描单个站点，产出 AFR 引擎输入。纯 IO 函数，不评分。 */
+/** Scan a single site and produce AFR engine input. Pure IO function; does not score. */
 export async function scanSite(domain: string, opts: ScanOptions = {}): Promise<ScanSignals> {
   const host = normalizeDomain(domain);
   const gap = opts.gapMs ?? 150;
   const counter = new RequestCounter();
-  // 所有槽位: 网络错误重试 1 次（方案书 §5.6 失败恢复），预算硬上限仍由 counter 兑底
+  // All slots: 1 retry on network error (spec §5.6 failure recovery); the hard budget is still enforced by the counter
   const base = { counter, fetchImpl: opts.fetchImpl, maxBytes: opts.maxBytes, retryOnNetworkError: true };
 
-  // 1) robots.txt —— 同时获取 crawl-delay 与 Sitemap 声明
+  // 1) robots.txt — also fetches crawl-delay and Sitemap declarations
   const robots = await politeGet(`https://${host}/robots.txt`, { ...base, retryOnNetworkError: true });
   let crawlDelayMs = gap;
   let sitemapUrl = `https://${host}/sitemap.xml`;
   if (statusOk(robots) && robots.body) {
     const cd = /crawl-delay\s*:\s*([\d.]+)/i.exec(robots.body)?.[1];
-    if (cd) crawlDelayMs = Math.min(Number(cd) * 1000, 3000); // 礼貌生效，封顶 3s
+    if (cd) crawlDelayMs = Math.min(Number(cd) * 1000, 3000); // politeness honored, capped at 3s
     const sm = /^sitemap\s*:\s*(\S+)/im.exec(robots.body)?.[1];
     if (sm) sitemapUrl = sm;
   }
@@ -83,16 +84,16 @@ export async function scanSite(domain: string, opts: ScanOptions = {}): Promise<
   const llmsFull = await politeGet(`https://${host}/llms-full.txt`, base);
   await sleep(crawlDelayMs);
 
-  // 4) 首页（关键槽位: 网络错误重试）
+  // 4) homepage (key slot: retry on network error)
   const homepage = await politeGet(`https://${host}/`, { ...base, retryOnNetworkError: true, maxBytes: opts.maxBytes ?? 1024 * 1024 });
   const html = statusOk(homepage) ? (homepage.body ?? '') : '';
   await sleep(crawlDelayMs);
 
-  // 5) sitemap（robots 声明优先）
+  // 5) sitemap (robots.txt declaration takes priority)
   const sitemap = await politeGet(sitemapUrl, base);
   await sleep(crawlDelayMs);
 
-  // 6) agents.md（404 回退 AGENTS.md —— 回退仍计入预算）
+  // 6) agents.md (404 → fall back to AGENTS.md — the fallback still counts against the budget)
   let agentsMd = await politeGet(`https://${host}/agents.md`, base);
   if (agentsMd.status === 404 && counter.remaining > 0) {
     await sleep(crawlDelayMs);
@@ -100,7 +101,7 @@ export async function scanSite(domain: string, opts: ScanOptions = {}): Promise<
   }
   await sleep(crawlDelayMs);
 
-  // 7) OpenAPI: 首页链接优先（相对路径按站点根解析），否则探测 /openapi.json
+  // 7) OpenAPI: prefer the homepage link (relative paths resolved against the site root), else probe /openapi.json
   const linked = html ? extractLinks(html, /(openapi|swagger)[^\"'\s]*\.json/i) : [];
   const first = linked[0];
   const openapiUrl = first ? new URL(first, `https://${host}/`).toString() : `https://${host}/openapi.json`;

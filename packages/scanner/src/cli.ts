@@ -1,8 +1,8 @@
-// 扫描 CLI（M1 试扫入口）
-// 用法:
+// Scan CLI (M1 trial-scan entry point)
+// Usage:
 //   node packages/scanner/src/cli.ts example.com openai.com ...
 //   node packages/scanner/src/cli.ts --file domains.txt --out scans --concurrency 5
-// 输出: {out}/{domain}.json = { signals, afr }（方案书数据仓 scans 快照结构的本地版）
+// Output: {out}/{domain}.json = { signals, afr } (local version of the spec's scans snapshot structure)
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -46,12 +46,12 @@ export interface SiteReport {
   ms: number;
 }
 
-/** 并发扫描一批域名（并发 ≤5，方案书 §4） */
+/** Concurrently scan a batch of domains (concurrency ≤5, spec §4) */
 export async function scanBatch(
   domains: string[],
   opts: { concurrency?: number; out?: string; onDone?: (r: SiteReport) => void } = {},
 ): Promise<{ reports: SiteReport[]; results: { domain: string; signals: ScanSignals; afr: AfrResult }[] }> {
-  const concurrency = Math.min(opts.concurrency ?? 5, 5); // 红线: 并发不超过 5
+  const concurrency = Math.min(opts.concurrency ?? 5, 5); // hard rule: concurrency never exceeds 5
   const queue = [...new Set(domains.map(normalizeDomain).filter(Boolean))];
   const reports: SiteReport[] = [];
   const results: { domain: string; signals: ScanSignals; afr: AfrResult }[] = [];
@@ -96,7 +96,7 @@ export async function scanBatch(
 async function main(): Promise<void> {
   const opts = await parseArgs(process.argv.slice(2));
   if (opts.domains.length === 0) {
-    console.error('用法: node src/cli.ts [--file domains.txt] [--out scans] [--concurrency 5] [domain ...]');
+    console.error('Usage: node packages/scanner/src/cli.ts [--file domains.txt] [--out scans] [--concurrency 5] [domain ...]');
     process.exit(1);
   }
 
@@ -113,22 +113,22 @@ async function main(): Promise<void> {
   });
 
   const ok = reports.filter((r) => r.ok);
-  console.log('\n── 汇总 ──');
-  console.log(`成功 ${ok.length}/${reports.length}`);
+  console.log('\n── Summary ──');
+  console.log(`Succeeded ${ok.length}/${reports.length}`);
   if (ok.length) {
     const scores = ok.map((r) => r.score!).sort((a, b) => a - b);
     const avg = scores.reduce((s, n) => s + n, 0) / scores.length;
     const dist: Record<string, number> = {};
     for (const r of ok) dist[r.grade!] = (dist[r.grade!] ?? 0) + 1;
-    console.log(`分数 min/avg/max = ${scores[0]}/${avg.toFixed(1)}/${scores[scores.length - 1]}`);
-    console.log(`等级分布: ${Object.entries(dist).map(([g, n]) => `${g}:${n}`).join('  ')}`);
+    console.log(`Score min/avg/max = ${scores[0]}/${avg.toFixed(1)}/${scores[scores.length - 1]}`);
+    console.log(`Grade distribution: ${Object.entries(dist).map(([g, n]) => `${g}:${n}`).join('  ')}`);
     const tags: Record<string, number> = {};
     for (const r of ok) tags[r.tag!] = (tags[r.tag!] ?? 0) + 1;
-    console.log(`策略标签: ${Object.entries(tags).map(([t, n]) => `${t}:${n}`).join('  ')}`);
+    console.log(`Strategy tags: ${Object.entries(tags).map(([t, n]) => `${t}:${n}`).join('  ')}`);
   }
 }
 
-// 仅当作为入口执行时运行 main
+// Run main only when executed as the entry point
 import { pathToFileURL } from 'node:url';
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   main().catch((e) => {

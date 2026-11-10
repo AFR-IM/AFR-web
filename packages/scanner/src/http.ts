@@ -1,22 +1,24 @@
-// 礼貌 HTTP 客户端（方案书 §4）
-// · 每站 ≤8 槽位 GET，硬上限 12 次实际请求（含 agents 回退与关键槽位重试 1 次）
-// · UA 透明、超时 15s、网络错误重试 1 次（仅 robots/homepage）、响应体限长
-// · 请求计数器全程可见，可断言"礼貌预算"不被突破
+// Polite HTTP client (spec §4)
+// · ≤8 GET slots per site, hard cap of 12 actual requests (incl. agents fallback and 1 retry on key slots)
+// · Transparent UA, 15s timeout, 1 retry on network error (robots/homepage only), capped response bodies
+// · The request counter is visible throughout, so the "polite budget" can be asserted not to be exceeded
 
 export const SCANNER_VERSION = 'scanner-0.1.0';
 
-/** 透明 UA：表明身份 + 主页（站长可随时拉黑并联系我们） */
+/** Transparent UA: identifies who we are + homepage (webmasters can block us anytime and get in touch) */
 export const USER_AGENT = 'aiappScanner/0.1 (+https://aiapp.im/bot; AI-friendliness research crawler)';
 
 export const TIMEOUT_MS = 15_000;
 
-/** 实际请求硬上限: 8 端点 ×（透明 + 挑战回退）= 16；含 agents 404 回退与关键槽位网络重试 */
+/** Hard cap on actual requests: 8 endpoints × (transparent + challenge fallback) = 16;
+ *  includes the agents 404 fallback and 1 network retry on key slots */
 export const MAX_REQUESTS = 16;
 
-/** 触发挑战回退的状态码（方案书 §4 Declined 降级机制的细化，用户 2026-11-10 确认） */
+/** Status codes that trigger the challenge fallback (a refinement of the spec §4 "Declined"
+ *  degradation mechanism, confirmed by the user on 2026-11-10) */
 export const CHALLENGE_STATUSES = new Set([401, 403, 429, 503]);
 
-/** 浏览器 UA（仅用于挑战回退取内容；主探测始终用透明 UA） */
+/** Browser UA (used only to recover content after a challenge; primary probes always use the transparent UA) */
 export const BROWSER_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
@@ -25,9 +27,9 @@ export interface HttpResult {
   body?: string;
   url?: string;
   error?: string;
-  /** 挑战回退: 透明 UA 被挑战的状态码 */
+  /** Challenge fallback: status code returned when the transparent UA was challenged */
   challengedStatus?: number;
-  /** 内容经浏览器 UA 回退获取 */
+  /** Content was recovered with the browser UA fallback */
   uaFallback?: boolean;
 }
 
@@ -35,12 +37,12 @@ export type FetchImpl = (url: string, init: RequestInit) => Promise<Response>;
 
 export class BudgetExceededError extends Error {
   constructor(url: string) {
-    super(`礼貌预算耗尽，跳过 ${url}`);
+    super(`polite budget exhausted, skipping ${url}`);
     this.name = 'BudgetExceededError';
   }
 }
 
-/** 每站请求计数器 */
+/** Per-site request counter */
 export class RequestCounter {
   count = 0;
   readonly max: number;
@@ -50,7 +52,7 @@ export class RequestCounter {
   get remaining(): number {
     return this.max - this.count;
   }
-  /** 消耗一次请求额度；超限返回 false */
+  /** Spend one request slot; returns false when over budget */
   trySpend(): boolean {
     if (this.count >= this.max) return false;
     this.count++;
@@ -61,11 +63,11 @@ export class RequestCounter {
 export interface GetOptions {
   counter: RequestCounter;
   fetchImpl?: FetchImpl;
-  /** 网络错误时重试 1 次（仅关键槽位开启） */
+  /** Retry once on network error (enabled only for key slots) */
   retryOnNetworkError?: boolean;
-  /** 响应体上限（字节）；超出则只保留状态码 */
+  /** Response body cap (bytes); beyond it only the status code is kept */
   maxBytes?: number;
-  /** 透明 UA 被挑战（401/403/429/503）时用浏览器 UA 重取内容（默认开） */
+  /** Re-fetch content with the browser UA when the transparent UA is challenged (401/403/429/503); on by default */
   fallbackOnChallenge?: boolean;
 }
 
@@ -91,7 +93,7 @@ async function attempt(
     });
     const declared = Number(resp.headers.get('content-length') ?? '0');
     if (declared > maxBytes * 4) {
-      // 巨型响应：只取状态与 URL，不下载正文
+      // Huge response: take only status and URL, skip the body
       return { status: resp.status, url: resp.url };
     }
     const text = (await resp.text()).slice(0, maxBytes);
@@ -109,8 +111,9 @@ async function attempt(
 }
 
 /**
- * 发送一次受预算约束的 GET。
- * 预算在【每次实际尝试】上扣减（重试也占用），保证线上请求数可审计。
+ * Send one budget-capped GET.
+ * The budget is debited on every actual attempt (retries count too), so the number of
+ * requests made in production stays auditable.
  */
 export async function politeGet(url: string, opts: GetOptions): Promise<HttpResult> {
   const maxBytes = opts.maxBytes ?? DEFAULT_MAX_BYTES;
@@ -122,10 +125,11 @@ export async function politeGet(url: string, opts: GetOptions): Promise<HttpResu
     if (!opts.counter.trySpend()) return { error: `budget-exceeded: ${url}` };
     last = await attempt(url, maxBytes, fetchImpl, USER_AGENT);
     if (last.error) {
-      if (i + 1 < tries) await sleep(300); // 重试前短暂等待
+      if (i + 1 < tries) await sleep(300); // brief wait before retrying
       continue;
     }
-    // 挑战回退: 透明 UA 被墙 → 浏览器 UA 重取内容；L1 墙判定保留 challengedStatus
+    // Challenge fallback: transparent UA walled off → re-fetch content with the browser UA;
+    // L1 wall judgment keeps challengedStatus
     if (fallback && last.status !== undefined && CHALLENGE_STATUSES.has(last.status)) {
       if (opts.counter.trySpend()) {
         const fb = await attempt(url, maxBytes, fetchImpl, BROWSER_USER_AGENT);
@@ -133,7 +137,7 @@ export async function politeGet(url: string, opts: GetOptions): Promise<HttpResu
           return { ...fb, challengedStatus: last.status, uaFallback: true };
         }
       }
-      // 回退也被挑战/预算耗尽 → 保留透明结果（如实记墙）
+      // Fallback also challenged / budget exhausted → keep the transparent result (record the wall honestly)
     }
     return last;
   }
@@ -144,7 +148,7 @@ export function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-/** 归一化域名: 去协议/路径/端口/www、小写 */
+/** Normalize a domain: strip scheme/path/port/www, lowercase */
 export function normalizeDomain(input: string): string {
   let d = input.trim().toLowerCase();
   d = d.replace(/^[a-z][a-z0-9+.-]*:\/\//, ''); // scheme

@@ -12,6 +12,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      # 零依赖：AFR 引擎用 Node 原生 test runner + TS 类型剥离直接跑
+      # Zero dependencies: the AFR engine runs with Node's built-in test runner + native TS type stripping
       - name: AFR engine unit tests
         run: node --test packages/afr/test/*.test.ts

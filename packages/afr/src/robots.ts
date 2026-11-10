@@ -1,5 +1,6 @@
-// robots.txt 解析与 AI UA 政策评估（纯函数）
-// 语义遵循 robots.txt 标准: 最长 UA 匹配优先、路径最长匹配优先、同长 Allow 优先、空 Disallow 忽略。
+// robots.txt parsing and AI UA policy evaluation (pure functions)
+// Semantics follow the robots.txt standard: longest UA match wins, longest path match wins,
+// Allow wins on ties, empty Disallow is ignored.
 
 import { AI_UAS, FAMILY_MAX, type UaFamily } from './ua.ts';
 
@@ -19,7 +20,7 @@ export interface RobotsTxt {
   crawlDelays: string[];
 }
 
-/** 解析 robots.txt 全文。容错: 注释、空行、缺冒号行、重复字段。 */
+/** Parse the full robots.txt text. Tolerant of comments, blank lines, missing colons, duplicate fields. */
 export function parseRobots(text: string): RobotsTxt {
   const groups: RobotsGroup[] = [];
   const sitemaps: string[] = [];
@@ -44,15 +45,15 @@ export function parseRobots(text: string): RobotsTxt {
     const value = line.slice(idx + 1).trim();
     switch (field) {
       case 'user-agent':
-        // 新 UA 行出现在规则之后 → 开新组
+        // A new UA line after rules → start a new group
         if (sawRule) flush();
         if (value) agents.push(value.toLowerCase());
         break;
       case 'allow':
       case 'disallow':
-        if (!agents.length) break; // 规则出现在任何 UA 之前 → 忽略
+        if (!agents.length) break; // rule appears before any UA line → ignore
         sawRule = true;
-        // 空路径 = 无限制，按标准忽略
+        // empty path = no restriction, ignored per the standard
         if (value === '') break;
         rules.push({ allow: field === 'allow', path: value });
         break;
@@ -70,7 +71,8 @@ export function parseRobots(text: string): RobotsTxt {
   return { groups, sitemaps, crawlDelays };
 }
 
-/** 为指定 UA 选择最匹配的组（最长 token 优先；'*' 仅作通配兜底）。返回 [组, 是否通配]。 */
+/** Pick the best-matching group for the given UA (longest token wins; '*' is the wildcard fallback).
+ *  Returns [group, isWildcard]. */
 export function matchGroup(
   robots: RobotsTxt,
   uaToken: string,
@@ -94,7 +96,7 @@ export function matchGroup(
   return undefined;
 }
 
-/** 对路径（默认 "/"）做规则裁决: 'allowed' | 'blocked' | 'default-allow' */
+/** Decide rules for a path (default "/"): 'allowed' | 'blocked' | 'default-allow' */
 export function decidePath(group: RobotsGroup, path: string): 'allowed' | 'blocked' | 'default-allow' {
   let best: { allow: boolean; len: number } | undefined;
   for (const rule of group.rules) {
@@ -108,18 +110,18 @@ export function decidePath(group: RobotsGroup, path: string): 'allowed' | 'block
 }
 
 export type UaAccess =
-  /** 该 UA 被显式配置且首页可达 */
+  /** The UA is explicitly configured and the homepage is reachable */
   | 'explicit-allow'
-  /** 该 UA 被显式阻止（含通配阻止） */
+  /** The UA is explicitly blocked (including wildcard blocks) */
   | 'explicit-block'
-  /** robots.txt 未针对该 UA 配置（含只有 '*' 通用组、含无 robots.txt） */
+  /** robots.txt has no configuration for this UA (including only a '*' wildcard group, or no robots.txt) */
   | 'unconfigured';
 
 export interface UaVerdict {
   ua: string;
   family: UaFamily;
   access: UaAccess;
-  /** 计分因子: 1 / 0 / 0.5（显式开放 / 阻止 / 未配置） */
+  /** Scoring factor: 1 / 0 / 0.5 (explicitly open / blocked / unconfigured) */
   factor: number;
   detail: string;
 }
@@ -133,9 +135,10 @@ export interface RobotsEvaluation {
 }
 
 /**
- * 评估 14 个 AI UA 的 robots 政策。
- * @param robots 解析后的 robots.txt；null 表示无 robots.txt（404）→ 全部按未配置 0.5 计
- * @param reachable  robots.txt 本身是否可取；false（网络失败）→ 全部 unknown（0 分，不奖不罚）
+ * Evaluate the robots policy for the 14 AI UAs.
+ * @param robots parsed robots.txt; null means no robots.txt (404) → all scored as unconfigured 0.5
+ * @param reachable whether robots.txt itself was fetchable; false (network error) → all unknown
+ *                  (0 points, no penalty, no reward)
  */
 export function evaluateRobotsPolicy(
   robots: RobotsTxt | null,
@@ -150,7 +153,7 @@ export function evaluateRobotsPolicy(
         family,
         access: 'unconfigured',
         factor: 0,
-        detail: 'robots.txt 获取失败（网络错误）→ unknown，不奖不罚',
+        detail: 'failed to fetch robots.txt (network error) → unknown; no penalty, no reward',
       });
       continue;
     }
@@ -160,7 +163,7 @@ export function evaluateRobotsPolicy(
         family,
         access: 'unconfigured',
         factor: 0.5,
-        detail: robots ? 'robots.txt 为空 → 未配置（默认可达）' : '无 robots.txt（404）→ 未配置（默认可达）',
+        detail: robots ? 'robots.txt is empty → unconfigured (default reachable)' : 'no robots.txt (404) → unconfigured (default reachable)',
       });
       continue;
     }
@@ -171,7 +174,7 @@ export function evaluateRobotsPolicy(
         family,
         access: 'unconfigured',
         factor: 0.5,
-        detail: `robots.txt 未提及 ${ua} → 未配置（默认可达）`,
+        detail: `robots.txt does not mention ${ua} → unconfigured (default reachable)`,
       });
       continue;
     }
@@ -183,8 +186,8 @@ export function evaluateRobotsPolicy(
         access: 'explicit-block',
         factor: 0,
         detail: match.wildcard
-          ? `通配组 User-agent: * 阻止 ${ua}（Disallow 匹配 /）`
-          : `User-agent: ${ua} 被阻止（Disallow 匹配 /）`,
+          ? `wildcard group User-agent: * blocks ${ua} (Disallow matches /)`
+          : `User-agent: ${ua} is blocked (Disallow matches /)`,
       });
       continue;
     }
@@ -194,7 +197,7 @@ export function evaluateRobotsPolicy(
         family,
         access: 'unconfigured',
         factor: 0.5,
-        detail: `仅有通配组 User-agent: *，未针对 ${ua} 显式配置 → 未配置`,
+        detail: `only the wildcard group User-agent: * exists; ${ua} not explicitly configured → unconfigured`,
       });
       continue;
     }
@@ -205,8 +208,8 @@ export function evaluateRobotsPolicy(
       factor: 1,
       detail:
         decision === 'allowed'
-          ? `User-agent: ${ua} 显式 Allow 匹配 /`
-          : `User-agent: ${ua} 组存在且未阻止 / → 显式开放`,
+          ? `User-agent: ${ua} explicitly allowed for /`
+          : `User-agent: ${ua} group present and / not blocked → explicitly open`,
     });
   }
 
@@ -228,7 +231,7 @@ export function evaluateRobotsPolicy(
   };
 
   let tag: RobotsEvaluation['tag'];
-  if (!reachable) tag = 'Unconfigured'; // 取不到策略无法声明，按未配置展示（/method 公示）
+  if (!reachable) tag = 'Unconfigured'; // policy unavailable → cannot claim a stance, shown as unconfigured (disclosed on /method)
   else if (unconfigured === verdicts.length) tag = 'Unconfigured';
   else if (explicitBlock >= 10) tag = 'AI-Closed';
   else if (explicitAllow >= Math.ceil(verdicts.length * 0.8)) tag = 'AI-Open';

@@ -1,16 +1,16 @@
-// 14 个 AI 爬虫 UA 家族（方案书 §14 附录 A，参考 github.com/ai-robots-txt/ai.robots.txt）
-// 三分法计分: 搜索型 9 / 混合型 6 / 训练型 10 = robots 政策 25 分
+// 14 AI crawler UA families (spec §14 appendix A, based on github.com/ai-robots-txt/ai.robots.txt)
+// Three-way scoring: search-type 9 / hybrid 6 / training 10 = 25 points for the robots policy
 
 export type UaFamily = 'search' | 'hybrid' | 'training';
 
 export interface AiUa {
-  /** robots.txt 中的 User-agent 标识（不含浏览器 UA 前缀差异） */
+  /** User-agent identifier as written in robots.txt (ignoring browser UA prefix differences) */
   ua: string;
   family: UaFamily;
   vendor: string;
 }
 
-/** 家族满分（方案书 §3 L1） */
+/** Max points per family (spec §3 L1) */
 export const FAMILY_MAX: Record<UaFamily, number> = {
   search: 9,
   hybrid: 6,
@@ -23,19 +23,19 @@ export const FAMILY_NAME: Record<UaFamily, { en: string; zh: string }> = {
   training: { en: 'Training crawlers', zh: '训练型爬虫' },
 };
 
-/** 14 个 UA 家族（顺序固定，保证结果可复算） */
+/** The 14 UA families (fixed order so results stay reproducible) */
 export const AI_UAS: readonly AiUa[] = [
-  // 搜索型（9 分）：为 AI 回答抓取实时/索引内容
+  // Search-type (9 points): fetch live/indexed content for AI answers
   { ua: 'OAI-SearchBot', family: 'search', vendor: 'OpenAI' },
   { ua: 'Claude-SearchBot', family: 'search', vendor: 'Anthropic' },
   { ua: 'PerplexityBot', family: 'search', vendor: 'Perplexity' },
   { ua: 'Googlebot', family: 'search', vendor: 'Google' },
-  // 混合型（6 分）：用户触发抓取 + 检索增强训练
+  // Hybrid (6 points): user-triggered fetches + retrieval-augmented training
   { ua: 'ChatGPT-User', family: 'hybrid', vendor: 'OpenAI' },
   { ua: 'Claude-User', family: 'hybrid', vendor: 'Anthropic' },
   { ua: 'Perplexity-User', family: 'hybrid', vendor: 'Perplexity' },
   { ua: 'Google-Extended', family: 'hybrid', vendor: 'Google' },
-  // 训练型（10 分）：用于模型训练语料
+  // Training (10 points): used as model training corpus
   { ua: 'GPTBot', family: 'training', vendor: 'OpenAI' },
   { ua: 'ClaudeBot', family: 'training', vendor: 'Anthropic' },
   { ua: 'CCBot', family: 'training', vendor: 'Common Crawl' },

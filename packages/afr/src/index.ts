@@ -1,6 +1,8 @@
-// @aiapp/afr — AFR 评分引擎入口（纯函数，方案书 §3）
-// 输入 ScanSignals（scanner 产出），输出 AfrResult；无 IO、无时钟，第三方可复算。
-// 实施即标准：本包代码 + /method 页双语全文为评分事实源（方案书 §3）。
+// @aiapp/afr — AFR scoring engine entry point (pure functions, spec §3)
+// Input: ScanSignals (produced by the scanner); output: AfrResult.
+// No IO, no clock — third parties can recompute every score.
+// Implementation is the standard: this package's code plus the bilingual /method page
+// full text are the source of truth for scoring facts (spec §3).
 
 import {
   GRADE_THRESHOLDS,
@@ -23,7 +25,7 @@ export function gradeFor(score: number): Grade {
   return 'F';
 }
 
-/** 主入口: signals → AFR 结果 */
+/** Main entry: signals → AFR result */
 export function scoreAfr(signals: ScanSignals): AfrResult {
   const rp = signals.robots;
   const robotsReachable = !!rp && !rp.error && rp.status !== undefined;
@@ -31,8 +33,8 @@ export function scoreAfr(signals: ScanSignals): AfrResult {
   if (robotsReachable && rp!.status! >= 200 && rp!.status! < 300) {
     robotsTxt = parseRobots(rp!.body ?? '');
   }
-  // 404/无 robots.txt → robotsTxt = null, reachable = true（按未配置 0.5 计）
-  // 网络错误 → reachable = false（全部 unknown，0 分不奖不罚）
+  // 404 / no robots.txt → robotsTxt = null, reachable = true (scored as unconfigured, 0.5)
+  // network error → reachable = false (all unknown, 0 points — no penalty, no reward)
   const robotsEval = evaluateRobotsPolicy(robotsTxt, robotsReachable);
 
   const layers = [scoreL1(signals, robotsEval), scoreL2(signals), scoreL3(signals)];
@@ -57,7 +59,7 @@ export function scoreAfr(signals: ScanSignals): AfrResult {
   };
 }
 
-/** 证据链完整性自检（测试与 /method 用）: 有分必有证据 */
+/** Evidence-chain completeness self-check (used by tests and /method): points require evidence */
 export function evidenceGaps(result: AfrResult): string[] {
   const gaps: string[] = [];
   for (const layer of result.layers) {

@@ -1,5 +1,5 @@
-// AFR 引擎测试（方案书 M0 DoD: 单测全绿可复算）
-// 运行: node --test packages/afr/test/*.test.ts
+// AFR engine tests (spec M0 DoD: all unit tests green and scores recomputable)
+// Run: node --test packages/afr/test/*.test.ts
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
@@ -11,7 +11,7 @@ import { AI_UAS, FAMILY_MAX } from '../src/ua.ts';
 const DOMAIN = 'example.com';
 const SCANNED_AT = '2026-11-10T02:00:00Z';
 
-/** 理想站: 所有探测满分 */
+/** Ideal site: every probe scores full marks */
 function idealSignals(): ScanSignals {
   const aiAllowRules = AI_UAS.map((u) => `User-agent: ${u.ua}\nAllow: /\n`).join('\n');
   const words = Array.from({ length: 600 }, (_, i) => `word${i}`).join(' ');
@@ -56,7 +56,7 @@ function idealSignals(): ScanSignals {
   };
 }
 
-/** 现实站: 典型"默认没配置"——基础健全但对 AI 零配置 */
+/** Realistic site: typically "unconfigured by default" — solid fundamentals but zero AI setup */
 function unconfiguredSignals(): ScanSignals {
   const words = Array.from({ length: 300 }, (_, i) => `w${i}`).join(' ');
   return {
@@ -81,7 +81,7 @@ function unconfiguredSignals(): ScanSignals {
   };
 }
 
-/** 全站拉黑 AI */
+/** Site that blocks all AI */
 function blockedSignals(): ScanSignals {
   return {
     domain: DOMAIN,
@@ -100,8 +100,8 @@ function blockedSignals(): ScanSignals {
   };
 }
 
-describe('robots.txt 解析', () => {
-  it('解析 UA 组、规则、sitemap、注释', () => {
+describe('robots.txt parsing', () => {
+  it('parses UA groups, rules, sitemaps and comments', () => {
     const r = parseRobots(`# comment\nUser-agent: GPTBot\nDisallow: /\n\nUser-agent: ClaudeBot\nAllow: /\nSitemap: https://x.com/s.xml\n`);
     assert.equal(r.groups.length, 2);
     assert.deepEqual(r.groups[0]!.agents, ['gptbot']);
@@ -109,14 +109,14 @@ describe('robots.txt 解析', () => {
     assert.deepEqual(r.sitemaps, ['https://x.com/s.xml']);
   });
 
-  it('连续 UA 行共享同一组；规则后的新 UA 开新组', () => {
+  it('consecutive UA lines share one group; a UA line after rules starts a new group', () => {
     const r = parseRobots('User-agent: A\nUser-agent: B\nDisallow: /x\nUser-agent: C\nAllow: /');
     assert.equal(r.groups.length, 2);
     assert.deepEqual(r.groups[0]!.agents, ['a', 'b']);
     assert.deepEqual(r.groups[1]!.agents, ['c']);
   });
 
-  it("最长 UA 匹配优先，'*' 仅作兜底", () => {
+  it("longest UA match wins, '*' only as a fallback", () => {
     const r = parseRobots('User-agent: *\nDisallow: /\nUser-agent: GPTBot\nAllow: /');
     const m = matchGroup(r, 'GPTBot');
     assert.ok(m && !m.wildcard);
@@ -126,7 +126,7 @@ describe('robots.txt 解析', () => {
     assert.equal(decidePath(m2!.group, '/'), 'blocked');
   });
 
-  it('最长路径匹配优先；同长 Allow 优先；空 Disallow 忽略', () => {
+  it('longest path match wins; Allow wins on ties; empty Disallow is ignored', () => {
     const g = {
       agents: ['*'],
       rules: [
@@ -141,33 +141,33 @@ describe('robots.txt 解析', () => {
   });
 });
 
-describe('策略评估与 StrategyTag', () => {
-  it('无 robots.txt（404）→ 全部未配置 0.5，tag=Unconfigured', () => {
+describe('policy evaluation and StrategyTag', () => {
+  it('no robots.txt (404) → all unconfigured at 0.5, tag=Unconfigured', () => {
     const ev = evaluateRobotsPolicy(null, true);
     assert.equal(ev.robotsTotal, 12.5);
     assert.equal(ev.tag, 'Unconfigured');
   });
 
-  it('网络错误 → 全部 0 分（不奖不罚）', () => {
+  it('network error → all 0 points (no penalty, no reward)', () => {
     const ev = evaluateRobotsPolicy(null, false);
     assert.equal(ev.robotsTotal, 0);
     assert.equal(ev.tag, 'Unconfigured');
   });
 
-  it('全放行 → 25/25，tag=AI-Open', () => {
+  it('fully allowed → 25/25, tag=AI-Open', () => {
     const body = AI_UAS.map((u) => `User-agent: ${u.ua}\nAllow: /\n`).join('\n');
     const ev = evaluateRobotsPolicy(parseRobots(body), true);
     assert.equal(ev.robotsTotal, 25);
     assert.equal(ev.tag, 'AI-Open');
   });
 
-  it('通配全禁 → 0/25，tag=AI-Closed', () => {
+  it('wildcard blocks everything → 0/25, tag=AI-Closed', () => {
     const ev = evaluateRobotsPolicy(parseRobots('User-agent: *\nDisallow: /'), true);
     assert.equal(ev.robotsTotal, 0);
     assert.equal(ev.tag, 'AI-Closed');
   });
 
-  it('只显式放行训练型、阻止搜索型 → tag=Training-Open', () => {
+  it('only training crawlers explicitly allowed, search crawlers blocked → tag=Training-Open', () => {
     const body =
       AI_UAS.filter((u) => u.family === 'training')
         .map((u) => `User-agent: ${u.ua}\nAllow: /\n`)
@@ -182,8 +182,8 @@ describe('策略评估与 StrategyTag', () => {
   });
 });
 
-describe('等级阈值', () => {
-  it('85+ A / 70+ B / 50+ C / 30+ D / 其余 F', () => {
+describe('grade thresholds', () => {
+  it('85+ A / 70+ B / 50+ C / 30+ D / otherwise F', () => {
     assert.equal(gradeFor(100), 'A');
     assert.equal(gradeFor(85), 'A');
     assert.equal(gradeFor(84), 'B');
@@ -197,8 +197,8 @@ describe('等级阈值', () => {
   });
 });
 
-describe('端到端评分', () => {
-  it('理想站 → 100 分 A 级，AI-Open，层分 35/40/25', () => {
+describe('end-to-end scoring', () => {
+  it('ideal site → 100 points, grade A, AI-Open, layer scores 35/40/25', () => {
     const r = scoreAfr(idealSignals());
     assert.equal(r.score, 100);
     assert.equal(r.grade, 'A');
@@ -214,20 +214,20 @@ describe('端到端评分', () => {
     assert.equal(r.engineVersion, ENGINE_VERSION);
   });
 
-  it('全禁站 → F 级，AI-Closed', () => {
+  it('fully blocked site → grade F, AI-Closed', () => {
     const r = scoreAfr(blockedSignals());
     assert.equal(r.grade, 'F');
     assert.ok(r.score <= 10, `score=${r.score}`);
     assert.equal(r.strategyTag, 'AI-Closed');
   });
 
-  it('典型"默认没配置"站 → 中低分段，Unconfigured', () => {
+  it('typical "unconfigured by default" site → mid-low score band, Unconfigured', () => {
     const r = scoreAfr(unconfiguredSignals());
     assert.ok(r.score >= 30 && r.score <= 60, `score=${r.score}`);
     assert.equal(r.strategyTag, 'Unconfigured');
   });
 
-  it('证据链完整: 有分必有证据、分值不超上限、层和=总分', () => {
+  it('evidence chain complete: points require evidence, no check exceeds its cap, layer sum equals total', () => {
     for (const signals of [idealSignals(), unconfiguredSignals(), blockedSignals()]) {
       const r = scoreAfr(signals);
       assert.deepEqual(evidenceGaps(r), []);
@@ -236,15 +236,15 @@ describe('端到端评分', () => {
       for (const l of r.layers) {
         const checkSum = l.checks.reduce((s, c) => s + c.awarded, 0);
         assert.ok(Math.abs(checkSum - l.awarded) < 1e-9, `${l.layer} checks=${checkSum} layer=${l.awarded}`);
-        assert.equal(l.max, l.checks.reduce((s, c) => s + c.max, 0), `${l.layer} max 与检查项之和不一致`);
+        assert.equal(l.max, l.checks.reduce((s, c) => s + c.max, 0), `${l.layer} max does not equal the sum of its checks`);
       }
       const ids = r.layers.flatMap((l) => l.checks.map((c) => c.id));
-      assert.equal(new Set(ids).size, ids.length, 'checkId 重复');
-      for (const [id, v] of Object.entries(r.breakdown)) assert.ok(ids.includes(id), `breakdown 多余 ${id}`);
+      assert.equal(new Set(ids).size, ids.length, 'duplicate checkId');
+      for (const [id, v] of Object.entries(r.breakdown)) assert.ok(ids.includes(id), `extra breakdown entry ${id}`);
     }
   });
 
-  it('挑战回退: 透明UA被墙但内容可取 → 墙 0 分、可用性与 L2/L3 照常评分', () => {
+  it('challenge fallback: transparent UA walled off but content recoverable → wall 0 points, availability and L2/L3 still scored', () => {
     const s = idealSignals();
     s.homepage = { ...s.homepage!, status: 200, uaFallback: true, challengedStatus: 403 };
     const r = scoreAfr(s);
@@ -253,17 +253,17 @@ describe('端到端评分', () => {
     assert.equal(wall.awarded, 0);
     assert.equal(wall.status, 'fail');
     assert.match(wall.evidence!.detail, /challengedStatus|403/);
-    assert.equal(avail.awarded, 5, '回退内容可用 → 可用性照常给分');
+    assert.equal(avail.awarded, 5, 'fallback content usable → availability still awarded');
     assert.ok(r.layers[1]!.awarded >= 35, `L2=${r.layers[1]!.awarded}`);
-    assert.ok(r.score >= 85, `score=${r.score}（仅扣墙 5 分）`);
+    assert.ok(r.score >= 85, `score=${r.score} (only the 5-point wall penalty)`);
   });
 
-  it('可复算: 同一 signals 输入两次结果完全一致', () => {
+  it('recomputable: the same signals input yields identical results twice', () => {
     const s = idealSignals();
     assert.deepEqual(scoreAfr(s), scoreAfr(s));
   });
 
-  it('robots 网络错误 → 该项 unknown 0 分，不抛异常', () => {
+  it('robots network error → that check unknown with 0 points, no exception thrown', () => {
     const s = idealSignals();
     s.robots = { error: 'ECONNRESET' };
     const r = scoreAfr(s);
@@ -273,7 +273,7 @@ describe('端到端评分', () => {
     assert.ok(r.score < 100);
   });
 
-  it('14 UA 家族权重 = 9+6+10 = 25', () => {
+  it('14 UA family weights = 9+6+10 = 25', () => {
     assert.equal(AI_UAS.length, 14);
     assert.equal(Object.values(FAMILY_MAX).reduce((s, n) => s + n, 0), 25);
     const counts = { search: 0, hybrid: 0, training: 0 };

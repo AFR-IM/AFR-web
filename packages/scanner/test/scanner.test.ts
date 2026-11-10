@@ -1,12 +1,12 @@
-// scanner 离线测试（mock fetch，不打真实网络）
-// 运行: node --test packages/scanner/test/*.test.ts
+// Scanner offline tests (mock fetch, no real network access)
+// Run: node --test packages/scanner/test/*.test.ts
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { MAX_REQUESTS, normalizeDomain, RequestCounter, type FetchImpl } from '../src/http.ts';
 import { detectAiFeatures, extractLinks, scanSite } from '../src/scan.ts';
 
-/** 构造 mock fetch: 按 URL 路径返回预设响应，并记录调用 */
+/** Build a mock fetch: return preset responses by URL path and record the calls */
 function mockFetch(routes: Record<string, { status?: number; body?: string; throws?: string }>) {
   const calls: string[] = [];
   const impl: FetchImpl = async (url) => {
@@ -25,7 +25,7 @@ function mockFetch(routes: Record<string, { status?: number; body?: string; thro
 }
 
 describe('normalizeDomain', () => {
-  it('去协议/路径/端口/www/大小写', () => {
+  it('strips scheme/path/port/www/case', () => {
     assert.equal(normalizeDomain('https://www.Example.com:8443/path?q=1'), 'example.com');
     assert.equal(normalizeDomain('HTTP://EXAMPLE.COM'), 'example.com');
     assert.equal(normalizeDomain('  example.com/foo  '), 'example.com');
@@ -34,7 +34,7 @@ describe('normalizeDomain', () => {
 });
 
 describe('RequestCounter', () => {
-  it('超限拒绝', () => {
+  it('rejects spending beyond the limit', () => {
     const c = new RequestCounter(3);
     assert.equal(c.trySpend(), true);
     assert.equal(c.trySpend(), true);
@@ -44,8 +44,8 @@ describe('RequestCounter', () => {
   });
 });
 
-describe('礼貌预算', () => {
-  it('正常 8 槽位站点实际请求 ≤ MAX_REQUESTS', async () => {
+describe('polite budget', () => {
+  it('a normal 8-slot site stays within MAX_REQUESTS actual requests', async () => {
     const { impl, calls } = mockFetch({
       '/robots.txt': { status: 200, body: 'User-agent: *\nAllow: /\n' },
       '/llms.txt': { status: 404 },
@@ -64,7 +64,7 @@ describe('礼貌预算', () => {
     assert.equal(signals.robots!.status, 200);
   });
 
-  it('agents.md 404 → 回退 AGENTS.md（仍计预算）', async () => {
+  it('agents.md 404 → falls back to AGENTS.md (still counted against the budget)', async () => {
     const { impl, calls } = mockFetch({
       '/robots.txt': { status: 404 },
       '/llms.txt': { status: 404 },
@@ -82,7 +82,7 @@ describe('礼貌预算', () => {
     assert.ok(calls.length <= MAX_REQUESTS);
   });
 
-  it('robots 声明的 Sitemap 与 crawl-delay 被采用', async () => {
+  it('Sitemap and crawl-delay declared in robots.txt are honored', async () => {
     const { impl, calls } = mockFetch({
       '/robots.txt': { status: 200, body: 'Sitemap: https://example.com/custom.xml\ncrawl-delay: 0\n' },
       '/llms.txt': { status: 404 },
@@ -95,11 +95,11 @@ describe('礼貌预算', () => {
       '/.well-known/mcp': { status: 404 },
     });
     const signals = await scanSite('example.com', { fetchImpl: impl, gapMs: 0 });
-    assert.ok(calls.some((c) => c.endsWith('/custom.xml')), '应抓取 robots 声明的 sitemap');
+    assert.ok(calls.some((c) => c.endsWith('/custom.xml')), 'should fetch the sitemap declared in robots.txt');
     assert.equal(signals.sitemap!.status, 200);
   });
 
-  it('首页链接到 swagger 时用链接而非默认 URL', async () => {
+  it('uses the swagger link from the homepage instead of the default URL', async () => {
     const { impl, calls } = mockFetch({
       '/robots.txt': { status: 404 },
       '/llms.txt': { status: 404 },
@@ -122,8 +122,8 @@ describe('礼貌预算', () => {
   });
 });
 
-describe('挑战回退（用户确认方案）', () => {
-  it('透明 UA 403 → 浏览器 UA 重取，保留 challengedStatus', async () => {
+describe('challenge fallback (user-approved design)', () => {
+  it('transparent UA 403 → re-fetch with browser UA, challengedStatus preserved', async () => {
     const calls: string[] = [];
     const impl = async (url: string, init: RequestInit): Promise<Response> => {
       calls.push(url);
@@ -138,7 +138,7 @@ describe('挑战回退（用户确认方案）', () => {
           status: 200,
         }) as unknown as Response;
       }
-      // 其余槽位: 透明 403 / 浏览器 404 → 均为“回退后非挑战”或“挑战保留”
+      // Other slots: transparent 403 / browser 404 → both "non-challenge after fallback" or "challenge preserved"
       const fb = path === '/llms.txt' || path === '/llms-full.txt';
       const status = ua.startsWith('aiappScanner') ? 403 : fb ? 404 : 403;
       return new Response('', { status }) as unknown as Response;
@@ -150,26 +150,26 @@ describe('挑战回退（用户确认方案）', () => {
     assert.ok(calls.length <= MAX_REQUESTS, `requests=${calls.length}`);
   });
 
-  it('硬墙: 两种 UA 都 403 → 保留透明结果，无回退标记', async () => {
+  it('hard wall: both UAs get 403 → transparent result kept, no fallback marker', async () => {
     const impl = async (): Promise<Response> =>
       new Response('denied', { status: 403 }) as unknown as Response;
     const signals = await scanSite('example.com', { fetchImpl: impl, gapMs: 0 });
     assert.equal(signals.homepage!.status, 403);
     assert.equal(signals.homepage!.uaFallback, undefined);
     assert.equal(signals.homepage!.challengedStatus, undefined);
-    // 预算不突破硬上限（每槽位最多 2 次尝试）
+    // budget stays within the hard cap (at most 2 attempts per slot)
     assert.ok(true);
   });
 });
 
-describe('启发式', () => {
-  it('extractLinks 只收匹配项', () => {
+describe('heuristics', () => {
+  it('extractLinks keeps only matching entries', () => {
     const html = `<a href="/docs">d</a><a href="/blog">b</a><script src="https://cdn.dev/api/docs.js"></script>`;
     const links = extractLinks(html, /\/docs/);
     assert.equal(links.length, 2);
   });
 
-  it('detectAiFeatures 三类信号', () => {
+  it('detectAiFeatures detects all three signal types', () => {
     const html = `<script src="https://widget.intercom.io/w.js"></script>
       <a href="/console/api">console</a>
       <p>Ask AI about semantic search powered by GPT-4</p>`;
