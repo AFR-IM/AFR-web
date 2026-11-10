@@ -244,6 +244,20 @@ describe('端到端评分', () => {
     }
   });
 
+  it('挑战回退: 透明UA被墙但内容可取 → 墙 0 分、可用性与 L2/L3 照常评分', () => {
+    const s = idealSignals();
+    s.homepage = { ...s.homepage!, status: 200, uaFallback: true, challengedStatus: 403 };
+    const r = scoreAfr(s);
+    const wall = r.layers[0]!.checks.find((c) => c.id === 'l1.no-tech-wall')!;
+    const avail = r.layers[0]!.checks.find((c) => c.id === 'l1.basic-availability')!;
+    assert.equal(wall.awarded, 0);
+    assert.equal(wall.status, 'fail');
+    assert.match(wall.evidence!.detail, /challengedStatus|403/);
+    assert.equal(avail.awarded, 5, '回退内容可用 → 可用性照常给分');
+    assert.ok(r.layers[1]!.awarded >= 35, `L2=${r.layers[1]!.awarded}`);
+    assert.ok(r.score >= 85, `score=${r.score}（仅扣墙 5 分）`);
+  });
+
   it('可复算: 同一 signals 输入两次结果完全一致', () => {
     const s = idealSignals();
     assert.deepEqual(scoreAfr(s), scoreAfr(s));

@@ -69,6 +69,10 @@ export interface HttpProbe {
   error?: string;
   /** 实际最终 URL（重定向后） */
   url?: string;
+  /** 挑战回退: 透明 UA 被挑战的状态码（401/403/429/503），L1 无技术墙据此判 0 分 */
+  challengedStatus?: number;
+  /** body 经浏览器 UA 回退获取（透明 UA 被挑战）；L2/L3 内容检查用 */
+  uaFallback?: boolean;
 }
 
 export interface OpenApiProbe {

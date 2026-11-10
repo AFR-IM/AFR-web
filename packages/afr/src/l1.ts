@@ -39,12 +39,16 @@ export function scoreL1(signals: ScanSignals, robotsEval: RobotsEvaluation): Lay
     },
   });
 
-  // 2) 无技术墙 5 分（以透明 UA 抓取首页的结果判定）
+  // 2) 无技术墙 5 分（以透明 UA 抓取首页的结果判定；挑战回退只取内容，不洗白墙）
   const hp = signals.homepage;
   let wall = 0;
   let wallStatus: CheckResult['status'] = 'unknown';
   if (hp && !hp.error && hp.status !== undefined) {
-    if (hp.status >= 200 && hp.status < 300) {
+    if (hp.challengedStatus) {
+      // 透明 UA 被挑战（内容经浏览器 UA 回退获取）→ 墙如实计 0
+      wall = 0;
+      wallStatus = 'fail';
+    } else if (hp.status >= 200 && hp.status < 300) {
       wall = 5;
       wallStatus = 'pass';
     } else if (hp.status >= 300 && hp.status < 400) {
@@ -68,7 +72,9 @@ export function scoreL1(signals: ScanSignals, robotsEval: RobotsEvaluation): Lay
       detail:
         wallStatus === 'unknown'
           ? `首页探测失败: ${statusText(hp)}`
-          : `GET / → ${hp!.status}${wallStatus === 'fail' ? '（拦截/挑战页即技术墙）' : ''}`,
+          : hp!.challengedStatus
+            ? `透明 UA GET / → ${hp!.challengedStatus}（挑战页），内容经浏览器 UA 回退获取 → 对陌生 UA 的墙如实计 0`
+            : `GET / → ${hp!.status}${wallStatus === 'fail' ? '（拦截/挑战页即技术墙）' : ''}`,
     },
   });
 

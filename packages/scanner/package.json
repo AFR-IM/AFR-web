@@ -1,0 +1,13 @@
+{
+  "name": "@aiapp/scanner",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "scan": "NODE_USE_ENV_PROXY=1 node src/cli.ts",
+    "test": "node --test test/*.test.ts"
+  }
+}
