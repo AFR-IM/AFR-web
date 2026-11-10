@@ -1,0 +1,337 @@
+---
+// P3 detail page — /site/:domain (spec §10.3 "product's soul page").
+// Layout per §10.7: 340px report card │ 1fr evidence chain │ 320px
+// statement/badge/history, left+right sticky at top 80px; 768–1279 → 2+1;
+// ≤767 → three tabs (Report / Evidence / Statement).
+
+import Base from '../../../layouts/Base.astro';
+import GradeRing from '../../../components/grade/GradeRing.astro';
+import StrategyTag from '../../../components/detail/StrategyTag.astro';
+import VerifiedTick from '../../../components/detail/VerifiedTick.astro';
+import ReportCard from '../../../components/detail/ReportCard.astro';
+import EvidenceChain from '../../../components/detail/EvidenceChain.astro';
+import ClaimBlock from '../../../components/detail/ClaimBlock.astro';
+import BadgeEmbed from '../../../components/detail/BadgeEmbed.astro';
+import HistorySpark from '../../../components/detail/HistorySpark.astro';
+import RescanButton from '../../../components/detail/RescanButton.astro';
+import { getCatalog, LOCALES, pathFor, toLocale, type Locale } from '../../../i18n/loader.ts';
+import { listSites, loadSite } from '../../../data/loader.ts';
+import type { SiteDetail } from '../../../data/types.ts';
+import { gradeVar } from '../../../utils/grade.ts';
+import { ENGINE_VERSION } from '../../../../../../packages/afr/src/index.ts';
+import { SCANNER_VERSION } from '../../../../../../packages/scanner/src/http.ts';
+
+export function getStaticPaths() {
+  const out: { params: { locale?: string; domain: string } }[] = [];
+  for (const locale of LOCALES) {
+    for (const card of listSites()) {
+      out.push({ params: { locale: locale === 'en' ? undefined : locale, domain: card.domain } });
+    }
+  }
+  return out;
+}
+
+/** Fixture-backed now: sites without a full snapshot render a "pending scan" state. */
+function resolveDetail(domain: string): SiteDetail | undefined {
+  const full = loadSite(domain);
+  if (full) return full;
+  const card = listSites().find((s) => s.domain === domain);
+  if (!card) return undefined;
+  return {
+    ...card,
+    engineVersion: ENGINE_VERSION,
+    scannerVersion: SCANNER_VERSION,
+    layers: [],
+    breakdown: {},
+    history: [],
+  };
+}
+
+const locale: Locale = toLocale(Astro.params.locale);
+const L = getCatalog(locale);
+const isZh = locale === 'zh-CN';
+const T = (en: string, zh: string) => (isZh ? zh : en);
+const href = (p: string) => pathFor(locale, p);
+
+const domain = Astro.params.domain ?? '';
+const site = resolveDetail(domain);
+const gc = site ? gradeVar(site.grade) : 'var(--text-3)';
+const gradeInfo = site ? L.grades[site.grade] : undefined;
+const strategyLabel = site ? (L.strategies[site.strategyTag]?.label ?? site.strategyTag) : '';
+const scannedAt = site
+  ? new Date(site.scannedAt).toISOString().replace('T', ' ').slice(0, 16) + ' UTC'
+  : '';
+const tabs = [
+  { id: 'report', label: L.ui.reportTitle ?? T('Report', '报告') },
+  { id: 'evidence', label: L.ui.evidenceTitle ?? T('Evidence', '证据') },
+  { id: 'statement', label: L.ui.statementTitle ?? T('Statement', '声明') },
+];
+const notFound = !site;
+const title = notFound ? (L.ui.notFound as string) : `${domain} — ${site.title ?? site.grade}`;
+const description = notFound
+  ? (L.ui.notFoundCta as string)
+  : `${domain}: ${site.score}/100 · ${site.grade} · ${strategyLabel} — ${T('AI-friendliness rating with full evidence chain.', '带完整证据链的 AI 友好度评级。')}`;
+---
+
+<Base title={title} description={description}>
+  {
+    notFound ? (
+      <div class="container missing">
+        <h1>{L.ui.notFound}</h1>
+        <a class="btn" href={href('/submit')}>
+          {L.ui.notFoundCta}
+        </a>
+      </div>
+    ) : (
+      <div class="container detail" style={`--gc:${gc};`}>
+        <header class="head">
+          <div class="head-main">
+            <p class="crumb mono">
+              <a href={href('/')}>aiapp.im</a> <span>/</span> <span>site</span>
+            </p>
+            <div class="head-row">
+              <h1 class="domain mono">{site.domain}</h1>
+              {site.verified && <VerifiedTick locale={locale} />}
+            </div>
+            {site.title && <p class="title">{site.title}</p>}
+            <div class="meta">
+              <StrategyTag tag={site.strategyTag} locale={locale} />
+              <span class="chip mono">
+                {L.ui.grade}: {site.grade} · {gradeInfo ? gradeInfo.slogan : ''}
+              </span>
+              <span class="chip mono">
+                {L.ui.scanTime} <time datetime={site.scannedAt}>{scannedAt}</time>
+              </span>
+              {site.category && (
+                <a class="chip mono" href={href(`/c/${site.category}`)}>
+                  {L.categories[site.category]?.name ?? site.category}
+                </a>
+              )}
+            </div>
+          </div>
+
+          <div class="head-ring">
+            <GradeRing score={site.score} grade={site.grade} size={96} animate />
+            <span class="ring-label mono" style={`color:${gc};`}>
+              {gradeInfo?.label ?? site.grade}
+            </span>
+          </div>
+        </header>
+
+        <div class="tabbar" role="tablist" aria-label={L.ui.reportTitle}>
+          {tabs.map((t, i) => (
+            <button
+              class="tab mono"
+              type="button"
+              role="tab"
+              data-tab-btn={t.id}
+              aria-selected={i === 0 ? 'true' : 'false'}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        <div class="grid" data-tab="report">
+          <div class="col col-left">
+            <ReportCard site={site} locale={locale} />
+          </div>
+          <div class="col col-center">
+            <EvidenceChain site={site} locale={locale} />
+          </div>
+          <div class="col col-right">
+            <ClaimBlock claim={site.claim} locale={locale} />
+            <BadgeEmbed domain={site.domain} grade={site.grade} locale={locale} badgeHref={href('/badge')} />
+            <HistorySpark site={site} locale={locale} />
+            <RescanButton domain={site.domain} locale={locale} />
+          </div>
+        </div>
+      </div>
+    )
+  }
+</Base>
+
+<style>
+  .missing {
+    padding: 80px 0;
+    text-align: center;
+  }
+
+  .detail {
+    padding-top: 28px;
+  }
+
+  /* ── header ─────────────────────────────────────────── */
+  .head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 24px;
+  }
+  .crumb {
+    margin: 0 0 8px;
+    font-size: 12px;
+    color: var(--text-3);
+  }
+  .crumb a:hover {
+    color: var(--brand);
+  }
+  .crumb span {
+    margin: 0 4px;
+  }
+  .head-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .domain {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: clamp(26px, 4vw, 38px);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--text-1);
+    word-break: break-all;
+  }
+  .title {
+    margin: 6px 0 0;
+    font-size: 15px;
+    color: var(--text-2);
+  }
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 14px;
+  }
+  .meta .chip {
+    gap: 6px;
+    font-size: 11.5px;
+  }
+  .meta a.chip:hover {
+    border-color: var(--brand);
+    color: var(--brand);
+  }
+
+  .head-ring {
+    display: grid;
+    justify-items: center;
+    gap: 8px;
+    flex: none;
+  }
+  .ring-label {
+    font-size: 12px;
+  }
+
+  /* ── mobile tab bar (≤767) ──────────────────────────── */
+  .tabbar {
+    display: none;
+    gap: 6px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid var(--line);
+  }
+  .tab {
+    padding: 8px 12px;
+    font-size: 12.5px;
+    color: var(--text-3);
+    border-bottom: 2px solid transparent;
+    transition: color var(--t-micro) var(--ease), border-color var(--t-micro) var(--ease);
+  }
+  .tab[aria-selected='true'] {
+    color: var(--text-1);
+    border-bottom-color: var(--brand);
+  }
+
+  /* ── three columns (§10.7) ──────────────────────────── */
+  .grid {
+    display: grid;
+    grid-template-columns: 340px minmax(0, 1fr) 320px;
+    gap: 24px;
+    align-items: start;
+    padding-bottom: 8px;
+  }
+  .col-left,
+  .col-right {
+    position: sticky;
+    top: 80px;
+  }
+  .col-right {
+    display: grid;
+    gap: 16px;
+  }
+
+  /* tablet: 2 + 1, right column flows below (§10.7) */
+  @media (max-width: 1279px) {
+    .grid {
+      grid-template-columns: 340px minmax(0, 1fr);
+    }
+    .col-right {
+      position: static;
+      grid-column: 1 / -1;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      align-items: start;
+    }
+  }
+
+  /* phone: tabs (Report / Evidence / Statement) */
+  @media (max-width: 767px) {
+    .detail {
+      padding-top: 20px;
+    }
+    .head {
+      flex-direction: column-reverse;
+      gap: 16px;
+    }
+    .head-ring {
+      justify-items: start;
+    }
+    .tabbar {
+      display: flex;
+      overflow-x: auto;
+    }
+    .grid {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 0;
+    }
+    .col {
+      display: none;
+    }
+    .col-left,
+    .col-center,
+    .col-right {
+      position: static;
+      grid-column: auto;
+    }
+    .col-right {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 16px;
+    }
+    .grid[data-tab='report'] .col-left {
+      display: block;
+    }
+    .grid[data-tab='evidence'] .col-center {
+      display: block;
+    }
+    .grid[data-tab='statement'] .col-right {
+      display: grid;
+    }
+  }
+</style>
+
+<script>
+  // ≤767 tab switcher (vanilla, no framework) — desktop shows all three columns.
+  const grid = document.querySelector<HTMLElement>('.grid[data-tab]');
+  if (grid) {
+    const buttons = document.querySelectorAll<HTMLButtonElement>('[data-tab-btn]');
+    for (const btn of buttons) {
+      btn.addEventListener('click', () => {
+        grid.dataset.tab = btn.dataset.tabBtn ?? 'report';
+        for (const other of buttons) other.setAttribute('aria-selected', String(other === btn));
+      });
+    }
+  }
+</script>

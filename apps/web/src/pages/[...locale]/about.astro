@@ -1,0 +1,309 @@
+---
+// P7 about page — /about (spec §2 product definition + §10.3 P7).
+// One-liner §2.1, three user groups §2.2, explicit boundaries §2.4,
+// open-source repos, contact.
+
+import Base from '../../layouts/Base.astro';
+import { getCatalog, LOCALES, pathFor, toLocale, type Locale } from '../../i18n/loader.ts';
+
+export function getStaticPaths() {
+  return [{ params: { locale: undefined } }, { params: { locale: 'zh-CN' } }];
+}
+
+const locale: Locale = toLocale(Astro.params.locale);
+const L = getCatalog(locale);
+const isZh = locale === 'zh-CN';
+const T = (en: string, zh: string) => (isZh ? zh : en);
+const href = (p: string) => pathFor(locale, p);
+
+const PROSE = {
+  en: {
+    title: 'About aiapp',
+    description:
+      'aiapp.im rates how friendly every website is to AI — automated, reproducible, evidence-backed, and neutral about the answer.',
+    lede: 'See how friendly every website is to AI. aiapp.im is an open directory that rates sites A–F on their openness to AI crawlers and agents, with the evidence chain published next to every score.',
+    whatTitle: 'What we do',
+    whatItems: [
+      'Scan public signals only — robots.txt, llms.txt, sitemap, structured data, APIs — with a transparent crawler anyone can identify and block.',
+      'Score them with an open standard (AFR) whose engine is a pure function: anyone can recompute any grade from the recorded snapshot.',
+      'Publish the full report card: every point, its check, its status, and its raw evidence.',
+      'Let verified owners respond with a statement shown beside the score, at equal weight.',
+    ],
+    usersTitle: 'Who it is for',
+    users: [
+      ['Site owners & developers', 'Find out where you sit on the AI openness spectrum, grab a badge, and see exactly how to gain points.'],
+      ['AI-heavy users & builders', 'Browse a directory of tools, content sites and APIs that are genuinely open to AI.'],
+      ['AEO / SEO practitioners', 'Check AI-friendliness for clients or competitors for free — API access comes later.'],
+    ],
+    notTitle: 'What we deliberately do not do',
+    notItems: [
+      'No AI-crawler blocking tools or interception services — that would be a conflict of interest and destroy our neutrality.',
+      'No subjective human reviews: only automated ratings of public, reproducible signals.',
+      'No brand AI-mention monitoring — other products own that battlefield.',
+      'No moral verdict on "AI-friendliness": we publish coordinates, we do not take sides.',
+    ],
+    notLead: 'Neutrality is the product. A rating that can be bought, argued into, or nudged is worth nothing.',
+    ossTitle: 'Open source',
+    ossItems: [
+      ['aiapp-web', 'The whole site, the scanner and the AFR scoring engine.', 'https://github.com/imAiAPP/aiapp-web'],
+      ['aiapp-data', 'Public scan snapshots — one JSON per site, git-versioned as the audit trail.', 'https://github.com/imAiAPP/aiapp-data'],
+    ],
+    contactTitle: 'Contact',
+    contactBody:
+      'Corrections: open a PR against the data repository (corrections/) — it triggers a re-scan. Bugs and feature requests: issues on aiapp-web. Owner verification and statements start from a site’s report page.',
+    contactLinks: [
+      ['Method & neutrality pledge', '/method'],
+      ['Crawler politeness spec', '/bot'],
+    ],
+  },
+  'zh-CN': {
+    title: '关于 aiapp',
+    description: 'aiapp.im 为每个网站的 AI 友好度打分——自动、可复现、有证据，且对结果保持中立。',
+    lede: '看看每个网站，对 AI 有多友好。aiapp.im 是一个开放目录，按 A–F 给网站的 AI 开放度评级，每个分数旁都附带完整证据链。',
+    whatTitle: '我们做什么',
+    whatItems: [
+      '只扫描公开信号——robots.txt、llms.txt、sitemap、结构化数据、API——爬虫身份透明，任何人都能识别并随时屏蔽我们。',
+      '用开放标准（AFR）打分：引擎是纯函数，任何人都能用记录好的快照复算出同一个等级。',
+      '公开完整检测报告：每个分值、对应检查项、状态与原始证据。',
+      '已验证站方可发布声明，展示在评分旁，双方平等发声。',
+    ],
+    usersTitle: '为谁而做',
+    users: [
+      ['站长与开发者', '看清站在 AI 开放度光谱上的位置，领取徽章，并知道如何提分。'],
+      ['AI 重度用户与构建者', '在目录里找到真正对 AI 开放的工具站、内容站与 API 服务。'],
+      ['AEO / SEO 从业者', '免费查询客户或竞品的 AI 友好度，API 付费能力稍后开放。'],
+    ],
+    notTitle: '我们刻意不做的事',
+    notItems: [
+      '不做 AI 爬虫封锁工具 / 拦截服务——利益冲突，会毁掉中立性。',
+      '不做人工主观评测——只做公开可复现信号的自动化评级。',
+      '不做品牌 AI 引用监控——那是别人的战场。',
+      '不给“AI 友好”做道德评判——我们呈现坐标，不站队。',
+    ],
+    notLead: '中立就是产品本身。能被买到、被说动、被微调的评级一文不值。',
+    ossTitle: '开源',
+    ossItems: [
+      ['aiapp-web', '整站、扫描器与 AFR 评分引擎。', 'https://github.com/imAiAPP/aiapp-web'],
+      ['aiapp-data', '公开扫描快照——每站一份 JSON，git 版本化即审计轨迹。', 'https://github.com/imAiAPP/aiapp-data'],
+    ],
+    contactTitle: '联系我们',
+    contactBody:
+      '纠错：向数据仓提 PR（corrections/），会自动触发重扫复核。缺陷与需求：aiapp-web 的 issues。站长验证与站方声明从站点报告页发起。',
+    contactLinks: [
+      ['方法页与中立性承诺', '/method'],
+      ['爬虫礼仪规范', '/bot'],
+    ],
+  },
+} as const;
+
+const P = PROSE[locale === 'zh-CN' ? 'zh-CN' : 'en'];
+---
+
+<Base title={P.title} description={P.description}>
+  <div class="container about">
+    <header class="hero">
+      <p class="eyebrow mono">aiapp.im</p>
+      <h1>{P.title}</h1>
+      <p class="lede">{P.lede}</p>
+      <div class="hero-cta">
+        <a class="btn" href={href('/method')}>{L.ui.navMethod} →</a>
+        <a class="btn btn-ghost" href={href('/submit')}>{L.ui.navSubmit}</a>
+      </div>
+    </header>
+
+    <section class="sec">
+      <h2>{P.whatTitle}</h2>
+      <ul class="list">
+        {P.whatItems.map((item) => <li>{item}</li>)}
+      </ul>
+    </section>
+
+    <section class="sec">
+      <h2>{P.usersTitle}</h2>
+      <div class="users">
+        {
+          P.users.map(([name, desc], i) => (
+            <article class="user">
+              <span class="idx mono">U{i + 1}</span>
+              <h3>{name}</h3>
+              <p>{desc}</p>
+            </article>
+          ))
+        }
+      </div>
+    </section>
+
+    <section class="sec">
+      <h2>{P.notTitle}</h2>
+      <p class="lead">{P.notLead}</p>
+      <ul class="list">
+        {P.notItems.map((item) => <li>{item}</li>)}
+      </ul>
+    </section>
+
+    <section class="sec">
+      <h2>{P.ossTitle}</h2>
+      <div class="repos">
+        {
+          P.ossItems.map(([name, desc, url]) => (
+            <a class="repo" href={url} rel="noopener">
+              <span class="repo-name mono">{name}</span>
+              <span class="repo-desc">{desc}</span>
+              <span class="repo-url mono">{url.replace('https://', '')}</span>
+            </a>
+          ))
+        }
+      </div>
+    </section>
+
+    <section class="sec">
+      <h2>{P.contactTitle}</h2>
+      <p class="lead">{P.contactBody}</p>
+      <p class="links">
+        {P.contactLinks.map(([label, path], i) => (
+          <>
+            {i > 0 && <span class="sep">·</span>}
+            <a href={href(path)}>{label}</a>
+          </>
+        ))}
+        <span class="sep">·</span>
+        <a href="https://github.com/imAiAPP/aiapp-web/issues" rel="noopener">GitHub Issues</a>
+      </p>
+    </section>
+  </div>
+</Base>
+
+<style>
+  .about {
+    padding-top: 32px;
+    padding-bottom: 24px;
+  }
+  .hero {
+    max-width: 780px;
+    margin-bottom: 26px;
+  }
+  .eyebrow {
+    margin: 0 0 8px;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--brand);
+  }
+  .hero h1 {
+    font-size: clamp(28px, 4.4vw, 40px);
+    margin-bottom: 12px;
+  }
+  .lede {
+    margin: 0;
+    font-size: 16px;
+    line-height: 1.75;
+    color: var(--text-2);
+  }
+  .hero-cta {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 20px;
+  }
+
+  .sec {
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 24px 26px;
+    margin-bottom: 20px;
+  }
+  .sec h2 {
+    font-size: 20px;
+    margin-bottom: 12px;
+  }
+  .lead {
+    margin: 0 0 14px;
+    color: var(--text-2);
+    max-width: 82ch;
+  }
+
+  .list {
+    margin: 0;
+    padding-left: 18px;
+    display: grid;
+    gap: 10px;
+    color: var(--text-2);
+    max-width: 84ch;
+  }
+
+  .users {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px;
+  }
+  .user {
+    padding: 16px;
+    background: var(--bg-ink);
+    border: 1px solid var(--line);
+    border-radius: var(--r-2);
+  }
+  .idx {
+    font-size: 11.5px;
+    color: var(--brand);
+  }
+  .user h3 {
+    font-size: 15.5px;
+    margin: 6px 0 6px;
+  }
+  .user p {
+    margin: 0;
+    font-size: 13.5px;
+    color: var(--text-2);
+  }
+
+  .repos {
+    display: grid;
+    gap: 12px;
+  }
+  .repo {
+    display: grid;
+    gap: 4px;
+    padding: 14px 16px;
+    background: var(--bg-ink);
+    border: 1px solid var(--line);
+    border-radius: var(--r-2);
+    transition: border-color var(--t-micro) var(--ease);
+  }
+  .repo:hover {
+    border-color: var(--brand);
+  }
+  .repo-name {
+    font-size: 14px;
+    color: var(--text-1);
+    font-weight: 500;
+  }
+  .repo-desc {
+    font-size: 13.5px;
+    color: var(--text-2);
+  }
+  .repo-url {
+    font-size: 11.5px;
+    color: var(--text-3);
+  }
+
+  .links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 0;
+    font-size: 14px;
+  }
+  .links a:hover {
+    color: var(--brand);
+  }
+  .sep {
+    color: var(--text-3);
+  }
+
+  @media (max-width: 767px) {
+    .sec {
+      padding: 20px 16px;
+    }
+  }
+</style>

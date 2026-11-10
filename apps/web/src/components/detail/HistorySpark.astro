@@ -1,0 +1,116 @@
+---
+// HistorySpark — spec §10.3 P3 right column: score history as an inline SVG
+// polyline with dots and mono axis labels (no chart library, no raster asset).
+
+import type { SiteDetail } from '../../data/types.ts';
+import { gradeVar } from '../../utils/grade.ts';
+import { getCatalog } from '../../i18n/loader.ts';
+
+interface Props {
+  site: SiteDetail;
+  locale: string;
+}
+
+const { site, locale } = Astro.props;
+const L = getCatalog(locale);
+const isZh = locale === 'zh-CN';
+const T = (en: string, zh: string) => (isZh ? zh : en);
+
+const history = site.history ?? [];
+const W = 272;
+const H = 84;
+const padX = 10;
+const padTop = 8;
+const plotH = 46;
+
+const n = history.length;
+const pts = history.map((h, i) => {
+  const x = n === 1 ? W / 2 : padX + (i * (W - padX * 2)) / (n - 1);
+  const y = padTop + ((100 - Math.max(0, Math.min(100, h.score))) / 100) * plotH;
+  return { x, y, h };
+});
+const poly = pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+const gc = gradeVar(site.grade);
+const firstDate = history[0]?.date ?? '';
+const lastDate = history[history.length - 1]?.date ?? '';
+const delta = n >= 2 ? history[n - 1]!.score - history[0]!.score : 0;
+const deltaText = `${delta > 0 ? '+' : ''}${delta}`;
+---
+
+<section class="hist" aria-label={L.ui.historyTitle}>
+  <header class="hist-head">
+    <h2>{L.ui.historyTitle}</h2>
+    {n >= 2 && <span class="delta mono" data-dir={delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat'}>{deltaText}</span>}
+  </header>
+
+  {
+    n === 0 ? (
+      <p class="empty">{T('No scans yet.', '暂无扫描记录。')}</p>
+    ) : (
+      <svg class="spark" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${L.ui.historyTitle}: ${firstDate} → ${lastDate}`}>
+        <line x1={padX} y1={padTop + plotH} x2={W - padX} y2={padTop + plotH} class="axis" />
+        <polyline points={poly} fill="none" stroke={gc} stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
+        {pts.map((p) => (
+          <circle cx={p.x} cy={p.y} r="3" fill={gc} />
+        ))}
+        <text x={padX} y={H - 16} class="lab">{firstDate}</text>
+        <text x={W - padX} y={H - 16} class="lab" text-anchor="end">
+          {lastDate}
+        </text>
+        <text x={padX} y={H - 3} class="lab sub">{`${history.map((h) => h.score).join(' · ')}`}</text>
+      </svg>
+    )
+  }
+</section>
+
+<style>
+  .hist {
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 14px;
+  }
+  .hist-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .hist-head h2 {
+    font-size: 15px;
+    margin: 0;
+  }
+  .delta {
+    font-size: 12px;
+    color: var(--text-3);
+  }
+  .delta[data-dir='up'] {
+    color: var(--grade-b);
+  }
+  .delta[data-dir='down'] {
+    color: var(--grade-f);
+  }
+  .empty {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-3);
+  }
+  .spark {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+  .axis {
+    stroke: var(--line);
+    stroke-width: 1;
+  }
+  .lab {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    fill: var(--text-3);
+  }
+  .lab.sub {
+    fill: var(--text-2);
+  }
+</style>

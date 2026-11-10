@@ -1,0 +1,190 @@
+---
+// EvidenceRow — spec §10.4 "状态点 + 检查名 + 分数(mono) + chevron" row with an
+// expandable evidence body (§10.6: hover → --bg-elevated, open → chevron rotates
+// 90° in 200ms, body = mono text at line-height 1.6).
+// Used twice: compact inside the left report card, terminal tone inside the
+// center evidence chain.
+
+import type { SiteCheck } from '../../data/types.ts';
+import { getCatalog } from '../../i18n/loader.ts';
+
+interface Props {
+  check: SiteCheck;
+  locale: string;
+  /** compact (report card) | terminal (evidence chain) */
+  tone?: 'compact' | 'terminal';
+}
+
+const { check, locale, tone = 'compact' } = Astro.props;
+const L = getCatalog(locale);
+const isZh = locale === 'zh-CN';
+const T = (en: string, zh: string) => (isZh ? zh : en);
+
+const label = L.checks[check.id] ?? check.name;
+const hasEvidence = !!check.evidence;
+const evidenceSource = check.evidence?.source ?? '';
+const evidenceDetail = check.evidence?.detail ?? '';
+const noneText = T('No evidence recorded for this row.', '本行暂无证据记录。');
+---
+
+<details class:list={['row', tone]} data-status={check.status}>
+  <summary>
+    <span class="dot" aria-hidden="true"></span>
+    <span class:list={['name', { mono: tone === 'terminal' }]}>{label}</span>
+    <span class="score mono">{check.awarded} / {check.max}</span>
+    <svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M9 6l6 6-6 6"></path>
+    </svg>
+  </summary>
+  <div class="body">
+    {
+      hasEvidence ? (
+        <p class="src mono">
+          <span class="src-key">{T('source', '来源')}</span> {evidenceSource}
+        </p>
+      ) : (
+        <p class="src none">{noneText}</p>
+      )
+    }
+    {hasEvidence && <pre class="mono">{evidenceDetail}</pre>}
+    <p class="raw mono"><span class="src-key">{T('check id', '检查项 id')}</span> {check.id}</p>
+  </div>
+</details>
+
+<style>
+  .row {
+    border-bottom: 1px solid var(--line);
+  }
+  .row:last-child {
+    border-bottom: none;
+  }
+
+  summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text-1);
+    list-style: none;
+    border-radius: var(--r-1);
+    transition: background var(--t-micro) var(--ease);
+  }
+  summary::-webkit-details-marker {
+    display: none;
+  }
+  summary:hover,
+  summary:focus-visible {
+    background: var(--bg-elevated);
+  }
+
+  .dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-3);
+  }
+  .row[data-status='pass'] .dot {
+    background: var(--grade-b);
+  }
+  .row[data-status='partial'] .dot {
+    background: var(--grade-c);
+  }
+  .row[data-status='fail'] .dot {
+    background: var(--grade-f);
+  }
+  .row[data-status='unknown'] .dot {
+    background: var(--text-3);
+  }
+
+  .name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .row.terminal .name {
+    font-size: 12.5px;
+    color: var(--text-1);
+    white-space: normal;
+  }
+
+  .score {
+    flex: none;
+    font-size: 12px;
+    color: var(--text-2);
+  }
+  .row[data-status='partial'] .score {
+    color: var(--grade-c);
+  }
+  .row[data-status='fail'] .score {
+    color: var(--text-3);
+  }
+
+  .chev {
+    flex: none;
+    color: var(--text-3);
+    transition: transform var(--t-standard) var(--ease);
+  }
+  .row[open] summary {
+    background: var(--bg-elevated);
+    border-radius: var(--r-1) var(--r-1) 0 0;
+  }
+  .row[open] .chev {
+    transform: rotate(90deg);
+  }
+
+  .body {
+    background: var(--bg-elevated);
+    padding: 8px 12px 12px;
+    border-radius: 0 0 var(--r-1) var(--r-1);
+    animation: reveal var(--t-standard) var(--ease);
+  }
+  @keyframes reveal {
+    from {
+      opacity: 0;
+      transform: translateY(-2px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .src,
+  .raw {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--text-2);
+    word-break: break-word;
+  }
+  .src-key {
+    color: var(--text-3);
+  }
+  .none {
+    color: var(--text-3);
+    font-style: italic;
+  }
+  .body pre {
+    margin: 6px 0 0;
+    padding: 8px 10px;
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: var(--r-1);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--text-1);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .raw {
+    margin-top: 6px;
+    color: var(--text-3);
+    font-size: 11.5px;
+  }
+</style>

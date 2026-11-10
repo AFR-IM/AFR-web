@@ -1,0 +1,56 @@
+---
+// VerifiedTick — spec §10.4: blue check + "Verified Owner" tooltip (§8.2 verification).
+
+import { getCatalog } from '../../i18n/loader.ts';
+
+interface Props {
+  locale: string;
+}
+
+const { locale } = Astro.props;
+const L = getCatalog(locale);
+const label = L.ui.verifiedOwner ?? (locale === 'zh-CN' ? '已验证站方' : 'Verified owner');
+---
+
+<span class="tick" data-tip={label} role="img" aria-label={label}>
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M20 6L9 17l-5-5"></path>
+  </svg>
+</span>
+
+<style>
+  .tick {
+    position: relative;
+    display: inline-grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border: 1px solid var(--verified);
+    border-radius: 50%;
+    color: var(--verified);
+    cursor: help;
+  }
+  .tick::after {
+    content: attr(data-tip);
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 4px 8px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--line);
+    border-radius: var(--r-1);
+    font-family: var(--font-body);
+    font-size: 11.5px;
+    color: var(--text-1);
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--t-micro) var(--ease);
+    z-index: 5;
+  }
+  .tick:hover::after,
+  .tick:focus-visible::after {
+    opacity: 1;
+  }
+</style>

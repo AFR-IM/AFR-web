@@ -1,0 +1,46 @@
+---
+// StrategyTag — spec §10.4 "描边胶囊，五态色" (spec §3.2 A1附带产出).
+// Outline pill only; the tag sits next to the grade and never penalizes it.
+
+import type { StrategyTag as StrategyTagType } from '../../data/types.ts';
+import { getCatalog } from '../../i18n/loader.ts';
+
+interface Props {
+  tag: StrategyTagType;
+  locale: string;
+}
+
+const { tag, locale } = Astro.props;
+const L = getCatalog(locale);
+const entry = L.strategies[tag];
+const label = entry?.label ?? tag;
+const desc = entry?.desc ?? '';
+const colorVar =
+  tag === 'AI-Open'
+    ? 'var(--grade-a)'
+    : tag === 'Middle-Path'
+      ? 'var(--grade-c)'
+      : tag === 'Training-Open'
+        ? 'var(--violet)'
+        : tag === 'AI-Closed'
+          ? 'var(--grade-f)'
+          : 'var(--text-3)';
+---
+
+<span class="tag mono" style={`--tag-color:${colorVar};`} title={desc} aria-label={`${label} — ${desc}`}>
+  {label}
+</span>
+
+<style>
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    border: 1px solid var(--tag-color);
+    border-radius: 999px;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--tag-color);
+    white-space: nowrap;
+  }
+</style>

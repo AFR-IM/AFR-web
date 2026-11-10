@@ -1,0 +1,118 @@
+---
+// P7 offline fallback — /offline (spec §9: the service worker's offline route
+// shows a friendly message plus the last sync time and a link home).
+
+import Base from '../../layouts/Base.astro';
+import { loadHome } from '../../data/loader.ts';
+import { getCatalog, LOCALES, pathFor, toLocale, type Locale } from '../../i18n/loader.ts';
+
+export function getStaticPaths() {
+  return [{ params: { locale: undefined } }, { params: { locale: 'zh-CN' } }];
+}
+
+const locale: Locale = toLocale(Astro.params.locale);
+const L = getCatalog(locale);
+const isZh = locale === 'zh-CN';
+const T = (en: string, zh: string) => (isZh ? zh : en);
+const href = (p: string) => pathFor(locale, p);
+
+const home = loadHome();
+const syncedAt = new Date(home.generatedAt);
+const synced = syncedAt.toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
+const syncedLocal = syncedAt.toLocaleString(isZh ? 'zh-CN' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' });
+
+const title = L.ui.offlineTitle ?? T('You are offline', '当前离线');
+const hint = L.ui.offlineHint ?? T('Showing the last synced directory data.', '显示上次同步的目录数据。');
+const body = T(
+  'No connection right now — your last synced copy of the directory is still here, and ratings do not change while you are away. Reconnect and refresh to pull the latest scans.',
+  '当前没有网络——上次同步的目录副本仍可离线浏览，你离开期间评级不会变化。恢复网络后刷新即可拉取最新扫描结果。',
+);
+const cta = T('Back to the directory', '返回目录');
+---
+
+<Base title={title} description={hint}>
+  <div class="container offline">
+    <div class="card">
+      <span class="dot" aria-hidden="true"></span>
+      <h1>{title}</h1>
+      <p class="hint">{hint}</p>
+      <p class="body">{body}</p>
+      <p class="sync mono">
+        {T('Last sync', '上次同步')} <time datetime={home.generatedAt}>{synced}</time>
+        <span class="local">({syncedLocal})</span>
+      </p>
+      <p class="total mono">{T('Cached sites', '已缓存站点')} {home.total}</p>
+      <a class="btn" href={href('/')} data-reload>
+        {cta} →
+      </a>
+    </div>
+  </div>
+</Base>
+
+<style>
+  .offline {
+    display: grid;
+    place-items: center;
+    min-height: 60vh;
+    padding-top: 40px;
+    padding-bottom: 40px;
+  }
+  .card {
+    position: relative;
+    width: min(560px, 100%);
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 32px 30px;
+    text-align: left;
+  }
+  .dot {
+    display: block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--grade-c);
+    margin-bottom: 16px;
+  }
+  h1 {
+    font-size: clamp(24px, 4vw, 32px);
+    margin-bottom: 8px;
+  }
+  .hint {
+    margin: 0 0 14px;
+    color: var(--brand);
+    font-size: 14px;
+  }
+  .body {
+    margin: 0 0 20px;
+    color: var(--text-2);
+    line-height: 1.7;
+  }
+  .sync,
+  .total {
+    margin: 0 0 6px;
+    font-size: 12.5px;
+    color: var(--text-3);
+  }
+  .local {
+    color: var(--text-3);
+    opacity: 0.8;
+  }
+  .btn {
+    margin-top: 18px;
+  }
+
+  @media (max-width: 767px) {
+    .card {
+      padding: 24px 18px;
+    }
+  }
+</style>
+
+<script>
+  // Offline route: a normal navigation when the network is back (the service
+  // worker serves this page while offline).
+  document.querySelector('[data-reload]')?.addEventListener('click', (e) => {
+    if (!navigator.onLine) e.preventDefault();
+  });
+</script>

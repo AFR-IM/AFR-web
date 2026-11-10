@@ -1,0 +1,89 @@
+---
+// BadgePreview — local rendering of what https://aiapp.im/badge/{domain}.svg
+// serves (spec §8.4): ring + big grade letter + score + "AI-Friendly Rating ·
+// aiapp.im". Colors come from tokens only (grade color family, --bg-surface,
+// --line) — same semantic colors in both themes.
+
+interface Props {
+  grade: 'A' | 'B' | 'C' | 'D' | 'F';
+  score: number;
+  domain?: string;
+}
+
+const { grade, score, domain } = Astro.props;
+const gc = `var(--grade-${grade.toLowerCase()})`;
+
+const W = 236;
+const H = 74;
+const cx = 38;
+const cy = 37;
+const r = 26;
+const C = 2 * Math.PI * r;
+const pct = Math.max(0, Math.min(100, score));
+const filled = (C * pct) / 100;
+const label = `AI-Friendly Rating ${grade}, ${score}/100${domain ? ` — ${domain}` : ''}`;
+---
+
+<svg class="badge" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label}>
+  <rect x="0.5" y="0.5" width={W - 1} height={H - 1} rx="10" class="bg"></rect>
+  <g transform={`rotate(-90 ${cx} ${cy})`}>
+    <circle cx={cx} cy={cy} r={r} class="track" />
+    <circle
+      cx={cx}
+      cy={cy}
+      r={r}
+      class="fill"
+      stroke-dasharray={`${filled.toFixed(1)} ${(C - filled).toFixed(1)}`}
+    />
+  </g>
+  <text x={cx} y={cy - 1} class="letter" text-anchor="middle" dominant-baseline="middle" style={`fill:${gc};`}>
+    {grade}
+  </text>
+  <text x={cx} y={cy + 16} class="score" text-anchor="middle">{score}</text>
+  <text x={74} y={cy - 4} class="line1">AI-Friendly Rating</text>
+  <text x={74} y={cy + 15} class="line2">aiapp.im · {score}/100{domain ? ` · ${domain}` : ''}</text>
+</svg>
+
+<style>
+  .badge {
+    width: 100%;
+    max-width: 236px;
+    height: auto;
+    display: block;
+  }
+  .bg {
+    fill: var(--bg-surface);
+    stroke: var(--line);
+  }
+  .track {
+    fill: none;
+    stroke: var(--line);
+    stroke-width: 6;
+  }
+  .fill {
+    fill: none;
+    stroke-width: 6;
+    stroke-linecap: round;
+  }
+  .letter {
+    font-family: var(--font-mono);
+    font-size: 24px;
+    font-weight: 700;
+  }
+  .score {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    fill: var(--text-2);
+  }
+  .line1 {
+    font-family: var(--font-display);
+    font-size: 14px;
+    font-weight: 600;
+    fill: var(--text-1);
+  }
+  .line2 {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    fill: var(--text-2);
+  }
+</style>

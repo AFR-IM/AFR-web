@@ -1,0 +1,245 @@
+---
+// P6 badge page — /badge (spec §10.3 / §8.4): badge gallery, embed snippets,
+// anti-fraud explanation and the encouragement policy (B+ encouraged, lower
+// grades stay honest — the badge always shows the real grade).
+
+import Base from '../../layouts/Base.astro';
+import BadgePreview from '../../components/detail/BadgePreview.astro';
+import BadgeEmbed from '../../components/detail/BadgeEmbed.astro';
+import { getCatalog, LOCALES, pathFor, toLocale, type Locale } from '../../i18n/loader.ts';
+import type { Grade } from '../../data/types.ts';
+
+export function getStaticPaths() {
+  return [{ params: { locale: undefined } }, { params: { locale: 'zh-CN' } }];
+}
+
+const locale: Locale = toLocale(Astro.params.locale);
+const L = getCatalog(locale);
+const isZh = locale === 'zh-CN';
+const T = (en: string, zh: string) => (isZh ? zh : en);
+const href = (p: string) => pathFor(locale, p);
+
+const PROSE = {
+  en: {
+    title: 'AI-Friendliness badges',
+    description:
+      'Official aiapp.im badges: what they look like, how to embed them, how to tell a real badge from a fake one, and when we encourage you to show it.',
+    intro:
+      'A badge is a live link to your report card: the ring, the grade and the score are served by aiapp.im from real scan data, and clicking it opens the full evidence chain on the detail page.',
+    galleryTitle: 'Badge gallery',
+    galleryIntro: 'One badge per grade — A through F. The ring fills to the score, the letter and the number are the real rating.',
+    embedTitle: 'Embed code',
+    embedIntro: 'Copy the HTML or Markdown snippet. Both point at the official badge URL and back to your report.',
+    showCase: 'Example for github.com (grade A)',
+    fraudTitle: 'How to verify a badge',
+    fraudIntro: 'Official badges are only ever served from aiapp.im. Anything else is decoration, not a rating.',
+    fraudItems: [
+      'The image URL must be https://aiapp.im/badge/<domain>.svg — no other host serves an official badge.',
+      'Click the badge: it must open https://aiapp.im/site/<domain>, where the grade, the score and the evidence chain are shown.',
+      'The badge never lies about the grade: it always carries the current letter and score, so an F site cannot render an A badge.',
+      'Found a tampered or misquoted badge? Send a correction PR to github.com/imAiAPP/aiapp-data and we re-scan.',
+    ],
+    policyTitle: 'When badges are encouraged',
+    policyBody:
+      'We encourage embedding from grade B upward — that is when the badge is a genuine signal of openness. Grades C, D and F can still embed: we prefer honest badges over hidden ones, and the report plus your statement explains the strategy behind the score.',
+    cacheNote:
+      'Badges are cached for one hour; after a re-scan the detail page shows "the badge refreshes on the next visit".',
+    cta: 'Open your report card',
+  },
+  'zh-CN': {
+    title: 'AI 友好度徽章',
+    description: 'aiapp.im 官方徽章：样式总览、嵌入代码、真伪校验方法与鼓励策略。',
+    intro:
+      '徽章是通往你检测报告的活链接：圆环、等级与分数由 aiapp.im 依据真实扫描数据提供，点击徽章即回到详情页查看完整证据链。',
+    galleryTitle: '徽章样式总览',
+    galleryIntro: '每个等级一枚——A 到 F。圆环按分数填充，字母与数字就是真实评级。',
+    embedTitle: '嵌入代码',
+    embedIntro: '复制 HTML 或 Markdown 片段，两者都指向官方徽章地址并链回你的报告页。',
+    showCase: '以 github.com 为例（A 级）',
+    fraudTitle: '如何校验徽章真伪',
+    fraudIntro: '官方徽章一律从 aiapp.im 提供——任何其他来源都只是装饰，不是评级。',
+    fraudItems: [
+      '图片地址必须是 https://aiapp.im/badge/<domain>.svg——没有别的域名提供官方徽章。',
+      '点击徽章：必须打开 https://aiapp.im/site/<domain>，那里展示等级、分数与证据链。',
+      '徽章绝不谎报等级：永远显示当前字母与分数，F 级站做不出 A 级徽章。',
+      '发现被篡改或引用错误的徽章？向 github.com/imAiAPP/aiapp-data 提纠错 PR，我们会触发重扫。',
+    ],
+    policyTitle: '什么时候鼓励挂徽章',
+    policyBody:
+      '我们鼓励 B 级及以上嵌入——那时徽章是真实的开放度信号。C、D、F 级同样可以挂：诚实的徽章比藏起来更好，报告与你的站方声明会解释分数背后的策略。',
+    cacheNote: '徽章缓存 1 小时；重扫后详情页会提示“徽章将于下次访问刷新”。',
+    cta: '打开报告页',
+  },
+} as const;
+
+const P = PROSE[locale === 'zh-CN' ? 'zh-CN' : 'en'];
+
+const SAMPLES: { grade: Grade; score: number }[] = [
+  { grade: 'A', score: 91 },
+  { grade: 'B', score: 78 },
+  { grade: 'C', score: 60 },
+  { grade: 'D', score: 40 },
+  { grade: 'F', score: 15 },
+];
+const showcase = 'github.com';
+---
+
+<Base title={P.title} description={P.description}>
+  <div class="container badge-page">
+    <header class="hero">
+      <p class="eyebrow mono">/badge/:domain.svg</p>
+      <h1>{P.title}</h1>
+      <p class="lede">{P.intro}</p>
+    </header>
+
+    <section class="sec">
+      <h2>{P.galleryTitle}</h2>
+      <p class="sec-intro">{P.galleryIntro}</p>
+      <div class="gallery">
+        {
+          SAMPLES.map((s) => (
+            <figure class="cell">
+              <BadgePreview grade={s.grade} score={s.score} />
+              <figcaption class="mono">
+                <span class="g" style={`color:var(--grade-${s.grade.toLowerCase()});`}>
+                  {s.grade}
+                </span>
+                <span class="lab">{L.grades[s.grade]?.label}</span>
+                <span class="slo">{L.grades[s.grade]?.slogan}</span>
+              </figcaption>
+            </figure>
+          ))
+        }
+      </div>
+      <p class="cache mono">{P.cacheNote}</p>
+    </section>
+
+    <section class="sec">
+      <h2>{P.embedTitle}</h2>
+      <p class="sec-intro">{P.embedIntro}</p>
+      <p class="showcase mono">{P.showCase}</p>
+      <BadgeEmbed domain={showcase} grade="A" locale={locale} badgeHref={href('/badge')} />
+    </section>
+
+    <section class="sec">
+      <h2>{L.ui.badgeAntiForgery ?? P.fraudTitle}</h2>
+      <p class="sec-intro">{P.fraudIntro}</p>
+      <ul class="fraud">
+        {P.fraudItems.map((item) => <li>{item}</li>)}
+      </ul>
+    </section>
+
+    <section class="sec">
+      <h2>{P.policyTitle}</h2>
+      <p class="sec-intro">{P.policyBody}</p>
+      <a class="btn" href={href('/site/github.com')}>{P.cta} →</a>
+    </section>
+  </div>
+</Base>
+
+<style>
+  .badge-page {
+    padding-top: 32px;
+    padding-bottom: 24px;
+  }
+  .hero {
+    max-width: 780px;
+    margin-bottom: 26px;
+  }
+  .eyebrow {
+    margin: 0 0 8px;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--brand);
+  }
+  .hero h1 {
+    font-size: clamp(28px, 4.4vw, 40px);
+    margin-bottom: 12px;
+  }
+  .lede {
+    margin: 0;
+    font-size: 16px;
+    line-height: 1.7;
+    color: var(--text-2);
+  }
+
+  .sec {
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 24px 26px;
+    margin-bottom: 20px;
+  }
+  .sec h2 {
+    font-size: 20px;
+    margin-bottom: 8px;
+  }
+  .sec-intro {
+    margin: 0 0 18px;
+    color: var(--text-2);
+    max-width: 80ch;
+  }
+
+  .gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(248px, 1fr));
+    gap: 16px;
+  }
+  .cell {
+    margin: 0;
+    padding: 16px;
+    background: var(--bg-ink);
+    border: 1px solid var(--line);
+    border-radius: var(--r-2);
+    display: grid;
+    gap: 10px;
+    justify-items: start;
+  }
+  .cell figcaption {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 12px;
+    flex-wrap: wrap;
+  }
+  .cell .g {
+    font-weight: 700;
+    font-size: 13px;
+  }
+  .cell .lab {
+    color: var(--text-1);
+  }
+  .cell .slo {
+    color: var(--text-3);
+  }
+  .cache {
+    margin: 16px 0 0;
+    font-size: 12px;
+    color: var(--text-3);
+  }
+
+  .showcase {
+    margin: 0 0 10px;
+    font-size: 12px;
+    color: var(--text-3);
+  }
+  .sec :global(.embed) {
+    max-width: 560px;
+  }
+
+  .fraud {
+    margin: 0;
+    padding-left: 18px;
+    display: grid;
+    gap: 10px;
+    color: var(--text-2);
+    max-width: 82ch;
+  }
+
+  @media (max-width: 767px) {
+    .sec {
+      padding: 20px 16px;
+    }
+  }
+</style>

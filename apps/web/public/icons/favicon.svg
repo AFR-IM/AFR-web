@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="aiapp">
+  <circle cx="32" cy="32" r="32" fill="#0B1220"/>
+  <circle cx="32" cy="32" r="22.5" fill="none" stroke="#3ECFAD" stroke-width="4.2"/>
+  <g fill="none" stroke="#3ECFAD" stroke-width="4.4">
+    <path d="M33.95 18.14A14 14 0 0 1 44.98 37.24"/>
+    <path d="M19.02 37.24A14 14 0 0 1 30.05 18.14"/>
+    <path d="M43.03 40.62A14 14 0 0 1 20.97 40.62"/>
+  </g>
+  <path fill="#3ECFAD" d="M32 22.8L34.29 28.84L40.75 29.16L35.71 33.21L37.41 39.44L32 35.9L26.59 39.44L28.29 33.21L23.25 29.16L29.71 28.84Z"/>
+</svg>

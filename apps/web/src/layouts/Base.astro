@@ -1,0 +1,286 @@
+---
+// Base layout — spec §10.7 navigation (desktop bar / mobile drawer), 64px
+// sticky header with blur + 1px --line on scroll, theme toggle, locale switch.
+// Footer carries the neutrality pledge (spec §11.2 / X9-③).
+
+import { alternatePath, getCatalog, pathFor, toLocale, type Locale } from '../i18n/loader.ts';
+import Logo from '../components/brand/Logo.astro';
+import '../styles/tokens.css';
+import '../styles/global.css';
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const { title, description } = Astro.props;
+const locale: Locale = toLocale(Astro.params.locale);
+const L = getCatalog(locale);
+const path = Astro.url.pathname;
+const otherHref = alternatePath(locale, path);
+const otherLabel = locale === 'en' ? '中文' : 'EN';
+const isZh = locale === 'zh-CN';
+const href = (p: string) => pathFor(locale, p);
+
+const navItems = [
+  { href: href('/categories'), label: L.ui.navCategories },
+  { href: href('/method'), label: L.ui.navMethod },
+  { href: href('/submit'), label: L.ui.navSubmit },
+];;
+
+const pageTitle = title ? `${title} · aiapp` : (L.ui.siteName as string);
+const pageDesc = description ?? (L.ui.tagline as string);
+---
+
+<!doctype html>
+<html lang={isZh ? 'zh-CN' : 'en'}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={pageDesc} />
+    <meta name="theme-color" content="#0B1220" />
+    <link rel="icon" type="image/svg+xml" href="/icons/favicon.svg" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <title>{pageTitle}</title>
+  </head>
+  <body>
+    <header class="nav" id="nav">
+      <div class="container nav-inner">
+        <a class="brand" href={href('/')} aria-label="aiapp home">
+          <Logo size={30} wordmark />
+        </a>
+
+        <form class="nav-search" action={href('/search')} method="get" role="search">
+          <input
+            class="mono"
+            type="search"
+            name="q"
+            placeholder={L.ui.searchPlaceholder as string}
+            autocomplete="off"
+            aria-label={L.ui.searchPlaceholder as string}
+          />
+        </form>
+
+        <nav class="nav-links" aria-label="main">
+          {navItems.map((n) => <a href={n.href}>{n.label}</a>)}
+        </nav>
+
+        <div class="nav-actions">
+          <button class="icon-btn" id="theme-toggle" aria-label={L.ui.themeToggle as string} title={L.ui.themeToggle as string}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <circle cx="12" cy="12" r="4"></circle>
+              <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path>
+            </svg>
+          </button>
+          <a class="lang-switch mono" href={otherHref} hreflang={otherLabel}>{otherLabel}</a>
+          <button class="icon-btn nav-burger" id="nav-burger" aria-label="Menu" aria-expanded="false" aria-drawer="nav-drawer">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M3 6h18M3 12h18M3 18h18"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="drawer" id="nav-drawer" hidden>
+        {navItems.map((n) => <a href={n.href}>{n.label}</a>)}
+        <a href={otherHref}>{otherLabel}</a>
+      </div>
+    </header>
+
+    <main>
+      <slot />
+    </main>
+
+    <footer class="footer">
+      <div class="container footer-inner">
+        <div class="footer-brand">
+          <Logo size={24} wordmark />
+          <p class="footer-pledge">{L.ui.footerPledge as string}</p>
+        </div>
+        <nav class="footer-links" aria-label="footer">
+          <a href={href('/method')}>{L.ui.navMethod}</a>
+          <a href={href('/bot')}>{L.ui.navBot}</a>
+          <a href={href('/about')}>{L.ui.navAbout}</a>
+          <a href="https://github.com/imAiAPP/aiapp-web" rel="noopener">GitHub</a>
+        </nav>
+        <p class="footer-meta mono">AFR v1.0 · {L.ui.footerRights as string}</p>
+      </div>
+    </footer>
+
+    <script>
+      // theme toggle (persisted; default follows prefers-color-scheme via tokens.css)
+      const root = document.documentElement;
+      const saved = localStorage.getItem('aiapp-theme');
+      if (saved === 'light' || saved === 'dark') root.dataset.theme = saved;
+      document.getElementById('theme-toggle')?.addEventListener('click', () => {
+        const systemDark = matchMedia('(prefers-color-scheme: dark)').matches;
+        const current = root.dataset.theme ?? (systemDark ? 'dark' : 'light');
+        const next = current === 'dark' ? 'light' : 'dark';
+        root.dataset.theme = next;
+        localStorage.setItem('aiapp-theme', next);
+      });
+
+      // mobile drawer (§10.7)
+      const burger = document.getElementById('nav-burger');
+      const drawer = document.getElementById('nav-drawer');
+      burger?.addEventListener('click', () => {
+        const open = drawer?.hasAttribute('hidden') ?? false;
+        if (open) drawer?.removeAttribute('hidden');
+        else drawer?.setAttribute('hidden', '');
+        burger.setAttribute('aria-expanded', String(open));
+      });
+
+      // scrolled state: backdrop blur + 1px --line (§10.7)
+      const nav = document.getElementById('nav');
+      const onScroll = () => nav?.classList.toggle('scrolled', scrollY > 4);
+      onScroll();
+      addEventListener('scroll', onScroll, { passive: true });
+    </script>
+
+    <style>
+      .nav {
+        position: sticky;
+        top: 0;
+        z-index: 50;
+        height: var(--nav-h);
+        background: color-mix(in srgb, var(--bg-ink) 82%, transparent);
+      }
+      .nav.scrolled {
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        border-bottom: 1px solid var(--line);
+      }
+      .nav-inner {
+        height: var(--nav-h);
+        display: flex;
+        align-items: center;
+        gap: 20px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        flex: none;
+      }
+      .nav-search {
+        flex: 1;
+        display: flex;
+        justify-content: center;
+      }
+      .nav-search input {
+        width: min(360px, 100%);
+        padding: 7px 12px;
+        background: var(--bg-surface);
+        border: 1px solid var(--line);
+        border-radius: var(--r-2);
+        font-size: 13px;
+        transition: border-color var(--t-micro) var(--ease);
+      }
+      .nav-search input::placeholder {
+        color: var(--text-3);
+      }
+      .nav-search input:hover,
+      .nav-search input:focus {
+        border-color: var(--brand);
+        outline: none;
+      }
+      .nav-links {
+        display: flex;
+        gap: 18px;
+        font-size: 14px;
+        color: var(--text-2);
+      }
+      .nav-links a:hover {
+        color: var(--text-1);
+      }
+      .nav-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex: none;
+      }
+      .icon-btn {
+        display: grid;
+        place-items: center;
+        width: 32px;
+        height: 32px;
+        border-radius: var(--r-2);
+        color: var(--text-2);
+        transition: color var(--t-micro) var(--ease), background var(--t-micro) var(--ease);
+      }
+      .icon-btn:hover {
+        color: var(--text-1);
+        background: var(--bg-elevated);
+      }
+      .lang-switch {
+        font-size: 12px;
+        padding: 5px 8px;
+        border: 1px solid var(--line);
+        border-radius: var(--r-2);
+        color: var(--text-2);
+      }
+      .lang-switch:hover {
+        color: var(--brand);
+        border-color: var(--brand);
+      }
+      .nav-burger {
+        display: none;
+      }
+      .drawer {
+        border-top: 1px solid var(--line);
+        background: var(--bg-surface);
+        padding: 12px var(--page-pad);
+        display: grid;
+        gap: 12px;
+        font-size: 15px;
+      }
+      .footer {
+        margin-top: 64px;
+        border-top: 1px solid var(--line);
+        padding: 32px 0 40px;
+        color: var(--text-2);
+        font-size: 13px;
+      }
+      .footer-inner {
+        display: grid;
+        gap: 16px;
+      }
+      .footer-pledge {
+        margin: 10px 0 0;
+        max-width: 520px;
+        color: var(--text-3);
+        font-size: 12.5px;
+      }
+      .footer-links {
+        display: flex;
+        gap: 18px;
+        flex-wrap: wrap;
+      }
+      .footer-meta {
+        color: var(--text-3);
+        font-size: 12px;
+      }
+
+      @media (max-width: 767px) {
+        .nav-links {
+          display: none;
+        }
+        .nav-burger {
+          display: grid;
+        }
+        .nav-search {
+          display: none;
+        }
+        :root {
+          --gutter: 16px;
+        }
+      }
+    </style>
+  </body>
+</html>

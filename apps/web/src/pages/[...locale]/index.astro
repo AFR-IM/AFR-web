@@ -1,0 +1,315 @@
+---
+// P1 homepage (spec §10.3 / §10.5 / §15.5): the hero IS real data — the
+// A–F distribution bar renders actual scan shares, big slogan + local search
+// underneath. Then: 14 category tiles → grade filter bar → latest scan stream
+// → Top leaderboard (natural AFR ranking). English at /, zh-CN at /zh-CN/.
+
+import Base from '../../layouts/Base.astro';
+import DistributionBar from '../../components/home/DistributionBar.astro';
+import SearchBox from '../../components/home/SearchBox.astro';
+import DomainCard from '../../components/home/DomainCard.astro';
+import CategoryTiles from '../../components/home/CategoryTiles.astro';
+import Leaderboard from '../../components/home/Leaderboard.astro';
+import { getCatalog, pathFor, toLocale } from '../../i18n/loader.ts';
+import { loadHome } from '../../data/loader.ts';
+import { GRADES, gradeVar } from '../../utils/grade.ts';
+import { sitesLabel, uiText } from '../../components/home/fallbacks.ts';
+
+export function getStaticPaths() {
+  return [{ params: { locale: undefined } }, { params: { locale: 'zh-CN' } }];
+}
+
+const locale = toLocale(Astro.params.locale);
+const L = getCatalog(locale);
+const href = (p: string) => pathFor(locale, p);
+
+const home = loadHome();
+const parsed = new Date(home.generatedAt);
+const generated = Number.isNaN(parsed.getTime())
+  ? home.generatedAt
+  : new Intl.DateTimeFormat(locale === 'zh-CN' ? 'zh-CN' : 'en-US', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      timeZone: 'UTC',
+    }).format(parsed);
+---
+
+<Base description={L.ui.heroSub}>
+  <!-- Hero: slogan + real distribution data + search (§15.5 — no decorative art) -->
+  <section class="hero container">
+    <p class="hero-kicker mono">aiapp.im · AFR</p>
+    <h1 class="hero-slogan">{L.ui.heroSlogan}</h1>
+    <p class="hero-sub">{L.ui.heroSub}</p>
+
+    <div class="hero-dist">
+      <h2 class="sec-label">{L.ui.distributionTitle}</h2>
+      <DistributionBar distribution={home.distribution} total={home.total} locale={locale} />
+      <p class="hero-stats mono">
+        <span>{sitesLabel(L.ui, locale, home.total)}</span>
+        <span>{uiText(L.ui, 'avgScore', locale)} {home.avgScore}</span>
+        <span>{L.ui.scanTime} {generated}</span>
+      </p>
+    </div>
+
+    <div class="hero-search">
+      <SearchBox sites={home.leaderboard} locale={locale} />
+    </div>
+  </section>
+
+  <!-- 14 category tiles (§7.1) -->
+  <section class="section container">
+    <div class="sec-head">
+      <h2>{L.ui.categoriesTitle}</h2>
+      <a class="sec-more" href={href('/categories')}>{L.ui.viewAll} →</a>
+    </div>
+    <CategoryTiles locale={locale} />
+  </section>
+
+  <!-- Grade filter bar — syncs ?grade= and filters the streams below -->
+  <section class="section container" aria-label={L.ui.filterGrade}>
+    <div class="grade-bar">
+      <span class="gb-label mono">{L.ui.filterGrade}</span>
+      <div class="gb-chips">
+        {GRADES.map((g) => (
+          <a
+            class="chip g-chip"
+            href={href(`/?grade=${g}`)}
+            data-grade-chip={g}
+            style={`--g:${gradeVar(g)}`}
+          >
+            <span class="g-dot" aria-hidden="true"></span>
+            <span class="mono">{g}</span>
+            <span class="g-slogan">{L.grades[g]?.slogan ?? ''}</span>
+            <span class="g-count mono">{home.distribution[g] ?? 0}</span>
+          </a>
+        ))}
+      </div>
+      <a class="gb-clear" data-clear href={href('/')} hidden>{L.ui.clearFilters}</a>
+    </div>
+  </section>
+
+  <!-- Latest scans -->
+  <section class="section container">
+    <div class="sec-head">
+      <h2>{L.ui.latestTitle}</h2>
+      <a class="sec-more" href={href('/search')}>{L.ui.viewAll} →</a>
+    </div>
+    {home.latest.length > 0 ? (
+      <div class="grid">
+        {home.latest.map((s, i) => <DomainCard site={s} locale={locale} index={i} />)}
+      </div>
+    ) : (
+      <p class="muted">{L.ui.searchEmpty}</p>
+    )}
+  </section>
+
+  <!-- Top leaderboard — natural ranking, pure AFR score descending -->
+  <section class="section container">
+    <div class="sec-head">
+      <h2>{L.ui.leaderboardTitle}</h2>
+      <span class="sec-note">{L.ui.neutralityStatement}</span>
+    </div>
+    <Leaderboard sites={home.leaderboard} locale={locale} />
+  </section>
+
+  <!-- Grade filter: distribution segments + chips share one URL-synced state (§10.6) -->
+  <script is:inline>
+    (function () {
+      var VALID = ['A', 'B', 'C', 'D', 'F'];
+      var params = new URLSearchParams(location.search);
+      var raw = (params.get('grade') || '').toUpperCase();
+      var active = VALID.indexOf(raw) !== -1 ? raw : '';
+
+      function apply(g) {
+        active = g;
+        var sites = document.querySelectorAll('[data-site-grade]');
+        for (var i = 0; i < sites.length; i++) {
+          sites[i].hidden = g !== '' && sites[i].getAttribute('data-site-grade') !== g;
+        }
+        var chips = document.querySelectorAll('[data-grade-chip]');
+        for (var j = 0; j < chips.length; j++) {
+          var on = chips[j].getAttribute('data-grade-chip') === g;
+          chips[j].classList.toggle('active', on);
+          if (on) chips[j].setAttribute('aria-current', 'true');
+          else chips[j].removeAttribute('aria-current');
+        }
+        var segs = document.querySelectorAll('[data-grade-seg]');
+        for (var k = 0; k < segs.length; k++) {
+          segs[k].classList.toggle('active', segs[k].getAttribute('data-grade-seg') === g);
+        }
+        var clear = document.querySelector('[data-clear]');
+        if (clear) clear.hidden = g === '';
+      }
+
+      apply(active);
+
+      document.addEventListener('click', function (e) {
+        var node = e.target;
+        var el =
+          node && node.closest
+            ? node.closest('[data-grade-chip],[data-grade-seg],[data-clear]')
+            : null;
+        if (!el) return;
+        e.preventDefault();
+        var g = el.hasAttribute('data-clear')
+          ? ''
+          : el.getAttribute('data-grade-chip') || el.getAttribute('data-grade-seg') || '';
+        apply(g === active ? '' : g);
+        var url = new URL(location.href);
+        if (active) url.searchParams.set('grade', active);
+        else url.searchParams.delete('grade');
+        try {
+          history.replaceState(null, '', url);
+        } catch (err) {
+          /* file:// or sandboxed context — the filter above already applied */
+        }
+      });
+    })();
+  </script>
+</Base>
+
+<style>
+  .hero {
+    padding-top: 52px;
+  }
+  .hero-kicker {
+    margin: 0 0 18px;
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+  .hero-slogan {
+    font-size: clamp(2.1rem, 5.2vw, 3.9rem);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    max-width: 16em;
+    margin-bottom: 14px;
+  }
+  .hero-sub {
+    margin: 0 0 32px;
+    max-width: 640px;
+    font-size: clamp(1rem, 1.5vw, 1.12rem);
+    color: var(--text-2);
+  }
+  .hero-dist {
+    margin-bottom: 30px;
+  }
+  .sec-label {
+    font-family: var(--font-body);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-2);
+    margin-bottom: 10px;
+  }
+  .hero-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 20px;
+    margin: 14px 0 0;
+    font-size: 12.5px;
+    color: var(--text-3);
+  }
+  .hero-search {
+    max-width: 560px;
+  }
+
+  .section {
+    margin-top: 52px;
+  }
+  .sec-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  .sec-head h2 {
+    font-size: 20px;
+    margin: 0;
+  }
+  .sec-more {
+    font-size: 13px;
+    color: var(--text-2);
+    flex: none;
+  }
+  .sec-note {
+    font-size: 12.5px;
+    color: var(--text-3);
+    text-align: right;
+  }
+
+  /* card grids: §10.7 auto-fill minmax, no media query */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: var(--gutter);
+  }
+
+  /* grade filter bar */
+  .grade-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px 14px;
+    padding: 14px 16px;
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+  }
+  .gb-label {
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+  .gb-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .gb-chips .g-chip {
+    gap: 6px;
+    padding: 4px 10px;
+    transition: border-color var(--t-micro) var(--ease), color var(--t-micro) var(--ease);
+  }
+  .gb-chips .g-chip:hover {
+    border-color: var(--g);
+    color: var(--text-1);
+  }
+  .g-chip.active {
+    border-color: var(--g);
+    color: var(--text-1);
+  }
+  .g-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: var(--r-1);
+    background: var(--g);
+    flex: none;
+  }
+  .g-slogan {
+    font-size: 11.5px;
+    color: var(--text-3);
+  }
+  .g-count {
+    font-size: 11.5px;
+    color: var(--text-2);
+  }
+  .gb-clear {
+    font-size: 12.5px;
+    color: var(--text-2);
+    margin-left: auto;
+  }
+  .gb-clear:hover {
+    color: var(--brand);
+  }
+  .gb-clear[hidden] {
+    display: none;
+  }
+
+  .muted {
+    color: var(--text-2);
+    font-size: 14px;
+  }
+</style>

@@ -1,0 +1,80 @@
+/* @aiapp/web design tokens — spec §10.2, the ONE and ONLY style source.
+   Do not introduce a second palette anywhere (red line §15.5).
+   Grade colors are AQI-semantic and never change between themes (spec §15.4-③). */
+
+:root {
+  /* surfaces */
+  --bg-ink: #0b1220; /* page background, deep space blue-black */
+  --bg-surface: #131c2e; /* cards */
+  --bg-elevated: #1b2740; /* overlays / expanded evidence */
+  --line: #22304c; /* separators */
+
+  /* text */
+  --text-1: #e6edf7;
+  --text-2: #8ca0bf;
+  --text-3: #55688a;
+
+  /* brand (teal = "AI signal") */
+  --brand: #3ecfad;
+  --brand-dim: #2a9e80;
+
+  /* grade band (AQI semantics — the only strong color family) */
+  --grade-a: #3ecfad; /* mint */
+  --grade-b: #8bd450; /* grass */
+  --grade-c: #f2c94c; /* amber */
+  --grade-d: #f2994a; /* orange */
+  --grade-f: #eb5757; /* red */
+
+  /* aux */
+  --violet: #a78bfa; /* AI feature / interaction marker */
+  --verified: #4da3ff; /* verified-owner blue */
+
+  /* type */
+  --font-display: "Space Grotesk", "Noto Sans SC", sans-serif;
+  --font-body: "Inter", "Noto Sans SC", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace; /* scores / evidence / code */
+
+  /* radii */
+  --r-1: 4px;
+  --r-2: 8px;
+  --r-3: 12px;
+  --r-4: 20px;
+  --radius: 10px;
+
+  /* motion tiers (spec §10.8) */
+  --t-micro: 120ms; /* hover / stroke */
+  --t-standard: 200ms; /* expand / card */
+  --t-area: 320ms; /* drawer / skeleton swap */
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* layout (spec §10.7) */
+  --page-max: 1200px;
+  --gutter: 24px;
+  --nav-h: 64px;
+  --page-pad: 20px;
+}
+
+/* light theme — same token names, grade colors untouched */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg-ink: #f6f8fc;
+    --bg-surface: #ffffff;
+    --bg-elevated: #eef2f9;
+    --line: #d7dfee;
+    --text-1: #101726;
+    --text-2: #4c5c78;
+    --text-3: #7b8bab;
+    --brand-dim: #2a9e80;
+  }
+}
+
+:root[data-theme="light"] {
+  --bg-ink: #f6f8fc;
+  --bg-surface: #ffffff;
+  --bg-elevated: #eef2f9;
+  --line: #d7dfee;
+  --text-1: #101726;
+  --text-2: #4c5c78;
+  --text-3: #7b8bab;
+  --brand-dim: #2a9e80;
+}

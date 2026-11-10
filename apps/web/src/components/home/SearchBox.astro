@@ -1,0 +1,298 @@
+---
+// SearchBox — mono input with instant LOCAL autocomplete over the indexed
+// domains (spec §10.4 / §10.6): ≤8 suggestions, keyboard ↑/↓/Enter/Escape,
+// empty result → searchEmpty + "submit it" CTA. Enter posts to /search?q=
+// (progressive enhancement: the form works without JS).
+
+import { getCatalog, pathFor, type Locale } from '../../i18n/loader.ts';
+import type { SiteCard } from '../../data/types.ts';
+import { gradeVar } from '../../utils/grade.ts';
+
+interface Props {
+  sites: SiteCard[];
+  locale: Locale;
+}
+
+const { sites, locale } = Astro.props;
+const L = getCatalog(locale);
+const placeholder = L.ui.searchPlaceholder ?? 'Search a domain…';
+const emptyText = L.ui.searchEmpty ?? 'No site matches that search.';
+const hint = L.ui.searchSubmitHint ?? 'Not found? Submit it for scanning.';
+const searchAction = pathFor(locale, '/search');
+const submitHref = pathFor(locale, '/submit');
+const listId = `sb-list-${Math.random().toString(36).slice(2, 8)}`;
+const items = sites.map((s) => ({
+  domain: s.domain,
+  title: s.title ?? '',
+  grade: s.grade,
+  href: pathFor(locale, `/site/${s.domain}`),
+}));
+---
+
+<div
+  class="sb"
+  data-sb
+  data-items={JSON.stringify(items)}
+  data-empty={emptyText}
+  data-hint={hint}
+  data-submit={submitHref}
+>
+  <form class="sb-form" role="search" action={searchAction} method="get">
+    <svg class="sb-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+      <circle cx="11" cy="11" r="7"></circle>
+      <path d="m20 20-3.6-3.6"></path>
+    </svg>
+    <input
+      class="sb-input mono"
+      type="search"
+      name="q"
+      placeholder={placeholder}
+      aria-label={placeholder}
+      autocomplete="off"
+      role="combobox"
+      aria-expanded="false"
+      aria-autocomplete="list"
+      aria-controls={listId}
+    />
+  </form>
+  <div class="sb-list" id={listId} role="listbox" aria-label={placeholder} hidden></div>
+</div>
+
+<style>
+  .sb {
+    position: relative;
+    width: 100%;
+    max-width: 560px;
+  }
+  .sb-form {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 14px;
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: var(--r-2);
+    transition: border-color var(--t-micro) var(--ease);
+  }
+  .sb-form:hover,
+  .sb-form:focus-within {
+    border-color: var(--brand);
+  }
+  .sb-icon {
+    color: var(--text-3);
+    flex: none;
+  }
+  .sb-input {
+    flex: 1;
+    min-width: 0;
+    padding: 13px 0;
+    background: none;
+    border: none;
+    outline: none;
+    font-size: 15px;
+    color: var(--text-1);
+  }
+  .sb-input::placeholder {
+    color: var(--text-3);
+  }
+
+  .sb-list {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    background: var(--bg-elevated);
+    border: 1px solid var(--line);
+    border-radius: var(--r-2);
+    overflow: hidden;
+    z-index: 40;
+  }
+  .sb-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--line);
+    transition: background var(--t-micro) var(--ease);
+  }
+  .sb-item:last-child {
+    border-bottom: none;
+  }
+  .sb-item:hover,
+  .sb-item.is-active {
+    background: var(--bg-surface);
+  }
+  .sb-domain {
+    flex: none;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-1);
+  }
+  .sb-title {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+    color: var(--text-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .sb-grade {
+    flex: none;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .sb-empty {
+    display: grid;
+    gap: 6px;
+    padding: 12px;
+  }
+  .sb-empty p {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-2);
+  }
+  .sb-empty a {
+    font-size: 13px;
+    color: var(--brand);
+  }
+</style>
+
+<script>
+  // Instant local autocomplete — vanilla JS, no service, no network (§10.4).
+  import { gradeVar } from '../../utils/grade.ts';
+  import type { Grade } from '../../data/types.ts';
+
+  interface SbItem {
+    domain: string;
+    title: string;
+    grade: Grade;
+    href: string;
+  }
+
+  for (const root of document.querySelectorAll<HTMLElement>('[data-sb]')) {
+    let items: SbItem[] = [];
+    try {
+      items = JSON.parse(root.dataset.items ?? '[]') as SbItem[];
+    } catch {
+      items = [];
+    }
+    const form = root.querySelector<HTMLFormElement>('form');
+    const input = root.querySelector<HTMLInputElement>('input');
+    const list = root.querySelector<HTMLElement>('.sb-list');
+    if (!form || !input || !list) continue;
+
+    let hits: SbItem[] = [];
+    let active = -1;
+
+    const close = () => {
+      list.hidden = true;
+      list.replaceChildren();
+      input.setAttribute('aria-expanded', 'false');
+      input.removeAttribute('aria-activedescendant');
+      active = -1;
+      hits = [];
+    };
+
+    const highlight = () => {
+      const opts = list.querySelectorAll<HTMLElement>('.sb-item');
+      opts.forEach((o, i) => o.classList.toggle('is-active', i === active));
+      const cur = active >= 0 ? opts[active] : undefined;
+      if (cur) input.setAttribute('aria-activedescendant', cur.id);
+      else input.removeAttribute('aria-activedescendant');
+    };
+
+    const render = () => {
+      const needle = input.value.trim().toLowerCase();
+      if (!needle) {
+        close();
+        return;
+      }
+      hits = items
+        .filter(
+          (it) =>
+            it.domain.toLowerCase().includes(needle) ||
+            it.title.toLowerCase().includes(needle),
+        )
+        .slice(0, 8); // §10.6: dropdown ≤8 entries
+      list.replaceChildren();
+
+      if (hits.length === 0) {
+        // empty result → the catalog's "submit it" hint linking to /submit (§10.6)
+        const wrap = document.createElement('div');
+        wrap.className = 'sb-empty';
+        const msg = document.createElement('p');
+        msg.textContent = root.dataset.empty ?? '';
+        const cta = document.createElement('a');
+        cta.href = root.dataset.submit ?? '/submit';
+        cta.textContent = root.dataset.hint ?? '';
+        wrap.append(msg, cta);
+        list.append(wrap);
+      } else {
+        hits.forEach((it, i) => {
+          const a = document.createElement('a');
+          a.className = 'sb-item';
+          a.id = `${list?.id ?? 'sb-list'}-o${i}`;
+          a.href = it.href;
+          a.setAttribute('role', 'option');
+          const domain = document.createElement('span');
+          domain.className = 'sb-domain mono';
+          domain.textContent = it.domain;
+          const title = document.createElement('span');
+          title.className = 'sb-title';
+          title.textContent = it.title;
+          const grade = document.createElement('span');
+          grade.className = 'sb-grade mono';
+          grade.textContent = it.grade;
+          grade.style.color = gradeVar(it.grade);
+          a.append(domain, title, grade);
+          list.append(a);
+        });
+      }
+
+      list.hidden = false;
+      input.setAttribute('aria-expanded', 'true');
+      active = -1;
+      input.removeAttribute('aria-activedescendant');
+    };
+
+    input.addEventListener('input', render);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        close();
+        return;
+      }
+      if (list.hidden) return;
+      const opts = list.querySelectorAll<HTMLElement>('.sb-item');
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (opts.length) {
+          active = (active + 1) % opts.length;
+          highlight();
+        }
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (opts.length) {
+          active = (active - 1 + opts.length) % opts.length;
+          highlight();
+        }
+      } else if (e.key === 'Enter') {
+        const cur = active >= 0 ? opts[active] : undefined;
+        if (cur) {
+          e.preventDefault();
+          location.href = cur.href;
+        }
+        // no active suggestion → let the form submit to /search?q= (native)
+      }
+    });
+    // keep the list open long enough for a click on a suggestion
+    input.addEventListener('blur', () => setTimeout(close, 150));
+    document.addEventListener('click', (e) => {
+      const target = e.target as Node | null;
+      if (target && !root.contains(target)) close();
+    });
+    form.addEventListener('submit', (e) => {
+      if (active >= 0) e.preventDefault();
+    });
+  }
+</script>

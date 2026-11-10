@@ -1,0 +1,147 @@
+---
+// ReportCard — spec §10.3 P3 left column + §10.4 "营养标签" style:
+// three layer bars (L1 35 / L2 40 / L3 25) with the filled proportion in the
+// site's grade color, then one EvidenceRow per check.
+
+import type { SiteDetail } from '../../data/types.ts';
+import { gradeVar } from '../../utils/grade.ts';
+import { getCatalog } from '../../i18n/loader.ts';
+import EvidenceRow from './EvidenceRow.astro';
+
+interface Props {
+  site: SiteDetail;
+  locale: string;
+}
+
+const { site, locale } = Astro.props;
+const L = getCatalog(locale);
+const isZh = locale === 'zh-CN';
+const T = (en: string, zh: string) => (isZh ? zh : en);
+const gc = gradeVar(site.grade);
+const hasChecks = site.layers.some((l) => l.checks.length > 0);
+---
+
+<section class="card" aria-label={L.ui.reportTitle}>
+  <header class="card-head">
+    <h2>{L.ui.reportTitle}</h2>
+    <span class="cap mono">{T('out of 100', '满分 100')}</span>
+  </header>
+
+  {
+    !hasChecks ? (
+      <p class="empty">{L.ui.statusPending}</p>
+    ) : (
+      <div class="layers">
+        {site.layers.map((layer) => {
+          const pct = layer.max > 0 ? Math.round((layer.awarded / layer.max) * 100) : 0;
+          const name = L.layers[layer.layer] ?? layer.name;
+          return (
+            <div class="layer">
+              <div class="layer-top">
+                <span class="layer-id mono">{layer.layer}</span>
+                <span class="layer-name">{name}</span>
+                <span class="layer-score mono" style={`color:${gc}`}>
+                  {layer.awarded} / {layer.max}
+                </span>
+              </div>
+              <div class="bar" role="img" aria-label={`${name} ${layer.awarded}/${layer.max}`}>
+                <span class="fill" style={`width:${pct}%;background:${gc};`} />
+              </div>
+              <div class="rows">
+                {layer.checks.map((c) => (
+                  <EvidenceRow check={c} locale={locale} tone="compact" />
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    )
+  }
+
+  <footer class="card-foot mono">
+    {L.ui.engineVersion} {site.engineVersion} · {site.scannerVersion}
+  </footer>
+</section>
+
+<style>
+  .card {
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 16px 14px 12px;
+  }
+  .card-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .card-head h2 {
+    font-size: 15px;
+    margin: 0;
+  }
+  .cap {
+    font-size: 11px;
+    color: var(--text-3);
+  }
+  .empty {
+    margin: 0 0 8px;
+    color: var(--text-3);
+    font-size: 13px;
+  }
+
+  .layers {
+    display: grid;
+    gap: 18px;
+  }
+  .layer-top {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 13px;
+    margin-bottom: 6px;
+  }
+  .layer-id {
+    color: var(--text-3);
+    font-size: 12px;
+  }
+  .layer-name {
+    flex: 1;
+    color: var(--text-1);
+  }
+  .layer-score {
+    font-size: 12.5px;
+    font-weight: 500;
+  }
+
+  .bar {
+    height: 6px;
+    background: var(--bg-elevated);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .fill {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    transition: width var(--t-area) var(--ease);
+  }
+
+  .rows {
+    margin-top: 8px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-1);
+    overflow: hidden;
+  }
+
+  .card-foot {
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--line);
+    font-size: 11px;
+    color: var(--text-3);
+    word-break: break-all;
+  }
+</style>

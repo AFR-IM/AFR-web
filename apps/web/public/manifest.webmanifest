@@ -1,0 +1,16 @@
+{
+  "name": "aiapp — AI 友好度导航",
+  "short_name": "aiapp",
+  "description": "See how friendly every website is to AI. AI-Friendliness Rating (AFR) with public, reproducible evidence.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#0B1220",
+  "background_color": "#0B1220",
+  "lang": "en",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

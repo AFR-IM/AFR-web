@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="aiapp mark">
+  <!-- aiapp mark — concept C3 "Signal Ripple": five-point spark inside
+       segmented concentric arcs. Hand-written master per spec §15.4 (flat
+       vector, no gradients, no text). Mint #3ECFAD on deep navy #0B1220.
+       Geometry: disc r32 · outer ring r23/sw3.2 · 3 mid-ring arcs r15/sw3.4
+       (segments 104° centred 2/10/6 o'clock, 16° gaps at 12/4/8) ·
+       star outer 10.4 / inner 4.35, point up. -->
+  <circle cx="32" cy="32" r="32" fill="#0B1220"></circle>
+  <circle cx="32" cy="32" r="23" fill="none" stroke="#3ECFAD" stroke-width="3.2"></circle>
+  <g fill="none" stroke="#3ECFAD" stroke-width="3.4">
+    <path d="M34.09 17.15A15 15 0 0 1 45.91 37.62"></path>
+    <path d="M18.09 37.62A15 15 0 0 1 29.91 17.15"></path>
+    <path d="M43.82 41.24A15 15 0 0 1 20.18 41.24"></path>
+  </g>
+  <path fill="#3ECFAD" d="M32 21.6L34.56 28.48L41.89 28.79L36.14 33.34L38.11 40.41L32 36.35L25.89 40.41L27.86 33.34L22.11 28.79L29.44 28.48Z"></path>
+</svg>

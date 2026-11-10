@@ -1,0 +1,150 @@
+---
+// SponsoredCard — spec §10.5 ad slot (positions 1 category-top / 2 search-top).
+// Discipline: standalone block, never mixed into the natural list; permanent
+// "Sponsored" badge in --text-2 small text; the site's REAL GradeRing; Visit
+// carries ?ref=aiapp-sponsor for click counting; background --bg-elevated with
+// the same radius as natural cards. The wrapper owns the 24px gap + 1px dashed
+// --line that separates the slot from the natural ranking area.
+// Renders nothing when the ad's domain is missing from the site list (a real
+// ring is mandatory) or when the caller passes no ad at all.
+
+import GradeRing from '../grade/GradeRing.astro';
+import { getCatalog, type Locale } from '../../i18n/loader.ts';
+import { listSites } from '../../data/loader.ts';
+import { uiText } from './fallbacks.ts';
+import type { AdFixture } from './ads-fixture.ts';
+
+interface Props {
+  ad: AdFixture;
+  locale: Locale;
+  variant?: 'category' | 'search';
+  hidden?: boolean; // search slot starts hidden until the query is non-empty
+}
+
+const { ad, locale, variant = 'category', hidden = false } = Astro.props;
+const L = getCatalog(locale);
+const site = listSites().find((s) => s.domain === ad.domain);
+const sponsored = uiText(L.ui, 'sponsored', locale);
+const visit = uiText(L.ui, 'visit', locale);
+const headline = locale === 'zh-CN' ? (ad.headlineZh ?? ad.headline) : ad.headline;
+const body = locale === 'zh-CN' ? (ad.bodyZh ?? ad.body) : ad.body;
+---
+
+{site && (
+  <aside
+    class:list={['sponsor-zone', variant]}
+    data-sponsor
+    hidden={hidden}
+    aria-label={sponsored}
+  >
+    <div class="sponsor">
+      <div class="sponsor-left">
+        <GradeRing score={site.score} grade={site.grade} size={48} />
+        <span class="sponsor-badge">{sponsored}</span>
+      </div>
+      <div class="sponsor-main">
+        <p class="sponsor-domain mono">{site.domain}</p>
+        <h3 class="sponsor-headline">{headline}</h3>
+        <p class="sponsor-text">{body}</p>
+      </div>
+      <a
+        class="btn sponsor-visit"
+        href={`https://${site.domain}?ref=aiapp-sponsor`}
+        target="_blank"
+        rel="noopener noreferrer sponsored"
+      >
+        {visit}
+      </a>
+    </div>
+  </aside>
+)}
+
+<style>
+  .sponsor-zone {
+    padding-bottom: 24px; /* 24px whitespace before the dashed rule (§10.5) */
+    border-bottom: 1px dashed var(--line);
+    margin-bottom: 16px;
+  }
+  .sponsor-zone[hidden] {
+    display: none;
+  }
+  .sponsor {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 18px 20px;
+    background: var(--bg-elevated); /* one step brighter than natural cards */
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+  }
+  .sponsor-left {
+    display: grid;
+    justify-items: center;
+    gap: 8px;
+    flex: none;
+  }
+  .sponsor-badge {
+    font-size: 11px;
+    line-height: 1;
+    color: var(--text-2); /* permanent, non-removable badge (§10.5) */
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .sponsor-main {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    gap: 3px;
+  }
+  .sponsor-domain {
+    margin: 0;
+    font-size: 12px;
+    color: var(--text-2);
+  }
+  .sponsor-headline {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-1);
+  }
+  .sponsor-text {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-2);
+  }
+  .sponsor-visit {
+    flex: none;
+  }
+
+  /* position 2 (search top): same block, narrower row (§10.5) */
+  .sponsor-zone.search {
+    padding-bottom: 16px;
+    margin-bottom: 16px;
+  }
+  .sponsor-zone.search .sponsor {
+    padding: 12px 16px;
+    gap: 14px;
+  }
+  .sponsor-zone.search .sponsor-headline {
+    font-size: 14px;
+  }
+  .sponsor-zone.search .sponsor-text {
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  @media (max-width: 560px) {
+    .sponsor {
+      flex-wrap: wrap;
+      gap: 14px;
+      padding: 16px;
+    }
+    .sponsor-main {
+      flex: 1 1 200px;
+    }
+  }
+</style>

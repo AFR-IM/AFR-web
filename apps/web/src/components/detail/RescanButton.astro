@@ -1,0 +1,106 @@
+---
+// RescanButton — spec §10.3 P3 right column + §10.6 state matrix:
+//   default  → primary button
+//   hover    → brightness +8% (via .btn)
+//   focus    → 2px outline (via .btn:focus-visible)
+//   clicked  → disabled + ring spinner + "queued, ~N min"; the throttle state
+//              shows a live countdown (client-side demo state, no backend).
+// While queued, the header GradeRing spins (§10.6 GradeRing "重扫时环旋转").
+
+import { getCatalog } from '../../i18n/loader.ts';
+
+interface Props {
+  domain: string;
+  locale: string;
+}
+
+const { locale } = Astro.props;
+const L = getCatalog(locale);
+const isZh = locale === 'zh-CN';
+const T = (en: string, zh: string) => (isZh ? zh : en);
+
+const label = L.ui.rescan ?? T('Re-scan', '重新检测');
+const queued = L.ui.rescanQueued ?? T('Re-scan queued — check back later.', '重扫已排队——请稍后查看。');
+const eta = T('~5 min', '约 5 分钟');
+---
+
+<button class="btn rescan" type="button" data-rescan data-label={label} data-queued={queued} data-eta={eta}>
+  <span class="spinner" aria-hidden="true"></span>
+  <span class="txt">{label}</span>
+</button>
+<p class="sub mono" data-rescan-sub hidden></p>
+
+<style>
+  .rescan {
+    width: 100%;
+    justify-content: center;
+  }
+  .rescan[disabled] {
+    cursor: not-allowed;
+    opacity: 0.85;
+  }
+  .spinner {
+    display: none;
+    width: 13px;
+    height: 13px;
+    border: 2px solid color-mix(in srgb, currentColor 35%, transparent);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  .rescan[data-busy] .spinner {
+    display: block;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  .sub {
+    margin: 8px 0 0;
+    font-size: 11.5px;
+    color: var(--text-3);
+    text-align: center;
+  }
+  .sub[hidden] {
+    display: none;
+  }
+</style>
+
+<script>
+  // Client-side demo queue state (no backend yet): queued text + countdown.
+  const QUEUED_SECONDS = 300;
+  for (const btn of document.querySelectorAll<HTMLButtonElement>('[data-rescan]')) {
+    btn.addEventListener('click', () => {
+      if (btn.disabled) return;
+      const txt = btn.querySelector('.txt');
+      const sub = btn.parentElement?.querySelector<HTMLElement>('[data-rescan-sub]');
+      btn.disabled = true;
+      btn.dataset.busy = '1';
+      const ring = document.querySelector('[data-ring-count]');
+      ring?.setAttribute('data-rescanning', '');
+      if (txt) txt.textContent = `${btn.dataset.queued ?? 'Queued'} · ${btn.dataset.eta ?? ''}`.trim();
+      if (sub) sub.hidden = false;
+
+      let left = QUEUED_SECONDS;
+      const paint = () => {
+        const m = String(Math.floor(left / 60)).padStart(2, '0');
+        const s = String(left % 60).padStart(2, '0');
+        if (sub) sub.textContent = `${btn.dataset.eta ?? ''} · ${m}:${s}`;
+      };
+      paint();
+      const timer = setInterval(() => {
+        left -= 1;
+        paint();
+        if (left <= 0) {
+          clearInterval(timer);
+          delete btn.dataset.busy;
+          btn.disabled = false;
+          if (txt) txt.textContent = btn.dataset.label ?? 'Re-scan';
+          if (sub) sub.hidden = true;
+          ring?.removeAttribute('data-rescanning');
+        }
+      }, 1000);
+    });
+  }
+</script>

@@ -1,0 +1,319 @@
+---
+// P4 submit page (spec §10.3): domain input + the 3-step flow (submit → scan
+// → score) + what happens afterwards + a politeness note linking to /bot.
+// M2 has no backend: the form validates client-side and shows a friendly inline
+// confirmation — it never posts anywhere.
+
+import Base from '../../layouts/Base.astro';
+import { getCatalog, pathFor, toLocale } from '../../i18n/loader.ts';
+import { uiText } from '../../components/home/fallbacks.ts';
+
+export function getStaticPaths() {
+  return [{ params: { locale: undefined } }, { params: { locale: 'zh-CN' } }];
+}
+
+const locale = toLocale(Astro.params.locale);
+const L = getCatalog(locale);
+const href = (p: string) => pathFor(locale, p);
+
+const title = L.ui.submitTitle ?? 'Submit a site';
+const cta = L.ui.submitCta ?? 'Submit domain';
+const domainLabel = L.ui.submitDomainLabel ?? 'Domain';
+const steps = [L.ui.submitStep1, L.ui.submitStep2, L.ui.submitStep3].map((s) => s ?? '');
+const invalidText = uiText(L.ui, 'submitInvalid', locale);
+const confirmTpl = uiText(L.ui, 'submitConfirm', locale);
+const flowTitle = uiText(L.ui, 'submitFlow', locale);
+const afterTitle = uiText(L.ui, 'submitAfterTitle', locale);
+const afterBody = uiText(L.ui, 'submitAfterBody', locale);
+const politeText = uiText(L.ui, 'submitPoliteNote', locale);
+const botLabel = L.ui.navBot ?? 'For Bots';
+---
+
+<Base title={title} description={L.ui.submitDisclaimer ?? L.ui.tagline}>
+  <div class="page-narrow">
+    <header class="page-head">
+      <p class="crumb mono">
+        <a href={href('/')}>{L.ui.navHome ?? 'Home'}</a>
+        <span aria-hidden="true"> / </span>
+        <span>{title}</span>
+      </p>
+      <h1>{title}</h1>
+    </header>
+
+    <form
+      class="submit-form"
+      data-submit-form
+      data-invalid={invalidText}
+      data-confirm={confirmTpl}
+      novalidate
+    >
+      <label class="field-label" for="domain">{domainLabel}</label>
+      <div class="field-row">
+        <input
+          class="domain-input mono"
+          id="domain"
+          name="domain"
+          type="text"
+          inputmode="url"
+          placeholder="example.com"
+          autocomplete="off"
+          spellcheck="false"
+          aria-describedby="domain-hint"
+        />
+        <button class="btn" type="submit">{cta}</button>
+      </div>
+      <p class="field-err" data-err role="alert" hidden></p>
+      <p class="field-hint" id="domain-hint">{L.ui.submitDisclaimer}</p>
+    </form>
+
+    <div class="confirm" data-confirm-box hidden role="status" aria-live="polite">
+      <p class="confirm-domain mono" data-confirm-domain></p>
+      <p class="confirm-text" data-confirm-text></p>
+      <p class="confirm-links">
+        <a href={href('/method')}>{L.ui.navMethod ?? 'Method'} →</a>
+        <a href={href('/bot')}>{botLabel} →</a>
+      </p>
+    </div>
+
+    <div class="cols">
+      <section class="flow">
+        <h2>{flowTitle}</h2>
+        <ol class="steps">
+          {steps.map((s, i) => (
+            <li class="step">
+              <span class="step-n mono" aria-hidden="true">{i + 1}</span>
+              <span class="step-text">{s}</span>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      <section class="after">
+        <h2>{afterTitle}</h2>
+        <p class="after-body">{afterBody}</p>
+        <p class="polite">
+          <span>{politeText}</span>
+          <a href={href('/bot')}>{botLabel} →</a>
+        </p>
+      </section>
+    </div>
+  </div>
+
+  <!-- client-side validation + inline confirmation (no backend in M2) -->
+  <script is:inline>
+    (function () {
+      var form = document.querySelector('[data-submit-form]');
+      if (!form) return;
+      var input = form.querySelector('input[name="domain"]');
+      var err = form.querySelector('[data-err]');
+      var box = document.querySelector('[data-confirm-box]');
+      var RE = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i;
+
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var v = (input && input.value ? input.value : '').trim().toLowerCase();
+        v = v
+          .replace(/^[a-z]+:\/\//, '')
+          .replace(/^www\./, '')
+          .split('/')[0]
+          .split('?')[0];
+
+        if (!RE.test(v)) {
+          if (err) {
+            err.textContent = form.getAttribute('data-invalid') || '';
+            err.hidden = false;
+          }
+          if (box) box.hidden = true;
+          if (input) input.focus();
+          return;
+        }
+
+        if (err) err.hidden = true;
+        if (input) input.value = v;
+        if (box) {
+          var d = box.querySelector('[data-confirm-domain]');
+          var t = box.querySelector('[data-confirm-text]');
+          if (d) d.textContent = v;
+          if (t) {
+            t.textContent = (form.getAttribute('data-confirm') || '').replace('{domain}', v);
+          }
+          box.hidden = false;
+          var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+          box.scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
+        }
+      });
+    })();
+  </script>
+</Base>
+
+<style>
+  .page-narrow {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 44px var(--page-pad) 0;
+  }
+  .page-head {
+    margin-bottom: 28px;
+  }
+  .crumb {
+    margin: 0 0 10px;
+    font-size: 12.5px;
+    color: var(--text-3);
+  }
+  .crumb a {
+    color: var(--text-3);
+  }
+  .crumb a:hover {
+    color: var(--brand);
+  }
+  .page-head h1 {
+    font-size: clamp(1.7rem, 3.4vw, 2.4rem);
+    margin: 0;
+  }
+
+  .submit-form {
+    padding: 22px;
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+  }
+  .field-label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 12.5px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+  .field-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .domain-input {
+    flex: 1;
+    min-width: 220px;
+    padding: 11px 14px;
+    background: var(--bg-ink);
+    border: 1px solid var(--line);
+    border-radius: var(--r-2);
+    font-size: 15px;
+    transition: border-color var(--t-micro) var(--ease);
+  }
+  .domain-input:hover,
+  .domain-input:focus {
+    border-color: var(--brand);
+  }
+  .domain-input::placeholder {
+    color: var(--text-3);
+  }
+  .field-err {
+    margin: 10px 0 0;
+    font-size: 13px;
+    color: var(--grade-f); /* grade red = failure semantics, same family */
+  }
+  .field-err[hidden] {
+    display: none;
+  }
+  .field-hint {
+    margin: 12px 0 0;
+    font-size: 12.5px;
+    color: var(--text-3);
+  }
+
+  .confirm {
+    display: grid;
+    gap: 6px;
+    margin-top: 16px;
+    padding: 18px 22px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--brand);
+    border-radius: var(--radius);
+  }
+  .confirm[hidden] {
+    display: none;
+  }
+  .confirm-domain {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--brand);
+  }
+  .confirm-text {
+    margin: 0;
+    font-size: 14px;
+    color: var(--text-1);
+  }
+  .confirm-links {
+    margin: 6px 0 0;
+    display: flex;
+    gap: 16px;
+    font-size: 13px;
+  }
+
+  .cols {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 24px;
+    margin-top: 40px;
+  }
+  .cols h2 {
+    font-size: 17px;
+    margin-bottom: 14px;
+  }
+
+  .steps {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 12px;
+  }
+  .step {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 16px;
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+  }
+  .step-n {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    font-size: 12px;
+    color: var(--text-2);
+  }
+  .step-text {
+    font-size: 14px;
+    color: var(--text-1);
+    padding-top: 2px;
+  }
+
+  .after-body {
+    margin: 0 0 14px;
+    font-size: 14px;
+    line-height: 1.65;
+    color: var(--text-2);
+  }
+  .polite {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+    padding: 14px 16px;
+    background: var(--bg-surface);
+    border: 1px dashed var(--line);
+    border-radius: var(--radius);
+    font-size: 13px;
+    color: var(--text-2);
+  }
+  .polite a {
+    color: var(--brand);
+  }
+</style>

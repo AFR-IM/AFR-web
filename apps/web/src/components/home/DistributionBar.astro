@@ -1,0 +1,135 @@
+---
+// DistributionBar — the homepage's real-data hero visual (spec §10.4 / §10.6).
+// Five grade segments sized by share of all scanned sites; hover scales the
+// segment 1.05 and pops a count tooltip, click sets the grade filter and syncs
+// the URL (?grade=B) — the anchors keep working as plain links without JS.
+// Below 480px the bar becomes five vertically stacked rows (spec §10.7).
+
+import { getCatalog, pathFor, type Locale } from '../../i18n/loader.ts';
+import type { Distribution, Grade } from '../../data/types.ts';
+import { GRADES, gradeVar } from '../../utils/grade.ts';
+import { sitesLabel } from './fallbacks.ts';
+
+interface Props {
+  distribution: Distribution;
+  total: number;
+  locale: Locale;
+}
+
+const { distribution, total, locale } = Astro.props;
+const L = getCatalog(locale);
+const title = L.ui.distributionTitle ?? 'AI openness distribution';
+const countOf = (g: Grade): number => distribution[g] ?? 0;
+---
+
+{total > 0 && (
+  <div class="bar" role="group" aria-label={title}>
+    {GRADES.map((g) => {
+      const n = countOf(g);
+      const pct = (n / total) * 100;
+      const tip = sitesLabel(L.ui, locale, n);
+      return (
+        <a
+          class="seg"
+          href={pathFor(locale, `/?grade=${g}`)}
+          data-grade-seg={g}
+          style={`--share:${pct.toFixed(2)}%;--g:${gradeVar(g)}`}
+          aria-label={`Grade ${g}: ${tip} (${pct.toFixed(1)}%)`}
+        >
+          <span class="seg-label mono">{g}</span>
+          <span class="seg-tip mono" aria-hidden="true">{tip}</span>
+        </a>
+      );
+    })}
+  </div>
+)}
+
+<style>
+  .bar {
+    display: flex;
+    align-items: stretch;
+    gap: 4px;
+    width: 100%;
+  }
+
+  .seg {
+    position: relative;
+    flex: 1 1 var(--share);
+    min-width: 34px; /* tiny shares keep a visible slice */
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--g);
+    border-radius: var(--r-2);
+    transition: transform var(--t-micro) var(--ease);
+  }
+  .seg:hover,
+  .seg:focus-visible {
+    transform: scale(1.05);
+    z-index: 2;
+  }
+  .seg.active {
+    outline: 2px solid var(--text-1);
+    outline-offset: 2px;
+    z-index: 2;
+  }
+
+  /* letter sits on a token-backed cutout so it stays legible on every grade color */
+  .seg-label {
+    background: var(--bg-ink);
+    color: var(--text-1);
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.2;
+    padding: 3px 8px;
+    border-radius: var(--r-1);
+  }
+
+  .seg-tip {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translate(-50%, 4px);
+    opacity: 0;
+    pointer-events: none;
+    background: var(--bg-elevated);
+    border: 1px solid var(--line);
+    color: var(--text-1);
+    font-size: 12px;
+    padding: 4px 8px;
+    border-radius: var(--r-2);
+    white-space: nowrap;
+    z-index: 3;
+    transition: opacity var(--t-micro) var(--ease), transform var(--t-micro) var(--ease);
+  }
+  .seg:hover .seg-tip,
+  .seg:focus-visible .seg-tip {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+
+  /* <480px: five vertically stacked rows (spec §10.7) */
+  @media (max-width: 479px) {
+    .bar {
+      flex-direction: column;
+      gap: 6px;
+    }
+    .seg {
+      flex: 0 0 auto;
+      width: var(--share);
+      min-width: 88px;
+      height: 34px;
+      justify-content: flex-start;
+      padding-inline: 10px;
+    }
+    .seg-tip {
+      left: 0;
+      transform: translate(0, 4px);
+    }
+    .seg:hover .seg-tip,
+    .seg:focus-visible .seg-tip {
+      transform: translate(0, 0);
+    }
+  }
+</style>

@@ -1,0 +1,25 @@
+name = "aiapp-api"
+main = "src/index.ts"
+compatibility_date = "2026-11-10"
+workers_dev = true
+
+# D1 database binding (apply schema.sql first):
+#   wrangler d1 execute aiapp --file schema.sql --remote
+[[d1_databases]]
+binding = "DB"
+database_name = "aiapp"
+database_id = "00000000-0000-0000-0000-000000000000" # run: wrangler d1 create aiapp
+
+# KV namespace — rate-limit counters (5 submissions/IP/day) + badge cache.
+[[kv_namespaces]]
+binding = "KV"
+id = "00000000000000000000000000000000" # run: wrangler kv namespace create KV
+
+# Custom domain routes: aiapp.im is not bound to this Cloudflare account yet.
+# Uncomment after the zone is set up (spec §5: aiapp.im DNS + route for API and badges):
+# [[routes]]
+# pattern = "aiapp.im/api/*"
+# zone_name = "aiapp.im"
+# [[routes]]
+# pattern = "aiapp.im/badge/*"
+# zone_name = "aiapp.im"

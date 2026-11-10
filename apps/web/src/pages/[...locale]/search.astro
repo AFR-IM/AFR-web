@@ -1,0 +1,202 @@
+---
+// Search page — reads ?q= with client JS and filters the pre-rendered site
+// list (spec §10.3 / §10.5 position 2): the Sponsored row appears above the
+// results only while the query is non-empty and never mixes into the natural
+// cards. Zero results → searchEmpty + submit CTA. No JS → full index shown.
+
+import Base from '../../layouts/Base.astro';
+import DomainCard from '../../components/home/DomainCard.astro';
+import SponsoredCard from '../../components/home/SponsoredCard.astro';
+import { getCatalog, pathFor, toLocale } from '../../i18n/loader.ts';
+import { listSites } from '../../data/loader.ts';
+import { resolvableAds } from '../../components/home/ads-fixture.ts';
+import { uiText } from '../../components/home/fallbacks.ts';
+
+export function getStaticPaths() {
+  return [{ params: { locale: undefined } }, { params: { locale: 'zh-CN' } }];
+}
+
+const locale = toLocale(Astro.params.locale);
+const L = getCatalog(locale);
+const href = (p: string) => pathFor(locale, p);
+
+const sites = listSites();
+const countTpl = uiText(L.ui, 'siteCount', locale);
+const title = uiText(L.ui, 'searchTitle', locale);
+const placeholder = L.ui.searchPlaceholder ?? 'Search a domain…';
+const emptyText = L.ui.searchEmpty ?? 'No site matches that search.';
+const submitCta = L.ui.submitCta ?? 'Submit domain';
+
+const ads = resolvableAds();
+const ad = ads[1] ?? ads[0]; // slot position 2 (search-top)
+---
+
+<Base title={title} description={L.ui.tagline}>
+  <div class="container page">
+    <h1 class="page-title">{title}</h1>
+
+    <form class="search-form" id="search-form" role="search" action={href('/search')} method="get">
+      <input
+        class="search-input mono"
+        id="search-input"
+        type="search"
+        name="q"
+        placeholder={placeholder}
+        aria-label={placeholder}
+        autocomplete="off"
+      />
+    </form>
+
+    <p class="result-count mono" data-count data-count-template={countTpl} hidden></p>
+
+    {ad && (
+      <div class="sponsor-slot">
+        <SponsoredCard ad={ad} locale={locale} variant="search" hidden={true} />
+      </div>
+    )}
+
+    <div class="grid" data-grid>
+      {sites.map((s, i) => <DomainCard site={s} locale={locale} index={i} />)}
+    </div>
+
+    <div class="empty" data-empty hidden>
+      <p>{emptyText}</p>
+      <a class="btn" href={href('/submit')}>{submitCta}</a>
+    </div>
+  </div>
+
+  <!-- inline so the ?q= filter applies before first paint (no flash / CLS) -->
+  <script is:inline>
+    (function () {
+      var grid = document.querySelector('[data-grid]');
+      if (!grid) return;
+      var cards = Array.prototype.slice.call(grid.querySelectorAll('[data-site-grade]'));
+      var input = document.getElementById('search-input');
+      var form = document.getElementById('search-form');
+      var empty = document.querySelector('[data-empty]');
+      var sponsor = document.querySelector('[data-sponsor]');
+      var countEl = document.querySelector('[data-count]');
+      var countTpl = (countEl && countEl.getAttribute('data-count-template')) || '{n} sites';
+
+      function apply(raw) {
+        var q = (raw || '').trim().toLowerCase();
+        var visible = 0;
+        for (var i = 0; i < cards.length; i++) {
+          var hit = q === '' || (cards[i].getAttribute('data-search') || '').indexOf(q) !== -1;
+          cards[i].hidden = !hit;
+          if (hit) visible++;
+        }
+        if (empty) empty.hidden = !(q !== '' && visible === 0);
+        if (grid) grid.hidden = q !== '' && visible === 0;
+        if (sponsor) sponsor.hidden = q === '';
+        if (countEl) {
+          countEl.hidden = q === '';
+          var txt = countTpl.replace('{n}', String(visible));
+          if (visible === 1) txt = txt.replace(/\bsites\b/, 'site'); /* EN singular */
+          countEl.textContent = txt;
+        }
+      }
+
+      function syncUrl(q) {
+        var url = new URL(location.href);
+        if (q) url.searchParams.set('q', q);
+        else url.searchParams.delete('q');
+        try {
+          history.replaceState(null, '', url);
+        } catch (err) {
+          /* file:// or sandboxed context — results already filtered */
+        }
+      }
+
+      var initial = new URLSearchParams(location.search).get('q') || '';
+      if (input) {
+        input.value = initial;
+        input.addEventListener('input', function () {
+          apply(input.value);
+          syncUrl(input.value.trim());
+        });
+      }
+      if (form) {
+        form.addEventListener('submit', function (e) {
+          e.preventDefault();
+          var v = input ? input.value : '';
+          apply(v);
+          syncUrl(v.trim());
+        });
+      }
+      apply(initial);
+    })();
+  </script>
+</Base>
+
+<style>
+  .page {
+    padding-top: 44px;
+  }
+  .page-title {
+    font-size: clamp(1.7rem, 3.4vw, 2.4rem);
+    margin-bottom: 20px;
+  }
+  .search-form {
+    display: flex;
+    align-items: center;
+    max-width: 560px;
+    padding: 0 14px;
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: var(--r-2);
+    transition: border-color var(--t-micro) var(--ease);
+  }
+  .search-form:hover,
+  .search-form:focus-within {
+    border-color: var(--brand);
+  }
+  .search-input {
+    flex: 1;
+    min-width: 0;
+    padding: 12px 0;
+    background: none;
+    border: none;
+    outline: none;
+    font-size: 15px;
+    color: var(--text-1);
+  }
+  .search-input::placeholder {
+    color: var(--text-3);
+  }
+
+  .result-count {
+    margin: 24px 0 0;
+    font-size: 12.5px;
+    color: var(--text-3);
+  }
+  .result-count[hidden] {
+    display: none;
+  }
+
+  .sponsor-slot {
+    margin-top: 24px;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: var(--gutter);
+    margin-top: 24px;
+  }
+  .grid[hidden] {
+    display: none;
+  }
+
+  .empty {
+    display: grid;
+    justify-items: start;
+    gap: 12px;
+    margin-top: 32px;
+    color: var(--text-2);
+    font-size: 14.5px;
+  }
+  .empty[hidden] {
+    display: none;
+  }
+</style>

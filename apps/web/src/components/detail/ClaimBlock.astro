@@ -1,0 +1,81 @@
+---
+// ClaimBlock — spec §10.3 P3 right column / §8.2: verified owners may publish a
+// ≤200-character statement that answers their score. Shown beside the report so
+// both sides speak with equal weight; empty state uses the catalog key.
+
+import { getCatalog } from '../../i18n/loader.ts';
+
+interface Props {
+  claim?: string;
+  locale: string;
+}
+
+const { claim, locale } = Astro.props;
+const L = getCatalog(locale);
+const isZh = locale === 'zh-CN';
+const T = (en: string, zh: string) => (isZh ? zh : en);
+const hint = T(
+  'Verified owners can publish up to 200 characters here.',
+  '已验证站方可在此发布 200 字以内的声明。',
+);
+---
+
+<section class="claim" aria-label={L.ui.statementTitle}>
+  <header class="claim-head">
+    <h2>{L.ui.statementTitle}</h2>
+    <span class="hint" title={hint}>?</span>
+  </header>
+  {
+    claim ? (
+      <blockquote class="body">{claim}</blockquote>
+    ) : (
+      <p class="empty">{L.ui.statementEmpty}</p>
+    )
+  }
+</section>
+
+<style>
+  .claim {
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 14px;
+  }
+  .claim-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+  .claim-head h2 {
+    font-size: 15px;
+    margin: 0;
+  }
+  .hint {
+    display: inline-grid;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    font-size: 10px;
+    color: var(--text-3);
+    cursor: help;
+  }
+  .body {
+    margin: 0;
+    padding: 10px 12px;
+    background: var(--bg-elevated);
+    border-left: 2px solid var(--brand);
+    border-radius: 0 var(--r-1) var(--r-1) 0;
+    font-size: 13.5px;
+    line-height: 1.7;
+    color: var(--text-1);
+  }
+  .empty {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-3);
+    font-style: italic;
+  }
+</style>

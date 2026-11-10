@@ -1,0 +1,361 @@
+---
+// P7 crawler politeness page — /bot (spec §4.3 published in full, §13 X3:
+// transparent UA, capped frequency, and the "declined" degradation mechanism
+// that protects sites which explicitly refuse automated scanning).
+
+import Base from '../../layouts/Base.astro';
+import { SCANNER_VERSION, USER_AGENT } from '../../../../../packages/scanner/src/http.ts';
+import { getCatalog, LOCALES, pathFor, toLocale, type Locale } from '../../i18n/loader.ts';
+
+export function getStaticPaths() {
+  return [{ params: { locale: undefined } }, { params: { locale: 'zh-CN' } }];
+}
+
+const locale: Locale = toLocale(Astro.params.locale);
+const L = getCatalog(locale);
+const isZh = locale === 'zh-CN';
+const T = (en: string, zh: string) => (isZh ? zh : en);
+const href = (p: string) => pathFor(locale, p);
+
+/** Spec §4.2 documented identity — the shipped constant below is what is sent today. */
+const SPEC_UA = 'aiapp-im-bot/1.0 (+https://aiapp.im/bot)';
+
+const PROSE = {
+  en: {
+    title: 'Crawler politeness',
+    description:
+      'How the aiapp scanner behaves on your site: identity, request budget, frequency, crawl-delay, the declined mechanism, and what we store.',
+    lede: 'This page is the full politeness and boundary specification (spec §4.3). It is published so you can audit it, block us, or get in touch — transparency is the whole point.',
+    idTitle: 'Identity',
+    idSpec: 'Documented identity (spec §4.2):',
+    idLive: 'Shipped user-agent string (this build):',
+    idNote:
+      'Both identifiers resolve to this page. If you block us in robots.txt, the next scan honours it — see the declined mechanism below.',
+    budgetTitle: 'Request budget',
+    budgetItems: [
+      ['≤ 8 public GETs per site', 'Fixed probe list below; retries and challenge fallbacks stay inside a hard cap.'],
+      ['Concurrency ≤ 5 sites', 'Never more than five sites at a time, ≥2s apart inside one host.'],
+      ['1 full scan per site / 24h', 'Deduplicated by the scan queue — submissions and re-scan requests merge into one round.'],
+      ['crawl-delay honoured', 'Your robots.txt crawl-delay is respected (the shipped scanner caps it at 3s, with a 150ms default gap).'],
+      ['15s timeout, 1 retry', 'Per request, on network error only — we do not hammer a slow origin.'],
+    ],
+    probesTitle: 'Probe list (fixed, in order)',
+    probes: [
+      ['GET /robots.txt', 'A1 evidence source, crawl-delay and Sitemap declarations'],
+      ['GET /llms.txt', 'B1'],
+      ['HEAD /llms-full.txt', 'B1'],
+      ['GET /', 'A2 / A3 / B2 / B3 / B5 — one request, many checks'],
+      ['GET /sitemap.xml', 'B4'],
+      ['GET /agents.md', 'C2'],
+      ['HEAD /.well-known/openapi.*', 'C1 — two extensions probed'],
+      ['GET docs subdomain (optional)', 'C1 / C3 — only when heuristics hit'],
+    ],
+    scopeTitle: 'Scope: read-only, public only',
+    scopeItems: [
+      'GET requests to public URLs only — no authentication bypass, no forms, no injection, zero writes.',
+      'No personal data is stored: HTML is reduced to parsed signals plus an excerpt of at most 2KB.',
+      'One JSON snapshot per site is committed publicly, so everything we saw can be checked.',
+    ],
+    declinedTitle: 'Declined mechanism',
+    declinedBody:
+      'If your robots.txt disallows everything for "*" and does not exempt our bot, we skip probes 4–8 and keep only robots.txt itself plus passive data (Tranco rank, category). Checks A2–C4 are recorded as declined / unknown — neither rewarded nor punished — and your report page states explicitly that the rating is based solely on your public robots declaration.',
+    declinedNote: 'You do not have to talk to us to be left alone: robots.txt is enough.',
+    storeTitle: 'What we keep',
+    storeItems: [
+      'Signal values and HTTP status codes that the engine scored.',
+      'An excerpt of at most 2KB per response, used as the evidence you can expand in every report.',
+      'The engine version, scanner version and timestamp of the scan.',
+    ],
+    contactTitle: 'Opt out or say hello',
+    contactBody:
+      'Blocking: add our user-agent to robots.txt — it takes effect on the next scan. Questions, false positives or removal requests: open an issue on aiapp-web, or send a correction PR to aiapp-data.',
+    methodLink: 'See the scoring method →',
+  },
+  'zh-CN': {
+    title: '爬虫礼仪',
+    description: 'aiapp 扫描器在你站点上的行为规范：身份、请求预算、频次、crawl-delay、婉拒机制与我们保存什么。',
+    lede: '本页是完整的礼貌与边界规范（方案书 §4.3）全文公开——供你审计、屏蔽我们或与我们联系：透明就是全部意义。',
+    idTitle: '身份标识',
+    idSpec: '规范文档中的身份（§4.2）：',
+    idLive: '当前构建实际发送的 User-Agent：',
+    idNote: '两个标识都指向本页。若你在 robots.txt 中屏蔽我们，下一次扫描即会遵守——见下方“婉拒机制”。',
+    budgetTitle: '请求预算',
+    budgetItems: [
+      ['每站 ≤ 8 个公开 GET', '固定探测清单见下；重试与挑战回退都封顶在硬上限内。'],
+      ['并发 ≤ 5 个站点', '同一时间最多 5 个站点，同一主机请求间隔 ≥2s。'],
+      ['每站每 24h 最多 1 轮完整扫描', '由扫描队列去重——提交与重扫请求合并为一轮。'],
+      ['遵守 crawl-delay', '尊重你 robots.txt 里的 crawl-delay（实现封顶 3s，默认间隔 150ms）。'],
+      ['15s 超时、重试 1 次', '仅网络错误时重试——绝不狂刷慢速源站。'],
+    ],
+    probesTitle: '探测清单（固定顺序）',
+    probes: [
+      ['GET /robots.txt', 'A1 证据源，兼取 crawl-delay 与 Sitemap 声明'],
+      ['GET /llms.txt', 'B1'],
+      ['HEAD /llms-full.txt', 'B1'],
+      ['GET /', 'A2 / A3 / B2 / B3 / B5——一次请求多路复用'],
+      ['GET /sitemap.xml', 'B4'],
+      ['GET /agents.md', 'C2'],
+      ['HEAD /.well-known/openapi.*', 'C1——探测两个扩展名'],
+      ['GET 文档子域（可选）', 'C1 / C3——仅启发式命中时'],
+    ],
+    scopeTitle: '范围：只读、只看公开内容',
+    scopeItems: [
+      '只对公开 URL 发起 GET——不绕过认证、不碰表单、不注入、零写操作。',
+      '不保存个人信息：HTML 只保留解析后的信号与 ≤2KB 的原文摘录。',
+      '每站生成一份公开 JSON 快照，我们看到的一切都可被核对。',
+    ],
+    declinedTitle: '婉拒机制（Declined）',
+    declinedBody:
+      '若你的 robots.txt 对 "*" 全站 Disallow 且未豁免我们的 bot，我们跳过 4–8 号探测，只保留 robots.txt 本身与被动数据（Tranco 排名、类目）。A2–C4 记为 declined / unknown——不奖不罚——且报告页会明确说明：该评级仅基于你公开的 robots 声明。',
+    declinedNote: '想让我们别来，不用打任何交道：robots.txt 就够了。',
+    storeTitle: '我们保存什么',
+    storeItems: [
+      '引擎用于打分的信号值与 HTTP 状态码。',
+      '每份响应 ≤2KB 的摘录，用于报告页可展开的证据。',
+      '扫描的引擎版本、扫描器版本与时间戳。',
+    ],
+    contactTitle: '屏蔽或联系我们',
+    contactBody:
+      '屏蔽：把我们的 user-agent 写进 robots.txt，下次扫描即生效。疑问、误判或下架请求：在 aiapp-web 开 issue，或向 aiapp-data 提纠错 PR。',
+    methodLink: '查看评分方法 →',
+  },
+} as const;
+
+const P = PROSE[locale === 'zh-CN' ? 'zh-CN' : 'en'];
+---
+
+<Base title={P.title} description={P.description}>
+  <div class="container bot">
+    <header class="hero">
+      <p class="eyebrow mono">/bot · robots.txt aware</p>
+      <h1>{P.title}</h1>
+      <p class="lede">{P.lede}</p>
+    </header>
+
+    <section class="sec">
+      <h2>{P.idTitle}</h2>
+      <dl class="ua">
+        <dt>{P.idSpec}</dt>
+        <dd class="mono">{SPEC_UA}</dd>
+        <dt>{P.idLive}</dt>
+        <dd class="mono">{USER_AGENT} · {SCANNER_VERSION}</dd>
+      </dl>
+      <p class="note">{P.idNote}</p>
+    </section>
+
+    <section class="sec">
+      <h2>{P.budgetTitle}</h2>
+      <dl class="kv">
+        {
+          P.budgetItems.map(([k, v]) => (
+            <div class="kv-row">
+              <dt class="mono">{k}</dt>
+              <dd>{v}</dd>
+            </div>
+          ))
+        }
+      </dl>
+    </section>
+
+    <section class="sec">
+      <h2>{P.probesTitle}</h2>
+      <ol class="probes">
+        {
+          P.probes.map(([req, use]) => (
+            <li>
+              <span class="req mono">{req}</span>
+              <span class="use">{use}</span>
+            </li>
+          ))
+        }
+      </ol>
+    </section>
+
+    <section class="sec">
+      <h2>{P.scopeTitle}</h2>
+      <ul class="list">
+        {P.scopeItems.map((item) => <li>{item}</li>)}
+      </ul>
+    </section>
+
+    <section class="sec">
+      <h2>{P.declinedTitle}</h2>
+      <p class="lead">{P.declinedBody}</p>
+      <p class="note">{P.declinedNote}</p>
+    </section>
+
+    <section class="sec">
+      <h2>{P.storeTitle}</h2>
+      <ul class="list">
+        {P.storeItems.map((item) => <li>{item}</li>)}
+      </ul>
+    </section>
+
+    <section class="sec">
+      <h2>{P.contactTitle}</h2>
+      <p class="lead">{P.contactBody}</p>
+      <p class="links">
+        <a href="https://github.com/imAiAPP/aiapp-web/issues" rel="noopener">GitHub Issues</a>
+        <span class="sep">·</span>
+        <a href="https://github.com/imAiAPP/aiapp-data" rel="noopener">aiapp-data</a>
+        <span class="sep">·</span>
+        <a href={href('/method')}>{P.methodLink}</a>
+      </p>
+    </section>
+  </div>
+</Base>
+
+<style>
+  .bot {
+    padding-top: 32px;
+    padding-bottom: 24px;
+  }
+  .hero {
+    max-width: 780px;
+    margin-bottom: 26px;
+  }
+  .eyebrow {
+    margin: 0 0 8px;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--brand);
+  }
+  .hero h1 {
+    font-size: clamp(28px, 4.4vw, 40px);
+    margin-bottom: 12px;
+  }
+  .lede {
+    margin: 0;
+    font-size: 16px;
+    line-height: 1.75;
+    color: var(--text-2);
+  }
+
+  .sec {
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 24px 26px;
+    margin-bottom: 20px;
+  }
+  .sec h2 {
+    font-size: 20px;
+    margin-bottom: 12px;
+  }
+  .lead {
+    margin: 0 0 10px;
+    color: var(--text-2);
+    max-width: 84ch;
+  }
+  .note {
+    margin: 10px 0 0;
+    font-size: 13.5px;
+    color: var(--text-3);
+    max-width: 84ch;
+  }
+
+  .ua {
+    margin: 0;
+    display: grid;
+    gap: 6px;
+  }
+  .ua dt {
+    font-size: 13px;
+    color: var(--text-2);
+  }
+  .ua dd {
+    margin: 0 0 8px;
+    padding: 9px 12px;
+    background: var(--bg-ink);
+    border: 1px solid var(--line);
+    border-radius: var(--r-1);
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--text-1);
+    word-break: break-all;
+  }
+
+  .kv {
+    margin: 0;
+    display: grid;
+    gap: 12px;
+  }
+  .kv-row {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    gap: 14px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--line);
+  }
+  .kv-row:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+  .kv-row dt {
+    font-size: 13px;
+    color: var(--brand);
+  }
+  .kv-row dd {
+    margin: 0;
+    font-size: 13.5px;
+    color: var(--text-2);
+  }
+
+  .probes {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 8px;
+  }
+  .probes li {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    gap: 14px;
+    align-items: baseline;
+  }
+  .req {
+    font-size: 12.5px;
+    color: var(--text-1);
+    word-break: break-all;
+  }
+  .use {
+    font-size: 13.5px;
+    color: var(--text-3);
+  }
+
+  .list {
+    margin: 0;
+    padding-left: 18px;
+    display: grid;
+    gap: 10px;
+    color: var(--text-2);
+    max-width: 84ch;
+  }
+
+  .links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 0;
+    font-size: 14px;
+  }
+  .links a:hover {
+    color: var(--brand);
+  }
+  .sep {
+    color: var(--text-3);
+  }
+
+  @media (max-width: 767px) {
+    .sec {
+      padding: 20px 16px;
+    }
+    .kv-row,
+    .probes li {
+      grid-template-columns: 1fr;
+      gap: 4px;
+    }
+  }
+</style>

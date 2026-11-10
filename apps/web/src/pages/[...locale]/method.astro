@@ -1,0 +1,859 @@
+---
+// P5 method page — /method (spec §10.3: "the anchor of trust, highest design priority").
+// Fully bilingual inline: every prose unit below carries EN + ZH in this file,
+// structured data (layers/checks/grades) comes from packages/i18n/src/method.ts
+// so the page can never drift from the machine-readable standard.
+//
+// Honest-disclosure rules baked in (spec §11.2 X9 / §13 X5 / §10.4):
+//   · paid placements never change ranking or grades
+//   · llms.txt is a machine-readability bonus, not an AI-citation guarantee
+//   · where the written standard and the engine differ, the recorded engine
+//     version governs recomputation
+
+import Base from '../../layouts/Base.astro';
+import StrategyTag from '../../components/detail/StrategyTag.astro';
+import { AFR_METHOD } from '../../../../../packages/i18n/src/method.ts';
+import { ENGINE_VERSION } from '../../../../../packages/afr/src/index.ts';
+import { SCANNER_VERSION, USER_AGENT } from '../../../../../packages/scanner/src/http.ts';
+import { getCatalog, LOCALES, pathFor, toLocale, type Locale } from '../../i18n/loader.ts';
+import type { StrategyTag as StrategyTagType } from '../../data/types.ts';
+
+export function getStaticPaths() {
+  return [{ params: { locale: undefined } }, { params: { locale: 'zh-CN' } }];
+}
+
+const locale: Locale = toLocale(Astro.params.locale);
+const L = getCatalog(locale);
+const isZh = locale === 'zh-CN';
+const href = (p: string) => pathFor(locale, p);
+
+/* ── inline bilingual prose (per-locale, spec §10.3 P5) ───────────────── */
+
+const PROSE = {
+  en: {
+    title: 'The AFR standard',
+    description:
+      'AFR v1.0 in full: three layers, every sub-check and its points, grade thresholds, engine versions, how to recompute any score, and the neutrality pledge.',
+    intro:
+      'AFR (AI-Friendliness Rating) scores every website 0–100 on how open it is to AI crawlers and agents. It measures only public, reproducible facts: every sub-check is one HTTP GET or DNS lookup anyone can repeat, and every awarded point links to its raw evidence. Grades are coordinates on an openness scale — not a moral verdict.',
+    toc: ['Three layers', 'Every check', 'Grades & strategies', 'Engine versions', 'Recompute', 'Neutrality', 'Data sources', 'Machine-readable'],
+    layerHeading: 'The three-layer model',
+    layerIntro:
+      'The total is 100 = 35 + 40 + 25. Legibility carries the most weight because machine-readable content is what AI-friendliness actually means: a site that is technically open but unreadable still fails on AI usefulness.',
+    colLayer: 'Layer',
+    colQuestion: 'Question',
+    colWeight: 'Weight',
+    questions: { L1: 'Can AI reach it?', L2: 'Can it be read?', L3: 'Can it act?' },
+    checksHeading: 'Every sub-check',
+    checksIntro:
+      'Grouped exactly as the standard defines them. Points are fixed; nothing here depends on opinion, popularity, or payment.',
+    colId: 'ID',
+    colFamily: 'Family',
+    colUa: 'User-agent',
+    colPoints: 'Points',
+    colMeasures: 'What it measures',
+    families: { search: 'Search / citation', hybrid: 'Hybrid', training: 'Training' },
+    familySubtotal: 'Group total',
+    familyNote: (ua: string, fam: string) => `Awarded when robots.txt allows ${ua} (${fam} family); the most specific matching rule group decides.`,
+    layerIntros: {
+      L1: 'Reachability — 35 points. Can an AI crawler get to your content at all? 25 of these points sit in the robots.txt AI policy, scored per crawler family; missing robots.txt means the protocol default (allow everything), so it scores full marks by definition.',
+      L2: 'Legibility — 40 points. Once a crawler is here, can it understand the page? llms.txt, structured data, semantic HTML, a sitemap, and basic content signals. Note: llms.txt is a machine-readability bonus, not a guarantee that an AI will cite you.',
+      L3: 'Actionability — 25 points. Can the AI do the user\'s job for them: call an API, read agent instructions, connect over MCP, or use your in-site AI features?',
+    },
+    groups: {
+      A1: ['robots.txt AI crawler policy', 'Scored per AI crawler family: search/citation 9, hybrid 6, training 10. Each user-agent is judged by the most specific matching rule group (RFC 9309); a partial Disallow such as /private/ counts as allowed, a site-wide Disallow scores 0 for that family.'],
+      A2: ['No technical wall', 'A crawler that does not run JavaScript must still be able to read the homepage, and the homepage must not be a forced login wall.'],
+      A3: ['Basic availability', 'HTTPS with a valid certificate, a homepage answering in under 2.5 seconds (median of three), and no suspicious redirect chain.'],
+      B1: ['llms.txt family', 'A machine-readable map of your content. Honesty note: llms.txt is a readability bonus and is not a ranking signal for AI citation.'],
+      B2: ['Structured data', 'JSON-LD or microdata, plus the entity types that let an agent tell what the page is about.'],
+      B3: ['Semantic HTML', 'Heading structure, image alt coverage, Open Graph tags, and the html lang declaration.'],
+      B4: ['Sitemap', 'A reachable /sitemap.xml that carries lastmod and covers the homepage links we sample.'],
+      B5: ['Content signals', 'Enough extractable text, machine-readable dates, and a reachable About/contact path.'],
+      C1: ['Public API', 'An API an agent can actually call, human-readable documentation, and a machine-readable OpenAPI spec.'],
+      C2: ['Agent instructions', '/agents.md and agent usage policy inside llms.txt (the Optional section).'],
+      C3: ['MCP interface', 'A publicly available MCP server declared by the site or its documentation, with a reachable URL.'],
+      C4: ['In-site AI features', 'Assistant, AI search or generative features on the site — the only check that allows human sampling on top of automation.'],
+    },
+    checkDescriptions: {
+      'A2.no-js-body': ['Readable body for a no-JS user agent (≥80 words of text, or <noscript> content).', '无 JS 的 UA 能取到可读正文（文本 ≥ 80 词或含 <noscript> 内容）。'],
+      'A2.no-login-wall': ['No site-wide forced login wall on the homepage.', '首页无全站强制登录墙。'],
+      'A3.https-valid': ['HTTPS with a valid certificate.', 'HTTPS 且证书有效。'],
+      'A3.response-time': ['Homepage response < 2.5s (median of 3 requests).', '首页响应 < 2.5s（3 次取中位）。'],
+      'A3.redirect-chain': ['No suspicious redirect chain (≤2 hops, same site family).', '无可疑跳转链（≤2 跳且同域族）。'],
+      'B1.llms-txt': ['/llms.txt exists and returns 200.', '/llms.txt 存在且返回 200。'],
+      'B1.format': ['Valid format: H1 + intro + parseable Markdown link list.', '格式合规：H1 + 简介 + 可解析的 Markdown 链接列表。'],
+      'B1.llms-full-txt': ['/llms-full.txt exists.', '/llms-full.txt 存在。'],
+      'B2.json-ld': ['Page contains JSON-LD or microdata.', '页面含 JSON-LD 或 microdata。'],
+      'B2.core-entity': ['Core entity type present: Organization / WebSite / Article / Product.', '含核心实体类型：Organization / WebSite / Article / Product。'],
+      'B2.rich-type': ['Rich type present: FAQPage / HowTo / BreadcrumbList.', '含丰富类型：FAQPage / HowTo / BreadcrumbList。'],
+      'B3.unique-h1': ['Exactly one <h1> per page.', '全页唯一 <h1>。'],
+      'B3.heading-order': ['Heading levels do not skip (h1 → h2 → h3).', '标题层级无跳级（h1 → h2 → h3）。'],
+      'B3.img-alt': ['<img> alt coverage ≥ 60%.', '<img> alt 覆盖率 ≥ 60%。'],
+      'B3.og-tags': ['og:title / og:description present.', '存在 og:title / og:description。'],
+      'B3.html-lang': ['<html lang> declared.', '声明 <html lang>。'],
+      'B4.sitemap-reachable': ['/sitemap.xml reachable (robots-declared or direct hit).', '/sitemap.xml 可达（robots.txt 声明或直接命中）。'],
+      'B4.lastmod': ['Sitemap entries carry <lastmod>.', 'sitemap 条目含 lastmod。'],
+      'B4.link-coverage': ['≥80% of 10 sampled homepage links appear in the sitemap.', '首页抽样 10 条链接，≥80% 在 sitemap 中。'],
+      'B5.word-count': ['Homepage extractable text ≥ 500 words.', '首页可提取文本 ≥ 500 词。'],
+      'B5.machine-dates': ['Machine-readable dates (<time datetime> or ISO date).', '机器可读日期（<time datetime> 或 ISO 格式）。'],
+      'B5.about-contact': ['About / contact path reachable from the homepage.', '首页含 about / contact 链接且可达。'],
+      'C1.public-api': ['Public API detected (llms.txt / common paths / dev subdomain).', '检测到公开 API（llms.txt / 常见路径 / 开发者子域）。'],
+      'C1.api-docs': ['Human-readable API documentation.', '人类可读的 API 文档。'],
+      'C1.openapi-spec': ['Machine-readable OpenAPI spec (/.well-known/openapi.yaml or schema reference).', '机器可读 OpenAPI spec（/.well-known/openapi.yaml 或文档页 schema 引用）。'],
+      'C2.agents-md': ['/agents.md exists.', '/agents.md 存在。'],
+      'C2.llms-agent-policy': ['Agent usage policy / instructions inside llms.txt.', 'llms.txt 中含 agent 使用政策 / 指令段。'],
+      'C3.mcp-server': ['Public MCP server declared and its URL is reachable.', '声明了公开 MCP server，且 URL 可达。'],
+      'C4.ai-features': ['In-site AI assistant / AI search / generative features.', '站内 AI 助手 / AI 搜索 / 生成式功能。'],
+    },
+    gradesHeading: 'Grade thresholds',
+    gradesIntro: 'Provisional v1.0 thresholds; they are recalibrated only at quarter boundaries after distribution review, and historical scores keep the engine version they were computed with.',
+    colGrade: 'Grade',
+    colRange: 'Range',
+    colLabel: 'Label',
+    colMeaning: 'Meaning',
+    strategiesHeading: 'Strategy tags',
+    strategiesIntro:
+      'A second, independent axis derived from robots.txt alone. The tag sits next to the grade and never deducts points — it explains the policy behind the score.',
+    engineHeading: 'Engine versions',
+    engineIntro: 'Every scan records the engine version that produced it, so any score on this site can be reproduced bit-for-bit later.',
+    rowStandard: 'Written standard',
+    rowEngine: 'Scoring engine',
+    rowScanner: 'Scanner',
+    rowUa: 'Crawler user-agent',
+    engineNote:
+      'Every snapshot stores engine_version; historical scores are never re-graded with a newer engine — they stay attached to the version that produced them.',
+    honestyLine:
+      'Where the written standard and the engine differ, the engine version recorded on each scan governs recomputation.',
+    recomputeHeading: 'Recompute any score yourself',
+    recomputeIntro:
+      'The scoring engine is a pure function: no IO, no clock, no network. Clone the repository, run the test suite, and feed a recorded snapshot back into the engine.',
+    recomputeClone: '1. Clone and run the engine test suite (Node ≥ 22, zero dependencies):',
+    recomputeRun: '2. Feed a recorded snapshot ({ signals, afr } per site) back into the engine:',
+    neutralityHeading: 'Neutrality pledge',
+    neutralityIntro: 'Read it verbatim — this is the promise the product is built on (spec §11.2 / X9).',
+    neutralityPledge: [
+      'Paid placements never change ranking or grades. The natural list is always a pure AFR-score descending sort; money buys exposure in a separate Sponsored block, never a better position in the natural order and never a better-looking grade.',
+      'Every sponsored slot shows the site\'s real grade ring and score — an F-grade site can buy exposure, but it cannot buy an A-grade appearance.',
+      'Ads live in visually separated blocks with a permanent "Sponsored" label, never mixed into natural results, and hovering an ad never changes a grade color.',
+      'Verification, badges, evidence chains and score-change notifications stay free forever. Nothing in the free tier is throttled to force an upgrade.',
+    ],
+    dataHeading: 'Data sources',
+    dataItems: [
+      ['Seed set', 'Tranco daily Top 1M (tranco-list.eu, free for academic use with attribution).'],
+      ['Scan evidence', 'Public snapshots committed to github.com/imAiAPP/aiapp-data — git versioning is the audit trail.'],
+      ['Corrections', 'Pull requests to the data repository (corrections/) trigger a re-scan; verified owners may publish a statement.'],
+    ],
+    schemaHeading: 'Machine-readable standard',
+    schemaBody:
+      'The whole standard is served as JSON at /api/v1/method (layers, per-sub-check points, grade thresholds) so tools can consume it without scraping this page.',
+    schemaLink: 'Open /api/v1/method',
+    license: 'AFR v1.0 is published under CC BY 4.0 — reuse it with attribution.',
+  },
+  'zh-CN': {
+    title: 'AFR 标准全文',
+    description:
+      'AFR v1.0 完整标准：三层模型、每个子项与分值、等级阈值、引擎版本、复算指南与中立性承诺。',
+    intro:
+      'AFR（AI-Friendliness Rating，AI 友好度评级）给每个网站 0–100 分，衡量它对 AI 爬虫与智能体有多开放。只测公开可复现的事实：每个子项 = 一次人人可重复的 HTTP GET / DNS 查询，每个得分点都能链到原始证据。等级是开放度坐标，不是道德评判。',
+    toc: ['三层模型', '全部子项', '等级与策略', '引擎版本', '复算指南', '中立性', '数据来源', '机读标准'],
+    layerHeading: '三层模型',
+    layerIntro:
+      '总分 100 = 35 + 40 + 25。可懂层权重最高，因为“内容机器可读”才是 AI 友好的本体：技术上全开放但内容混乱的站，在 AI 实用性上仍然不及格。',
+    colLayer: '层',
+    colQuestion: '回答的问题',
+    colWeight: '权重',
+    questions: { L1: 'AI 能不能来？', L2: '来了能不能读懂？', L3: '能不能替用户干活？' },
+    checksHeading: '全部子项',
+    checksIntro: '严格按标准分组。分值固定，不依赖观点、热度或付费。',
+    colId: 'ID',
+    colFamily: '家族',
+    colUa: 'User-agent',
+    colPoints: '分值',
+    colMeasures: '测什么',
+    families: { search: '搜索 / 引用型', hybrid: '混合型', training: '训练型' },
+    familySubtotal: '本组合计',
+    familyNote: (ua: string, fam: string) => `robots.txt 放行 ${ua} 即得该分（${fam} 家族）；取“最具体匹配”的规则组裁定。`,
+    layerIntros: {
+      L1: '可达层——35 分。AI 爬虫能不能拿到你的内容？其中 25 分在 robots.txt 的 AI 爬虫政策上，按爬虫家族分别记分；没有 robots.txt 即协议缺省（全部允许），按定义记满分。',
+      L2: '可懂层——40 分。爬虫来了，能不能读懂页面？llms.txt、结构化数据、语义化 HTML、sitemap 与内容信号。诚实披露：llms.txt 是机器可读性加分项，不是 AI 引用保证。',
+      L3: '可交互层——25 分。AI 能不能替用户干活：调用公开 API、读取 Agent 指令、通过 MCP 连接、或使用站内 AI 功能？',
+    },
+    groups: {
+      A1: ['robots.txt AI 爬虫政策', '按 AI 爬虫家族记分：搜索/引用型 9、混合型 6、训练型 10。每个 UA 取“最具体匹配”的规则组裁定（RFC 9309）；部分 Disallow（如仅 /private/）视为允许，全站 Disallow 该家族记 0。'],
+      A2: ['无技术墙', '不执行 JS 的爬虫也要能读到首页正文，且首页不能是“登录后查看”型的强制登录墙。'],
+      A3: ['基础可用性', 'HTTPS 且证书有效、首页响应 < 2.5s（3 次取中位）、无可疑跳转链（≤2 跳且同域族）。'],
+      B1: ['llms.txt 家族', '面向 AI 阅读者的机器可读内容地图。诚实披露：llms.txt 是可读性加分项，并非 AI 引用的排名信号。'],
+      B2: ['结构化数据', 'JSON-LD 或 microdata，以及让智能体理解页面主题的实体类型。'],
+      B3: ['语义化 HTML', '标题层级、图片 alt 覆盖率、OG 标签与 html lang 声明。'],
+      B4: ['Sitemap', '/sitemap.xml 可达、含 lastmod，并覆盖首页抽样链接。'],
+      B5: ['内容信号', '可提取文本量、机器可读日期与可达的 About / 联系路径。'],
+      C1: ['公开 API', '智能体能直接调用的 API、人类可读文档与机器可读 OpenAPI spec。'],
+      C2: ['Agent 指令', '/agents.md，以及 llms.txt 中的 agent 使用政策段（Optional 部分）。'],
+      C3: ['MCP 接口', '站点或其文档声明的公开 MCP server，URL 可达。'],
+      C4: ['站内 AI 功能', '站内 AI 助手 / AI 搜索 / 生成式功能——唯一允许在自动化之外做人工抽检的子项。'],
+    },
+    checkDescriptions: {
+      'A2.no-js-body': ['无 JS 的 UA 能取到可读正文（文本 ≥ 80 词或含 <noscript> 内容）。', '无 JS 的 UA 能取到可读正文（文本 ≥ 80 词或含 <noscript> 内容）。'],
+      'A2.no-login-wall': ['首页无全站强制登录墙。', '首页无全站强制登录墙。'],
+      'A3.https-valid': ['HTTPS 且证书有效。', 'HTTPS 且证书有效。'],
+      'A3.response-time': ['首页响应 < 2.5s（3 次取中位）。', '首页响应 < 2.5s（3 次取中位）。'],
+      'A3.redirect-chain': ['无可疑跳转链（≤2 跳且同域族）。', '无可疑跳转链（≤2 跳且同域族）。'],
+      'B1.llms-txt': ['/llms.txt 存在且返回 200。', '/llms.txt 存在且返回 200。'],
+      'B1.format': ['格式合规：H1 + 简介 + 可解析的 Markdown 链接列表。', '格式合规：H1 + 简介 + 可解析的 Markdown 链接列表。'],
+      'B1.llms-full-txt': ['/llms-full.txt 存在。', '/llms-full.txt 存在。'],
+      'B2.json-ld': ['页面含 JSON-LD 或 microdata。', '页面含 JSON-LD 或 microdata。'],
+      'B2.core-entity': ['含核心实体类型：Organization / WebSite / Article / Product。', '含核心实体类型：Organization / WebSite / Article / Product。'],
+      'B2.rich-type': ['含丰富类型：FAQPage / HowTo / BreadcrumbList。', '含丰富类型：FAQPage / HowTo / BreadcrumbList。'],
+      'B3.unique-h1': ['全页唯一 <h1>。', '全页唯一 <h1>。'],
+      'B3.heading-order': ['标题层级无跳级（h1 → h2 → h3）。', '标题层级无跳级（h1 → h2 → h3）。'],
+      'B3.img-alt': ['<img> alt 覆盖率 ≥ 60%。', '<img> alt 覆盖率 ≥ 60%。'],
+      'B3.og-tags': ['存在 og:title / og:description。', '存在 og:title / og:description。'],
+      'B3.html-lang': ['声明 <html lang>。', '声明 <html lang>。'],
+      'B4.sitemap-reachable': ['/sitemap.xml 可达（robots.txt 声明或直接命中）。', '/sitemap.xml 可达（robots.txt 声明或直接命中）。'],
+      'B4.lastmod': ['sitemap 条目含 lastmod。', 'sitemap 条目含 lastmod。'],
+      'B4.link-coverage': ['首页抽样 10 条链接，≥80% 在 sitemap 中。', '首页抽样 10 条链接，≥80% 在 sitemap 中。'],
+      'B5.word-count': ['首页可提取文本 ≥ 500 词。', '首页可提取文本 ≥ 500 词。'],
+      'B5.machine-dates': ['机器可读日期（<time datetime> 或 ISO 格式）。', '机器可读日期（<time datetime> 或 ISO 格式）。'],
+      'B5.about-contact': ['首页含 about / contact 链接且可达。', '首页含 about / contact 链接且可达。'],
+      'C1.public-api': ['检测到公开 API（llms.txt / 常见路径 / 开发者子域）。', '检测到公开 API（llms.txt / 常见路径 / 开发者子域）。'],
+      'C1.api-docs': ['人类可读的 API 文档。', '人类可读的 API 文档。'],
+      'C1.openapi-spec': ['机器可读 OpenAPI spec（/.well-known/openapi.yaml 或文档页 schema 引用）。', '机器可读 OpenAPI spec（/.well-known/openapi.yaml 或文档页 schema 引用）。'],
+      'C2.agents-md': ['/agents.md 存在。', '/agents.md 存在。'],
+      'C2.llms-agent-policy': ['llms.txt 中含 agent 使用政策 / 指令段。', 'llms.txt 中含 agent 使用政策 / 指令段。'],
+      'C3.mcp-server': ['声明了公开 MCP server，且 URL 可达。', '声明了公开 MCP server，且 URL 可达。'],
+      'C4.ai-features': ['站内 AI 助手 / AI 搜索 / 生成式功能。', '站内 AI 助手 / AI 搜索 / 生成式功能。'],
+    },
+    gradesHeading: '等级阈值',
+    gradesIntro: 'v1.0 临时阈值；只在季度边界按分数分布校准，历史分数按其当时的引擎版本保留展示。',
+    colGrade: '等级',
+    colRange: '分数区间',
+    colLabel: '名称',
+    colMeaning: '含义',
+    strategiesHeading: '策略标签',
+    strategiesIntro: '仅由 robots.txt 得出的第二条独立坐标。标签与等级并列展示，不参与扣分——它解释分数背后的策略。',
+    engineHeading: '引擎版本',
+    engineIntro: '每次扫描都会记录产出它的引擎版本，本站任何分数都可被逐位复算。',
+    rowStandard: '书面标准',
+    rowEngine: '评分引擎',
+    rowScanner: '扫描器',
+    rowUa: '爬虫 User-Agent',
+    engineNote: '每份快照都存 engine_version；历史分数绝不用新引擎重算——始终绑定产出它的那个版本。',
+    honestyLine: '当书面标准与引擎实现不一致时，以每次扫描记录的引擎版本为准进行复算。',
+    recomputeHeading: '自己复算任何评分',
+    recomputeIntro: '评分引擎是纯函数：无 IO、无时钟、无网络。克隆仓库、跑测试，再把记录好的快照喂回引擎即可。',
+    recomputeClone: '1. 克隆仓库并运行引擎测试（Node ≥ 22，零依赖）：',
+    recomputeRun: '2. 把记录好的快照（每站 { signals, afr }）喂回引擎：',
+    neutralityHeading: '中立性承诺',
+    neutralityIntro: '原文照录——这是产品立身之本（方案书 §11.2 / X9）。',
+    neutralityPledge: [
+      '付费永远不能改变排名或等级。自然排行始终是纯 AFR 分数降序；付费买到的是独立 Sponsored 区块的曝光位，绝不会改变自然榜位次，也绝买不到更好看的等级。',
+      '每个广告位都强制展示该站真实的等级色环与分数——F 级站可以买曝光，但买不到 A 级外观。',
+      '广告以带固定 “Sponsored” 角标的独立区块呈现，绝不与自然结果混排；hover 广告不会改变任何等级色。',
+      '站长验证、徽章、证据链与评分变化通知永久免费。免费层绝不设限逼升级。',
+    ],
+    dataHeading: '数据来源',
+    dataItems: [
+      ['种子集', 'Tranco 每日 Top 1M（tranco-list.eu，学术用途免费署名）。'],
+      ['扫描证据', '公开快照提交至 github.com/imAiAPP/aiapp-data——git 版本化即审计轨迹。'],
+      ['纠错通道', '向数据仓提 PR（corrections/）即触发重扫复核；已验证站方可发布声明。'],
+    ],
+    schemaHeading: '机读标准',
+    schemaBody: '整套标准以 JSON 形式提供在 /api/v1/method（三层、每个子项分值、等级阈值），工具无需抓取本页即可消费。',
+    schemaLink: '打开 /api/v1/method',
+    license: 'AFR v1.0 以 CC BY 4.0 发布——署名后可自由复用。',
+  },
+} as const;
+
+const P = PROSE[locale === 'zh-CN' ? 'zh-CN' : 'en'];
+const lang = isZh ? 'zh' : 'en';
+
+/* ── structured data derived from AFR_METHOD ──────────────────────────── */
+
+type GroupKey = keyof typeof P.groups;
+const groupsOf = (layerId: 'L1' | 'L2' | 'L3') => {
+  const layer = AFR_METHOD.layers.find((l) => l.id === layerId)!;
+  const out: { key: GroupKey; total: number; checks: typeof layer.checks }[] = [];
+  for (const c of layer.checks) {
+    const key = c.id.split('.')[0] as GroupKey;
+    const last = out[out.length - 1];
+    if (last && last.key === key) last.checks.push(c);
+    else out.push({ key, total: 0, checks: [c] });
+  }
+  for (const g of out) g.total = g.checks.reduce((n, c) => n + c.points, 0);
+  return out;
+};
+
+const FAMILY_ORDER = ['search', 'hybrid', 'training'] as const;
+const familyOf = (c: { family?: string }) =>
+  (FAMILY_ORDER as readonly string[]).includes(c.family ?? '') ? (c.family as string) : '';
+
+const descOf = (id: string, ua?: string, family?: string) => {
+  if (ua && family) return P.familyNote(ua, P.families[family as keyof typeof P.families]);
+  const entry = (P.checkDescriptions as Record<string, [string, string]>)[id];
+  if (!entry) return '';
+  return lang === 'zh' ? entry[1] : entry[0];
+};
+
+const rangeOf = (min: number, prevMin?: number) => `${min}–${prevMin !== undefined ? prevMin - 1 : 100}`;
+
+const cloneSnippet = `git clone https://github.com/imAiAPP/aiapp-web
+cd aiapp-web
+npm test   # = node --test packages/*/test/*.test.ts`;
+
+const runSnippet = `import { scoreAfr } from './packages/afr/src/index.ts';
+import snapshot from './scans/github.com.json' with { type: 'json' };
+
+const result = scoreAfr(snapshot.signals);
+console.log(result.score, result.grade, result.engineVersion);`;
+
+const strategyOrder: StrategyTagType[] = ['AI-Open', 'Middle-Path', 'Training-Open', 'AI-Closed', 'Unconfigured'];
+
+const sectionIds = ['layers', 'checks', 'grades', 'engine', 'recompute', 'neutrality', 'data', 'schema'];
+---
+
+<Base title={P.title} description={P.description}>
+  <div class="container method">
+    <header class="hero">
+      <p class="eyebrow mono">AFR v{AFR_METHOD.version}</p>
+      <h1>{P.title}</h1>
+      <p class="lede">{P.intro}</p>
+      <nav class="toc" aria-label="contents">
+        {
+          sectionIds.map((id, i) => (
+            <a class="chip" href={`#${id}`}>
+              {P.toc[i]}
+            </a>
+          ))
+        }
+      </nav>
+    </header>
+
+    <!-- (a) three-layer model -->
+    <section class="sec" id="layers">
+      <h2>{P.layerHeading}</h2>
+      <p>{P.layerIntro}</p>
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>{P.colLayer}</th>
+            <th>{P.colQuestion}</th>
+            <th class="num">{P.colWeight}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {
+            AFR_METHOD.layers.map((layer) => (
+              <tr>
+                <td>
+                  <span class="lid mono">{layer.id}</span>{' '}
+                  {layer.name[lang as 'en' | 'zh'] ?? L.layers[layer.id]}
+                </td>
+                <td>{P.questions[layer.id]}</td>
+                <td class="num">{layer.weight}</td>
+              </tr>
+            ))
+          }
+        </tbody>
+      </table>
+    </section>
+
+    <!-- (b) full check tables per layer -->
+    <section class="sec" id="checks">
+      <h2>{P.checksHeading}</h2>
+      <p>{P.checksIntro}</p>
+
+      {
+        AFR_METHOD.layers.map((layer) => (
+          <div class="layer-block">
+            <h3 class="layer-h">
+              <span class="lid mono">{layer.id}</span> {layer.name[lang as 'en' | 'zh'] ?? L.layers[layer.id]}
+              <span class="w mono">
+                {layer.weight} {lang === 'zh' ? '分' : 'points'}
+              </span>
+            </h3>
+            <p class="layer-intro">{P.layerIntros[layer.id]}</p>
+
+            {groupsOf(layer.id).map((g) => {
+              const [gName, gIntro] = P.groups[g.key];
+              return (
+                <div class="group">
+                  <h4 class="group-h">
+                    <span class="mono">{g.key}</span> {gName}
+                    <span class="g-total mono">
+                      {g.total} {lang === 'zh' ? '分' : 'pts'}
+                    </span>
+                  </h4>
+                  <p class="group-intro">{gIntro}</p>
+                  <table class="tbl dense">
+                    <thead>
+                      <tr>
+                        <th>{P.colId}</th>
+                        <th>{P.colFamily}</th>
+                        <th>{P.colUa}</th>
+                        <th class="num">{P.colPoints}</th>
+                        <th>{P.colMeasures}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {g.checks.map((c) => {
+                        const fam = familyOf(c);
+                        return (
+                          <tr>
+                            <td class="mono id-cell">{c.id}</td>
+                            <td>{fam ? P.families[fam as keyof typeof P.families] : '—'}</td>
+                            <td class="mono">{c.ua ?? '—'}</td>
+                            <td class="num">{c.points}</td>
+                            <td>{descOf(c.id, c.ua, fam)}</td>
+                          </tr>
+                        );
+                      })}
+                      <tr class="subtotal">
+                        <td colspan={3}>{P.familySubtotal}</td>
+                        <td class="num">{g.total}</td>
+                        <td />
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })}
+          </div>
+        ))
+      }
+    </section>
+
+    <!-- (c) grades + strategy tags -->
+    <section class="sec" id="grades">
+      <h2>{P.gradesHeading}</h2>
+      <p>{P.gradesIntro}</p>
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>{P.colGrade}</th>
+            <th class="num">{P.colRange}</th>
+            <th>{P.colLabel}</th>
+            <th>{P.colMeaning}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {
+            AFR_METHOD.grades.map((g, i) => {
+              const info = L.grades[g.grade as 'A' | 'B' | 'C' | 'D' | 'F'];
+              return (
+                <tr>
+                  <td>
+                    <span class="sw" style={`background:var(--grade-${g.grade.toLowerCase()});`} />
+                    <span class="mono g-letter" style={`color:var(--grade-${g.grade.toLowerCase()});`}>
+                      {g.grade}
+                    </span>
+                  </td>
+                  <td class="num">{rangeOf(g.min, i > 0 ? AFR_METHOD.grades[i - 1]!.min : undefined)}</td>
+                  <td>{info?.label ?? g.grade}</td>
+                  <td>{info?.slogan ?? ''}</td>
+                </tr>
+              );
+            })
+          }
+        </tbody>
+      </table>
+
+      <h3 class="sub-h">{P.strategiesHeading}</h3>
+      <p>{P.strategiesIntro}</p>
+      <ul class="strats">
+        {
+          strategyOrder.map((t) => (
+            <li>
+              <StrategyTag tag={t} locale={locale} />
+              <span class="strat-desc">{L.strategies[t]?.desc ?? t}</span>
+            </li>
+          ))
+        }
+      </ul>
+    </section>
+
+    <!-- (d) engine versions -->
+    <section class="sec" id="engine">
+      <h2>{P.engineHeading}</h2>
+      <p>{P.engineIntro}</p>
+      <table class="tbl">
+        <tbody>
+          <tr>
+            <th class="row-h">{P.rowStandard}</th>
+            <td class="mono">AFR v{AFR_METHOD.version}</td>
+          </tr>
+          <tr>
+            <th class="row-h">{P.rowEngine}</th>
+            <td class="mono">{ENGINE_VERSION}</td>
+          </tr>
+          <tr>
+            <th class="row-h">{P.rowScanner}</th>
+            <td class="mono">{SCANNER_VERSION}</td>
+          </tr>
+          <tr>
+            <th class="row-h">{P.rowUa}</th>
+            <td class="mono ua">{USER_AGENT}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="note">{P.engineNote}</p>
+      <p class="honest mono">{P.honestyLine}</p>
+    </section>
+
+    <!-- (e) recompute guide -->
+    <section class="sec" id="recompute">
+      <h2>{L.ui.recomputeTitle ?? P.recomputeHeading}</h2>
+      <p>{P.recomputeIntro}</p>
+      <p class="step">{P.recomputeClone}</p>
+      <pre class="mono"><code>{cloneSnippet}</code></pre>
+      <p class="step">{P.recomputeRun}</p>
+      <pre class="mono"><code>{runSnippet}</code></pre>
+    </section>
+
+    <!-- (f) neutrality pledge -->
+    <section class="sec" id="neutrality">
+      <h2>{P.neutralityHeading}</h2>
+      <p class="pledge-lead">{L.ui.neutralityStatement ?? P.neutralityIntro}</p>
+      <p class="pledge-intro">{P.neutralityIntro}</p>
+      <ul class="pledge">
+        {P.neutralityPledge.map((line) => <li>{line}</li>)}
+      </ul>
+      <p class="pledge-foot mono">{L.ui.footerPledge}</p>
+    </section>
+
+    <!-- (g) data sources -->
+    <section class="sec" id="data">
+      <h2>{P.dataHeading}</h2>
+      <dl class="sources">
+        {
+          P.dataItems.map(([k, v]) => (
+            <div class="src-row">
+              <dt class="mono">{k}</dt>
+              <dd>{v}</dd>
+            </div>
+          ))
+        }
+      </dl>
+    </section>
+
+    <!-- (h) machine-readable schema + license -->
+    <section class="sec" id="schema">
+      <h2>{P.schemaHeading}</h2>
+      <p>{P.schemaBody}</p>
+      <p>
+        <a class="btn" href="/api/v1/method">{P.schemaLink}</a>
+      </p>
+      <p class="license mono">{P.license}</p>
+    </section>
+  </div>
+</Base>
+
+<style>
+  .method {
+    padding-top: 32px;
+    padding-bottom: 24px;
+  }
+
+  .hero {
+    max-width: 820px;
+    margin-bottom: 28px;
+  }
+  .eyebrow {
+    margin: 0 0 8px;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--brand);
+  }
+  .hero h1 {
+    font-size: clamp(28px, 4.4vw, 42px);
+    margin-bottom: 12px;
+  }
+  .lede {
+    margin: 0;
+    font-size: 16px;
+    line-height: 1.7;
+    color: var(--text-2);
+  }
+  .toc {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 18px;
+  }
+  .toc .chip {
+    font-size: 12px;
+    transition: border-color var(--t-micro) var(--ease), color var(--t-micro) var(--ease);
+  }
+  .toc .chip:hover {
+    border-color: var(--brand);
+    color: var(--brand);
+  }
+
+  .sec {
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 26px 26px 24px;
+    margin-bottom: 20px;
+    scroll-margin-top: 84px;
+  }
+  .sec h2 {
+    font-size: 22px;
+    margin-bottom: 10px;
+  }
+  .sec > p {
+    margin: 0 0 16px;
+    color: var(--text-2);
+    max-width: 78ch;
+  }
+  .sub-h {
+    font-size: 17px;
+    margin: 26px 0 8px;
+  }
+
+  /* tables */
+  .tbl {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+  }
+  .tbl th,
+  .tbl td {
+    text-align: left;
+    vertical-align: top;
+    padding: 9px 10px;
+    border-bottom: 1px solid var(--line);
+  }
+  .tbl thead th {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-3);
+    font-weight: 600;
+    border-bottom-color: var(--text-3);
+  }
+  .tbl tbody tr:hover td {
+    background: var(--bg-elevated);
+  }
+  .tbl .num {
+    font-family: var(--font-mono);
+    white-space: nowrap;
+    width: 72px;
+  }
+  .tbl.dense {
+    font-size: 13px;
+  }
+  .tbl.dense th,
+  .tbl.dense td {
+    padding: 7px 9px;
+  }
+  .id-cell {
+    font-size: 12.5px;
+    color: var(--text-2);
+    white-space: nowrap;
+  }
+  .row-h {
+    width: 180px;
+    font-weight: 500;
+    color: var(--text-2);
+    font-size: 13px;
+  }
+  .ua {
+    word-break: break-all;
+  }
+  .subtotal td {
+    color: var(--text-3);
+    font-size: 11.5px;
+    border-bottom: none;
+    padding-top: 6px;
+  }
+  .subtotal:hover td {
+    background: transparent;
+  }
+
+  .layer-block {
+    margin-top: 26px;
+  }
+  .layer-h {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    font-size: 17px;
+    margin-bottom: 6px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--line);
+  }
+  .lid {
+    color: var(--brand);
+    font-size: 14px;
+  }
+  .w {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--text-3);
+  }
+  .layer-intro {
+    margin: 0 0 18px;
+    color: var(--text-2);
+    max-width: 82ch;
+  }
+  .group {
+    margin-bottom: 22px;
+  }
+  .group-h {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 15px;
+    margin-bottom: 4px;
+  }
+  .group-h .g-total {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--text-3);
+    font-weight: 400;
+  }
+  .group-intro {
+    margin: 0 0 10px;
+    font-size: 13.5px;
+    color: var(--text-3);
+    max-width: 82ch;
+  }
+
+  /* grades */
+  .sw {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    margin-right: 8px;
+    vertical-align: -1px;
+  }
+  .g-letter {
+    font-weight: 700;
+  }
+  .strats {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 10px;
+  }
+  .strats li {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .strat-desc {
+    font-size: 13.5px;
+    color: var(--text-2);
+  }
+
+  .note {
+    font-size: 13.5px;
+    color: var(--text-2);
+  }
+  .honest {
+    padding: 10px 12px;
+    background: var(--bg-elevated);
+    border-left: 2px solid var(--brand);
+    border-radius: 0 var(--r-1) var(--r-1) 0;
+    font-size: 12.5px;
+    line-height: 1.7;
+    color: var(--text-1);
+  }
+
+  .step {
+    margin: 16px 0 8px;
+    color: var(--text-2);
+    font-size: 14px;
+  }
+  pre {
+    margin: 0 0 4px;
+    padding: 14px 16px;
+    background: var(--bg-ink);
+    border: 1px solid var(--line);
+    border-radius: var(--r-2);
+    overflow-x: auto;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    line-height: 1.7;
+    color: var(--text-1);
+  }
+
+  .pledge-lead {
+    font-family: var(--font-display);
+    font-size: 20px;
+    color: var(--text-1) !important;
+    margin-bottom: 4px !important;
+  }
+  .pledge-intro {
+    margin-bottom: 14px !important;
+    font-size: 13.5px;
+  }
+  .pledge {
+    margin: 0;
+    padding-left: 18px;
+    display: grid;
+    gap: 10px;
+    color: var(--text-2);
+    max-width: 82ch;
+  }
+  .pledge-foot {
+    margin: 18px 0 0;
+    padding-top: 12px;
+    border-top: 1px dashed var(--line);
+    font-size: 12.5px;
+    color: var(--brand);
+  }
+
+  .sources {
+    margin: 0;
+    display: grid;
+    gap: 12px;
+  }
+  .src-row {
+    display: grid;
+    grid-template-columns: 160px 1fr;
+    gap: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--line);
+  }
+  .src-row:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+  .src-row dt {
+    font-size: 12.5px;
+    color: var(--text-3);
+  }
+  .src-row dd {
+    margin: 0;
+    font-size: 13.5px;
+    color: var(--text-2);
+  }
+
+  .license {
+    font-size: 12.5px;
+    color: var(--text-3);
+    margin: 6px 0 0;
+  }
+
+  @media (max-width: 767px) {
+    .sec {
+      padding: 20px 16px;
+    }
+    .tbl {
+      display: block;
+      overflow-x: auto;
+    }
+    .src-row {
+      grid-template-columns: 1fr;
+      gap: 4px;
+    }
+    .layer-h {
+      flex-wrap: wrap;
+    }
+  }
+</style>

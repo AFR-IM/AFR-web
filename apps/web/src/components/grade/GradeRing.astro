@@ -1,0 +1,140 @@
+---
+// GradeRing — the product's signature component (spec §10.4 / §10.8).
+// conic-gradient ring from 0°, ring width 8px (48px thumb: 5px), centered
+// mono grade letter + score. Entrance: score counts 0→value while the ring
+// sweeps to the score ratio (both 600ms); prefers-reduced-motion → final state.
+
+import type { Grade } from '../../data/types.ts';
+
+interface Props {
+  score: number;
+  grade: Grade;
+  size?: number; // 96 detail / 48 card (spec §10.4)
+  animate?: boolean;
+  class?: string;
+}
+
+const { score, grade, size = 96, animate = true, class: className = '' } = Astro.props;
+const pct = Math.max(0, Math.min(100, score));
+const ringW = size >= 96 ? 8 : 5;
+const letterSize = Math.round(size * 0.34);
+const scoreSize = Math.round(size * 0.16);
+---
+
+<span
+  class:list={['ring', className]}
+  data-grade={grade}
+  style={`--d:${size}px;--ring-w:${ringW}px;--pct:${pct}%;--letter:${letterSize}px;--score:${scoreSize}px;`}
+  data-ring-count={animate ? score : undefined}
+  role="img"
+  aria-label={`Grade ${grade}, score ${score} of 100`}
+>
+  <span class="ring-track"></span>
+  <span class="ring-fill"></span>
+  <span class="ring-core">
+    <span class="ring-letter">{grade}</span>
+    <span class="ring-score">{animate ? 0 : score}</span>
+  </span>
+</span>
+
+<style>
+  .ring {
+    position: relative;
+    display: inline-grid;
+    place-items: center;
+    width: var(--d);
+    height: var(--d);
+    flex: none;
+    /* grade color flows in via data-grade on :where? set through parent variable */
+    --ring-color: var(--grade-a);
+  }
+  .ring[data-grade='B'] { --ring-color: var(--grade-b); }
+  .ring[data-grade='C'] { --ring-color: var(--grade-c); }
+  .ring[data-grade='D'] { --ring-color: var(--grade-d); }
+  .ring[data-grade='F'] { --ring-color: var(--grade-f); }
+
+  .ring-track,
+  .ring-fill {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+  }
+  .ring-track {
+    background: conic-gradient(var(--line) 0 100%);
+    mask: radial-gradient(farthest-side, transparent calc(100% - var(--ring-w)), #000 0);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - var(--ring-w)), #000 0);
+  }
+  .ring-fill {
+    background: conic-gradient(var(--ring-color) var(--sweep, var(--pct)), transparent 0);
+    mask: radial-gradient(farthest-side, transparent calc(100% - var(--ring-w)), #000 0);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - var(--ring-w)), #000 0);
+  }
+
+  .ring-core {
+    display: grid;
+    place-items: center;
+    line-height: 1;
+    z-index: 1;
+  }
+  .ring-letter {
+    font-family: var(--font-mono);
+    font-size: var(--letter);
+    font-weight: 700;
+    color: var(--ring-color);
+  }
+  .ring-score {
+    font-family: var(--font-mono);
+    font-size: var(--score);
+    color: var(--text-2);
+    margin-top: 2px;
+  }
+
+  @property --sweep {
+    syntax: '<percentage>';
+    inherits: false;
+    initial-value: 0%;
+  }
+
+  .ring[data-animate] .ring-fill {
+    animation: ring-sweep 600ms var(--ease) forwards;
+  }
+
+  @keyframes ring-sweep {
+    from { --sweep: 0%; }
+    to { --sweep: var(--pct); }
+  }
+
+  /* re-scan state (§10.6): ring spins, score blinks */
+  .ring[data-rescanning] .ring-fill {
+    animation: ring-spin 1.2s linear infinite;
+  }
+  @keyframes ring-spin {
+    to { transform: rotate(360deg); }
+  }
+</style>
+
+<script>
+  // Score counter 0→value, 600ms mono count-up (spec §10.8 "分数长出来").
+  // Runs once per page; honors prefers-reduced-motion by skipping to the end.
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!reduce) {
+    for (const el of document.querySelectorAll<HTMLElement>('[data-ring-count]')) {
+      el.setAttribute('data-animate', '');
+      const target = Number(el.dataset.ringCount ?? 0);
+      const out = el.querySelector<HTMLElement>('.ring-score');
+      if (!out || target <= 0) continue;
+      const t0 = performance.now();
+      const tick = (now: number) => {
+        const p = Math.min(1, (now - t0) / 600);
+        out.textContent = String(Math.round(target * p));
+        if (p < 1) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    }
+  } else {
+    for (const el of document.querySelectorAll<HTMLElement>('[data-ring-count]')) {
+      const out = el.querySelector<HTMLElement>('.ring-score');
+      if (out) out.textContent = el.dataset.ringCount ?? out.textContent;
+    }
+  }
+</script>

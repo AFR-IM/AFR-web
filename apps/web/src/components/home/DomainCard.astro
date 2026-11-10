@@ -1,0 +1,190 @@
+---
+// DomainCard — spec §10.4: 240×110 card = GradeRing(48) + mono domain + title +
+// two chips (category / strategy). Interaction matrix §10.6: default
+// --bg-surface, hover lifts 2px with the border taking the site's grade color
+// (150ms ease-out), focus-visible = same + 2px --brand outer outline, plus a
+// `skeleton` loading variant (breathing brightness, 1.6s).
+//
+// The root anchor carries the data-* attributes pages filter/sort on
+// (data-site-grade / data-score / data-rank / data-scanned / data-tags /
+// data-lang / data-search), so pages never have to style child markup.
+
+import GradeRing from '../grade/GradeRing.astro';
+import { getCatalog, pathFor, type Locale } from '../../i18n/loader.ts';
+import type { SiteCard } from '../../data/types.ts';
+import { gradeVar } from '../../utils/grade.ts';
+
+interface Props {
+  site: SiteCard;
+  locale: Locale;
+  index?: number; // drives the 30ms stagger on re-sort (§10.6)
+  skeleton?: boolean;
+}
+
+const { site, locale, index = 0, skeleton = false } = Astro.props;
+const L = getCatalog(locale);
+const catName = site.category ? (L.categories[site.category]?.name ?? site.category) : '';
+const strategy = L.strategies[site.strategyTag]?.label ?? site.strategyTag;
+const href = pathFor(locale, `/site/${site.domain}`);
+const searchBlob = [site.domain, site.title ?? '', ...(site.tags ?? [])]
+  .join(' ')
+  .toLowerCase();
+---
+
+{skeleton ? (
+  <div class="card card-skeleton" aria-hidden="true">
+    <span class="sk-ring"></span>
+    <span class="sk-body">
+      <span class="sk-line sk-w60"></span>
+      <span class="sk-line sk-w90"></span>
+      <span class="sk-line sk-w40"></span>
+    </span>
+  </div>
+) : (
+  <a
+    class="card"
+    href={href}
+    style={`--i:${index};--g:${gradeVar(site.grade)}`}
+    data-site-grade={site.grade}
+    data-score={site.score}
+    data-rank={site.rankSource ?? ''}
+    data-scanned={site.scannedAt}
+    data-cat={site.category ?? ''}
+    data-tags={(site.tags ?? []).join(' ')}
+    data-lang={site.lang ?? ''}
+    data-search={searchBlob}
+  >
+    <GradeRing score={site.score} grade={site.grade} size={48} class="card-ring" />
+    <span class="card-body">
+      <span class="card-domain mono">{site.domain}</span>
+      <span class="card-title">{site.title}</span>
+      <span class="card-chips">
+        {catName && <span class="chip">{catName}</span>}
+        <span class="chip">{strategy}</span>
+      </span>
+    </span>
+  </a>
+)}
+
+<style>
+  .card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 110px; /* spec §10.4 */
+    padding: 14px;
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    transition: transform 150ms ease-out, border-color 150ms ease-out;
+  }
+  .card:hover {
+    transform: translateY(-2px);
+    border-color: var(--g); /* grade color lights the border (§10.6) */
+  }
+  .card:focus-visible {
+    transform: translateY(-2px);
+    border-color: var(--g);
+    outline: 2px solid var(--brand); /* 2px --brand outer outline */
+    outline-offset: 2px;
+  }
+
+  .card-body {
+    display: grid;
+    gap: 5px;
+    min-width: 0;
+    flex: 1;
+  }
+  .card-domain {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-1);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .card-title {
+    font-size: 12.5px;
+    line-height: 1.4;
+    color: var(--text-2);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .card-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 2px;
+  }
+
+  /* filter state driven by page scripts */
+  .card[hidden] {
+    display: none;
+  }
+
+  /* sorter switch → fade-in, 30ms stagger per index (§10.6); `backwards` keeps
+     the hover transform usable once the animation is done */
+  .card.card-enter {
+    animation: card-in var(--t-standard) var(--ease) backwards;
+    animation-delay: calc(var(--i, 0) * 30ms);
+  }
+  @keyframes card-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .card.card-enter {
+      animation-delay: 0ms;
+    }
+  }
+
+  /* loading skeleton — breathing brightness 1.6s (§10.6 / §10.8) */
+  .card-skeleton {
+    background: var(--bg-elevated);
+    animation: sk-breathe 1.6s ease-in-out infinite;
+    pointer-events: none;
+  }
+  @keyframes sk-breathe {
+    0%,
+    100% {
+      filter: brightness(1);
+    }
+    50% {
+      filter: brightness(1.6);
+    }
+  }
+  .sk-ring {
+    flex: none;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--line);
+  }
+  .sk-body {
+    display: grid;
+    gap: 8px;
+    flex: 1;
+  }
+  .sk-line {
+    height: 10px;
+    border-radius: var(--r-1);
+    background: var(--line);
+  }
+  .sk-w60 {
+    width: 60%;
+  }
+  .sk-w90 {
+    width: 90%;
+  }
+  .sk-w40 {
+    width: 40%;
+  }
+</style>

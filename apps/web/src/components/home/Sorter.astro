@@ -1,0 +1,50 @@
+---
+// Sorter — score | rank | newest (spec §10.3 P2 / §10.6): the active option
+// underlines in --brand, secondary options brighten on hover. Purely
+// presentational; the page script owns sorting and the 30ms stagger fade-in.
+
+interface Props {
+  options: { value: string; label: string }[];
+  active: string;
+  label?: string;
+}
+
+const { options, active, label = 'Sort' } = Astro.props;
+---
+
+<div class="sorter" role="group" aria-label={label}>
+  {options.map((o) => (
+    <button
+      type="button"
+      class:list={['sort-item', { active: o.value === active }]}
+      data-sort={o.value}
+      aria-pressed={o.value === active}
+    >{o.label}</button>
+  ))}
+</div>
+
+<style>
+  .sorter {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .sort-item {
+    padding: 4px 1px;
+    font-size: 13px;
+    color: var(--text-2);
+    border-bottom: 2px solid transparent;
+    transition: color var(--t-micro) var(--ease), border-color var(--t-micro) var(--ease);
+  }
+  .sort-item:hover {
+    color: var(--text-1); /* secondary options light up (§10.6) */
+  }
+  .sort-item.active {
+    color: var(--text-1);
+    border-bottom-color: var(--brand); /* active underline */
+  }
+  .sort-item:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+</style>
