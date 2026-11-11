@@ -15,10 +15,10 @@ describe('GET /api/v1/sites', () => {
     const res = await app().request('/api/v1/sites');
     assert.equal(res.status, 200);
     const body = await res.json();
-    assert.equal(body.total, 5);
+    assert.equal(body.total, 4); // pending.dev (grade Pending) excluded from listings
     assert.deepEqual(
       body.items.map((i: { domain: string }) => i.domain),
-      ['example.com', 'coolsite.io', 'neutral.net', 'closed.org', 'pending.dev'],
+      ['example.com', 'coolsite.io', 'neutral.net', 'closed.org'],
     );
     assert.equal(body.items[0].grade, 'A');
     assert.equal(body.items[0].category, 'dev-tools');
@@ -52,20 +52,20 @@ describe('GET /api/v1/sites', () => {
     const byRank = await (await app().request('/api/v1/sites?sort=rank')).json();
     assert.deepEqual(
       byRank.items.map((i: { domain: string }) => i.domain),
-      ['example.com', 'coolsite.io', 'neutral.net', 'closed.org', 'pending.dev'],
+      ['example.com', 'coolsite.io', 'neutral.net', 'closed.org'],
     );
 
     const byNew = await (await app().request('/api/v1/sites?sort=new')).json();
     assert.deepEqual(
       byNew.items.map((i: { domain: string }) => i.domain),
-      ['pending.dev', 'closed.org', 'neutral.net', 'coolsite.io', 'example.com'],
+      ['closed.org', 'neutral.net', 'coolsite.io', 'example.com'],
     );
   });
 
   it('paginates and rejects unknown sort values', async () => {
     const page2 = await (await app().request('/api/v1/sites?page=2')).json();
     assert.equal(page2.items.length, 0);
-    assert.equal(page2.total, 5);
+    assert.equal(page2.total, 4);
     assert.equal(page2.page, 2);
 
     const bad = await app().request('/api/v1/sites?sort=ads');
@@ -130,9 +130,10 @@ describe('GET /api/v1/stats', () => {
     const body = await res.json();
     assert.equal(body.total, 5);
     assert.equal(body.verified, 1);
+    assert.equal(body.pending, 1); // unratable site counted separately
     // (92 + 78 + 55 + 10) / 4 = 58.75 → 58.8 (Pending has no score)
     assert.equal(body.avg_score, 58.8);
-    assert.deepEqual(body.grades, { A: 1, B: 1, C: 1, D: 0, F: 1, Pending: 1 });
+    assert.deepEqual(body.grades, { A: 1, B: 1, C: 1, D: 0, F: 1 });
   });
 });
 
@@ -148,7 +149,7 @@ describe('GET /api/v1/categories', () => {
     assert.equal(tech.children.length, 2);
     const devTools = tech.children.find((c: { slug: string }) => c.slug === 'dev-tools');
     const news = tech.children.find((c: { slug: string }) => c.slug === 'news');
-    assert.equal(devTools.count, 3); // example.com + coolsite.io + pending.dev
+    assert.equal(devTools.count, 2); // example.com + coolsite.io (Pending excluded)
     assert.equal(news.count, 2);
     assert.equal(devTools.name_en, 'Developer Tools');
     assert.equal(typeof devTools.name_zh, 'string');

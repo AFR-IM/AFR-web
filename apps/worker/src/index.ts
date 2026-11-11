@@ -238,7 +238,9 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
       return c.json({ error: 'invalid_sort', allowed: ['score', 'rank', 'new'] }, 400);
     }
 
-    const where: string[] = ["s.status = 'active'"];
+    // Pending = unratable (neither homepage nor robots readable, calibration Q2):
+    // listed nowhere in natural results; still reachable via GET /sites/:domain.
+    const where: string[] = ["s.status = 'active'", "s.grade != 'Pending'"];
     const params: SqlParam[] = [];
     if (category) {
       where.push('c.slug = ?');
@@ -328,10 +330,11 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
       .prepare(
         `SELECT COUNT(*) AS total,
                 SUM(CASE WHEN verified = 1 THEN 1 ELSE 0 END) AS verified,
-                AVG(score_total) AS avg_score
+                SUM(CASE WHEN grade = 'Pending' THEN 1 ELSE 0 END) AS pending,
+                AVG(CASE WHEN grade != 'Pending' THEN score_total END) AS avg_score
          FROM sites WHERE status = 'active'`,
       )
-      .get<{ total: number; verified: number | null; avg_score: number | null }>();
+      .get<{ total: number; verified: number | null; pending: number | null; avg_score: number | null }>();
     const gradeRows = await db
       .prepare(
         `SELECT grade, COUNT(*) AS n FROM sites
@@ -339,13 +342,16 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
       )
       .all<{ grade: string; n: number }>();
 
+    // Grade distribution covers the five real grades only; Pending is reported
+    // as its own counter (it is a scan state, not a grade — spec §3.5).
     const grades: Record<string, number> = { A: 0, B: 0, C: 0, D: 0, F: 0 };
-    for (const row of gradeRows) grades[row.grade] = row.n;
+    for (const row of gradeRows) if (row.grade in grades) grades[row.grade] = row.n;
 
     const avg = totals?.avg_score;
     return c.json({
       total: totals?.total ?? 0,
       verified: totals?.verified ?? 0,
+      pending: totals?.pending ?? 0,
       avg_score: avg === null || avg === undefined ? null : Math.round(avg * 10) / 10,
       grades,
     });
@@ -358,7 +364,8 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
       .prepare(
         `SELECT c.id, c.slug, c.name_en, c.name_zh, c.parent,
                 (SELECT COUNT(*) FROM sites s
-                  WHERE s.category_id = c.id AND s.status = 'active') AS count
+                  WHERE s.category_id = c.id AND s.status = 'active'
+                    AND s.grade != 'Pending') AS count
          FROM categories c ORDER BY c.id`,
       )
       .all<CategoryRow>();
@@ -399,7 +406,9 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     const requested = Number.parseInt(c.req.query('limit') ?? '', 10);
     const limit = Number.isFinite(requested) && requested > 0 ? Math.min(requested, 50) : LEADERBOARD_SIZE;
 
-    const where: string[] = ["s.status = 'active'", 's.score_total IS NOT NULL'];
+    // Natural ranking: pure AFR score DESC over RATABLE sites only (Pending
+    // carries no comparable score) — ads never mix in (spec §7 / §11.2).
+    const where: string[] = ["s.status = 'active'", "s.grade != 'Pending'", 's.score_total IS NOT NULL'];
     const params: SqlParam[] = [];
     if (category) {
       where.push('c.slug = ?');

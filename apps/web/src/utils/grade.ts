@@ -1,16 +1,19 @@
 // Grade → token helpers shared by all pages/components (one mapping, no dupes).
 
-import type { Grade } from '../data/types.ts';
+import type { Grade, GradeState } from '../data/types.ts';
 
-export const GRADE_VAR: Record<Grade, string> = {
+export type { Grade, GradeState };
+
+export const GRADE_VAR: Record<GradeState, string> = {
   A: 'var(--grade-a)',
   B: 'var(--grade-b)',
   C: 'var(--grade-c)',
   D: 'var(--grade-d)',
   F: 'var(--grade-f)',
+  Pending: 'var(--text-3)', // unratable: neutral, never a grade color
 };
 
-export function gradeVar(g: Grade): string {
+export function gradeVar(g: GradeState): string {
   return GRADE_VAR[g];
 }
 

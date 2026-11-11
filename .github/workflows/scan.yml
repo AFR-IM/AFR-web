@@ -1,5 +1,6 @@
 # AFR scan pipeline (plan §5.6 T0). Runs on GitHub-hosted runners (public repo = free unlimited).
-# Schedule (daily 02:00 UTC) stays commented out until the first-run calibration is reviewed.
+# Schedule enabled after the first-run calibration review (2026-11-10, afr-1.1.0 + T2 thresholds,
+# see docs/calibration/first-scan-2026-11-10.md). Weekly full-rescan job: still TODO (plan §5.6).
 name: scan
 
 on:
@@ -9,8 +10,8 @@ on:
         description: "Number of Tranco top domains to scan"
         required: false
         default: "1000"
-  # schedule:
-  #   - cron: "0 2 * * *"
+  schedule:
+    - cron: "0 2 * * *"
 
 permissions:
   contents: read

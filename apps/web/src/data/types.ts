@@ -1,16 +1,17 @@
 // @aiapp/web data layer types — derived from aiapp-data scan snapshots (spec §5.1:
 // data repo JSON is the SSOT; Pages bakes /data/*.json at build time).
 
-import type { Grade, StrategyTag } from '../../../../packages/shared/src/index.ts';
+import type { Grade, GradeState, StrategyTag } from '../../../../packages/shared/src/index.ts';
 
-export type { Grade, StrategyTag };
+export type { Grade, GradeState, StrategyTag };
 
 /** Aggregated site row used by cards / leaderboard / detail header. */
 export interface SiteCard {
   domain: string;
   title?: string;
   score: number;
-  grade: Grade;
+  /** 'Pending' = unratable (no readable homepage/robots) — excluded from natural ranking */
+  grade: GradeState;
   strategyTag: StrategyTag;
   category?: string; // category slug (§7.1)
   tags?: string[]; // secondary tags (§7.2)

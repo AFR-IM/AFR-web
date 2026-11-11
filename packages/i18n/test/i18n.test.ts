@@ -169,10 +169,10 @@ describe('AFR_METHOD (spec §3 transcription)', () => {
     assert.equal(a1Total, 25);
   });
 
-  it('grades follow spec §3.5 thresholds and §10.2 colors', () => {
+  it('grades follow spec §3.5 thresholds (T2 calibration 2026-11-10) and §10.2 colors', () => {
     assert.deepEqual(
       AFR_METHOD.grades.map((g) => g.min),
-      [85, 70, 50, 30, 0],
+      [75, 60, 42, 25, 0],
     );
     assert.deepEqual(
       AFR_METHOD.grades.map((g) => g.color),

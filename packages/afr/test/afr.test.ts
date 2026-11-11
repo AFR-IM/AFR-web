@@ -189,16 +189,17 @@ describe('policy evaluation and StrategyTag', () => {
 });
 
 describe('grade thresholds', () => {
-  it('85+ A / 70+ B / 50+ C / 30+ D / otherwise F', () => {
+  it('75+ A / 60+ B / 42+ C / 25+ D / otherwise F (T2 calibration, spec §3.5)', () => {
     assert.equal(gradeFor(100), 'A');
-    assert.equal(gradeFor(85), 'A');
-    assert.equal(gradeFor(84), 'B');
-    assert.equal(gradeFor(70), 'B');
-    assert.equal(gradeFor(69), 'C');
-    assert.equal(gradeFor(50), 'C');
-    assert.equal(gradeFor(49), 'D');
-    assert.equal(gradeFor(30), 'D');
-    assert.equal(gradeFor(29), 'F');
+    assert.equal(gradeFor(87), 'A');
+    assert.equal(gradeFor(75), 'A');
+    assert.equal(gradeFor(74), 'B');
+    assert.equal(gradeFor(60), 'B');
+    assert.equal(gradeFor(59), 'C');
+    assert.equal(gradeFor(42), 'C');
+    assert.equal(gradeFor(41), 'D');
+    assert.equal(gradeFor(25), 'D');
+    assert.equal(gradeFor(24), 'F');
     assert.equal(gradeFor(0), 'F');
   });
 });

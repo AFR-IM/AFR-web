@@ -65,6 +65,9 @@ const en: Catalog = {
     submitPoliteNote:
       'Scanning is polite and transparent: the bot identifies itself and honors your robots.txt.',
     emptyCategory: 'No sites in this category yet.',
+    pendingBadge: 'Pending',
+    pendingNotice:
+      'Not ratable — neither the homepage nor robots.txt could be read, so no evidence exists to score. Excluded from rankings until a rescan succeeds.',
 
     // P2 category/listing page
     sortScore: 'Score',
@@ -290,6 +293,8 @@ const zhCN: Catalog = {
       '域名入队后，我们只采集公开信号进行扫描，随后给出 0–100 分并连同完整证据链一起发布。全程无需登录，付费不能改分。',
     submitPoliteNote: '扫描公开且克制：爬虫会表明身份，并遵守你的 robots.txt。',
     emptyCategory: '该分类还没有收录站点。',
+    pendingBadge: '待评定',
+    pendingNotice: '不可评——首页与 robots.txt 均无法读取，没有可计分的证据链，暂不参与排行，待重扫成功后自动更新。',
 
     // P2 category/listing page
     sortScore: '分数',

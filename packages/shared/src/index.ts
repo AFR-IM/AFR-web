@@ -134,12 +134,13 @@ export interface ScanSignals {
   aiFeatures?: AiFeatures;
 }
 
-/** Grade thresholds (spec §3) */
+/** Grade thresholds (spec §3.5, calibrated against the first Tranco Top1000
+ * scan 2026-11-10 — decision T2; see docs/calibration/first-scan-2026-11-10.md) */
 export const GRADE_THRESHOLDS: { min: number; grade: Grade }[] = [
-  { min: 85, grade: 'A' },
-  { min: 70, grade: 'B' },
-  { min: 50, grade: 'C' },
-  { min: 30, grade: 'D' },
+  { min: 75, grade: 'A' },
+  { min: 60, grade: 'B' },
+  { min: 42, grade: 'C' },
+  { min: 25, grade: 'D' },
   { min: 0, grade: 'F' },
 ];
 
