@@ -1,0 +1,434 @@
+openapi: 3.1.0
+info:
+  title: aiapp.im API
+  version: 1.0.0
+  description: >-
+    Public, key-free read API for the aiapp.im AI-Friendliness Rating (AFR)
+    directory. All JSON endpoints send Access-Control-Allow-Origin: *.
+    Ratings are snapshots computed from public, reproducible evidence —
+    see GET /api/v1/method for the machine-readable standard.
+    This file mirrors https://aiapp.im/openapi.json.
+servers:
+  - url: https://aiapp.im
+    description: Production
+paths:
+  /api/v1/sites:
+    get:
+      summary: List rated sites
+      description: Paginated directory listing. Pending (unratable) sites are excluded from natural results.
+      parameters:
+        - name: category
+          in: query
+          schema: { type: string }
+          description: Filter by category slug, e.g. dev-tools
+        - name: grade
+          in: query
+          schema: { type: string, enum: [A, B, C, D, F] }
+          description: Filter by grade
+        - name: q
+          in: query
+          schema: { type: string }
+          description: Substring match on domain or title
+        - name: sort
+          in: query
+          schema: { type: string, enum: [score, rank, new], default: score }
+          description: score = AFR score DESC (default), rank = source rank, new = newest first
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+      responses:
+        '200':
+          description: Page of sites
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SiteList'
+              example:
+                items:
+                  - domain: github.com
+                    title: 'GitHub · Where software is built'
+                    lang: en
+                    category: dev-tools
+                    strategy_tag: AI-Open
+                    grade: A
+                    score_total: 91
+                    score_l1: 33
+                    score_l2: 38
+                    score_l3: 20
+                    rank_source: 4
+                    rank: 1
+                    status: active
+                    verified: true
+                    created_at: '2026-11-10T11:40:00.000Z'
+                    updated_at: '2026-11-10T11:40:00.000Z'
+                    scanned_at: '2026-11-10T11:40:00.000Z'
+                page: 1
+                per_page: 24
+                total: 8
+                sort: score
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /api/v1/sites/{domain}:
+    get:
+      summary: Site detail with latest scan and evidence
+      parameters:
+        - name: domain
+          in: path
+          required: true
+          schema: { type: string }
+          example: github.com
+      responses:
+        '200':
+          description: Site, latest scan, and its evidence rows
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  site:
+                    $ref: '#/components/schemas/Site'
+                  scan:
+                    oneOf:
+                      - $ref: '#/components/schemas/Scan'
+                      - type: 'null'
+                  evidence:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Evidence'
+              example:
+                site: { domain: github.com, grade: A, score_total: 91, strategy_tag: AI-Open, verified: true }
+                scan: { id: 42, domain: github.com, engine_version: afr-1.1.0, score_total: 91, grade: A, started_at: '2026-11-10T11:40:00.000Z' }
+                evidence:
+                  - check_id: l1.robots.ai-policy
+                    status: pass
+                    points: 25
+                    max_points: 25
+                    evidence_type: http
+                    evidence_ref: 'GET /robots.txt'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/sites/{domain}/history:
+    get:
+      summary: Scan history for a site (newest first)
+      parameters:
+        - name: domain
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: All scans for the domain
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  domain: { type: string }
+                  scans:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Scan'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/stats:
+    get:
+      summary: Totals, grade distribution, and average score
+      responses:
+        '200':
+          description: Directory statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Stats'
+              example:
+                total: 8
+                verified: 4
+                pending: 0
+                avg_score: 58
+                grades: { A: 1, B: 2, C: 2, D: 2, F: 1 }
+  /api/v1/categories:
+    get:
+      summary: Category tree with per-category site counts
+      responses:
+        '200':
+          description: Category tree
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  categories:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Category'
+              example:
+                categories:
+                  - slug: dev-tools
+                    name_en: Developer Tools
+                    name_zh: 开发者工具
+                    count: 3
+                    children: []
+  /api/v1/leaderboard:
+    get:
+      summary: Top sites by pure AFR score descending
+      description: Natural ranking never mixes in sponsored placements.
+      parameters:
+        - name: category
+          in: query
+          schema: { type: string }
+          description: Restrict to one category slug
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50 }
+          description: 'Number of rows (default: leaderboard size)'
+      responses:
+        '200':
+          description: Ranked leaderboard rows
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  category:
+                    type: [string, 'null']
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LeaderboardItem'
+              example:
+                category: null
+                items:
+                  - rank: 1
+                    domain: github.com
+                    title: 'GitHub · Where software is built'
+                    grade: A
+                    score: 91
+                    category: dev-tools
+                    strategy_tag: AI-Open
+  /api/v1/method:
+    get:
+      summary: Machine-readable AFR standard
+      description: Layers, per-sub-check points, and grade thresholds — the same values the scoring engine uses.
+      responses:
+        '200':
+          description: AFR standard
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Method'
+              example:
+                standard: AFR
+                version: 1.0.0
+                layers:
+                  - { id: L1, name: Reachability, weight: 35, checks: [] }
+                  - { id: L2, name: Legibility, weight: 40, checks: [] }
+                  - { id: L3, name: Actionability, weight: 25, checks: [] }
+                grades:
+                  - { min: 75, grade: A, color: '#22c55e' }
+                  - { min: 60, grade: B, color: '#84cc16' }
+                  - { min: 42, grade: C, color: '#eab308' }
+                  - { min: 25, grade: D, color: '#f97316' }
+                  - { min: 0, grade: F, color: '#ef4444' }
+  /api/v1/ads:
+    get:
+      summary: Currently active sponsored placements
+      description: >-
+        Sponsored placements are served separately from the natural ranking
+        and never change grades or order.
+      parameters:
+        - { name: slot, in: query, schema: { type: string } }
+        - { name: key, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: Active ads
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Ad'
+  /api/v1/submissions:
+    post:
+      summary: Request a scan of a site
+      description: Rate-limited to 5 requests per IP per day. The submission is queued for scanning.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [domain]
+              properties:
+                domain: { type: string, description: 'Bare domain, e.g. example.com' }
+                note: { type: string, maxLength: 500, description: Optional note for the reviewers }
+            example: { domain: example.com, note: 'We ship a public llms.txt and API.' }
+      responses:
+        '201':
+          description: Queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  id: { type: integer }
+                  domain: { type: string }
+                  status: { type: string, enum: [queued] }
+              example: { ok: true, id: 1, domain: example.com, status: queued }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: rate_limited, limit: 5, remaining: 0 }
+  /badge/{domain}.svg:
+    get:
+      summary: Rating badge image for a domain
+      description: >-
+        SVG badge with ring, grade letter, and score. Cached for one hour.
+        Unknown domains get a neutral gray badge.
+      parameters:
+        - name: domain
+          in: path
+          required: true
+          schema: { type: string }
+          example: github.com.svg
+      responses:
+        '200':
+          description: Badge SVG
+          content:
+            image/svg+xml:
+              schema: { type: string }
+components:
+  schemas:
+    Site:
+      type: object
+      properties:
+        domain: { type: string }
+        title: { type: [string, 'null'] }
+        lang: { type: [string, 'null'] }
+        category: { type: [string, 'null'] }
+        strategy_tag: { type: [string, 'null'] }
+        grade: { type: [string, 'null'] }
+        score_total: { type: [integer, 'null'] }
+        score_l1: { type: [integer, 'null'] }
+        score_l2: { type: [integer, 'null'] }
+        score_l3: { type: [integer, 'null'] }
+        rank_source: { type: [integer, 'null'] }
+        rank: { type: [integer, 'null'] }
+        status: { type: [string, 'null'] }
+        verified: { type: boolean }
+        created_at: { type: [string, 'null'], format: date-time }
+        updated_at: { type: [string, 'null'], format: date-time }
+        scanned_at: { type: [string, 'null'], format: date-time }
+    SiteList:
+      type: object
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Site' } }
+        page: { type: integer }
+        per_page: { type: integer }
+        total: { type: integer }
+        sort: { type: string, enum: [score, rank, new] }
+    Scan:
+      type: object
+      properties:
+        id: { type: integer }
+        domain: { type: string }
+        engine_version: { type: [string, 'null'], example: afr-1.1.0 }
+        score_total: { type: [integer, 'null'] }
+        score_l1: { type: [integer, 'null'] }
+        score_l2: { type: [integer, 'null'] }
+        score_l3: { type: [integer, 'null'] }
+        grade: { type: [string, 'null'] }
+        snapshot_path: { type: [string, 'null'] }
+        started_at: { type: [string, 'null'], format: date-time }
+        finished_at: { type: [string, 'null'], format: date-time }
+    Evidence:
+      type: object
+      properties:
+        check_id: { type: [string, 'null'], example: l1.robots.ai-policy }
+        status: { type: [string, 'null'] }
+        points: { type: [number, 'null'] }
+        max_points: { type: [number, 'null'] }
+        evidence_type: { type: [string, 'null'] }
+        evidence_ref: { type: [string, 'null'] }
+    Stats:
+      type: object
+      properties:
+        total: { type: integer }
+        verified: { type: integer }
+        pending: { type: integer }
+        avg_score: { type: [number, 'null'] }
+        grades:
+          type: object
+          properties:
+            A: { type: integer }
+            B: { type: integer }
+            C: { type: integer }
+            D: { type: integer }
+            F: { type: integer }
+    Category:
+      type: object
+      properties:
+        slug: { type: [string, 'null'] }
+        name_en: { type: [string, 'null'] }
+        name_zh: { type: [string, 'null'] }
+        count: { type: integer }
+        children: { type: array, items: { $ref: '#/components/schemas/Category' } }
+    LeaderboardItem:
+      type: object
+      properties:
+        rank: { type: integer }
+        domain: { type: string }
+        title: { type: [string, 'null'] }
+        grade: { type: [string, 'null'] }
+        score: { type: [integer, 'null'] }
+        category: { type: [string, 'null'] }
+        strategy_tag: { type: [string, 'null'] }
+    Ad:
+      type: object
+      properties:
+        id: { type: integer }
+        domain: { type: [string, 'null'] }
+        slot: { type: [string, 'null'] }
+        slot_key: { type: [string, 'null'] }
+        headline: { type: [string, 'null'] }
+        body: { type: [string, 'null'] }
+        starts_at: { type: [string, 'null'], format: date-time }
+        ends_at: { type: [string, 'null'], format: date-time }
+        status: { type: [string, 'null'] }
+        impressions: { type: integer }
+        clicks: { type: integer }
+    Method:
+      type: object
+      properties:
+        standard: { type: string, example: AFR }
+        version: { type: string }
+        layers: { type: array, items: { type: object } }
+        grades: { type: array, items: { type: object } }
+    Error:
+      type: object
+      properties:
+        error: { type: string, example: not_found }
+        message: { type: string }
+  responses:
+    BadRequest:
+      description: Invalid parameter
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: invalid_domain }
+    NotFound:
+      description: Unknown domain
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: not_found, domain: unknown.example }

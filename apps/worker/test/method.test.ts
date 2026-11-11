@@ -18,7 +18,7 @@ describe('GET /api/v1/method', () => {
   it('declares standard AFR with a version', async () => {
     const body = await fetchMethod();
     assert.equal(body.standard, 'AFR');
-    assert.equal(body.version, '1.0.0');
+    assert.equal(body.version, '1.1.0');
     assert.equal(body.layers.length, 3);
     assert.equal(body.grades.length, 5);
   });

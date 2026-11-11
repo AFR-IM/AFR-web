@@ -32,6 +32,53 @@ const generated = Number.isNaN(parsed.getTime())
       timeStyle: 'short',
       timeZone: 'UTC',
     }).format(parsed);
+
+/* ── "How we rate" explainer (product copy, inline EN/ZH — new keys are not
+      added to packages/i18n, so this follows the pages' inline-fallback pattern) ── */
+const COPY = {
+  en: {
+    heading: 'How we rate',
+    subA: 'What the score measures',
+    a1:
+      "Every rating on aiapp.im comes from one automated scan of a site's public signals — nothing behind a login, nothing that requires the site's cooperation. Each sub-check is a single HTTP request or DNS lookup that anyone can repeat from the command line.",
+    a2:
+      "The 100 points split across three layers. Reachability (35) asks whether an AI crawler can reach the content at all: an explicit robots.txt policy for fourteen well-known AI user-agents, no challenge wall, and a homepage that answers. Legibility (40) asks whether a machine can understand what it fetched: llms.txt, structured data, semantic HTML, a sitemap, and basic content signals. Actionability (25) asks whether an agent can do real work with the site: call a published API, read agent instructions, or use documented machine interfaces.",
+    a3:
+      'Every awarded point carries its raw evidence — the URL that was fetched, the status code, and the rule that matched — so any score can be checked and recomputed. Grades are coordinates on an openness scale: A means openly available to AI systems, F means actively closed off.',
+    subB: 'What makes a site AI-friendly',
+    b1:
+      'The strongest signal is a robots.txt that explicitly allows the AI crawlers you know about instead of silently defaulting or blocking them. After that come the basics of machine readability: pages that render as real HTML without JavaScript, headings that describe structure, images with alt text, a sitemap with lastmod dates, and an llms.txt file that maps your content for language models.',
+    b2:
+      'Sites that want to be useful to agents go one step further: a public HTTP API with a machine-readable OpenAPI specification, human-readable documentation, and an agents.md file that tells automated visitors who they are talking to, what they may fetch, and how to cite what they find. Stable HTTPS availability rounds it out — none of it matters if the homepage cannot be reached.',
+    b3:
+      'Ratings never depend on payment or popularity. Sponsored placements live only in separately labeled blocks and cannot change a grade or the natural ranking; verification, badges, and evidence chains stay free.',
+    explore: 'Explore',
+    docsLabel: 'API documentation',
+    aboutLabel: 'About',
+    updated: 'Directory data last updated',
+  },
+  'zh-CN': {
+    heading: '我们如何评级',
+    subA: '分数测什么',
+    a1:
+      'aiapp.im 的每个评级都来自对站点公开信号的一次自动扫描——没有登录墙，也不需要站点配合。每个子项都是一次 HTTP 请求或 DNS 查询，任何人都能在命令行里重复。',
+    a2:
+      '100 分分三层。可达层（35 分）问 AI 爬虫能不能拿到内容：对 14 个知名 AI User-Agent 的显式 robots.txt 政策、没有挑战墙、首页正常应答。可懂层（40 分）问机器能不能读懂抓到的东西：llms.txt、结构化数据、语义化 HTML、sitemap 与基础内容信号。可交互层（25 分）问智能体能不能真的干活：调用公开 API、读取 Agent 指令、使用有文档的机读接口。',
+    a3:
+      '每个得分点都带原始证据——抓取的 URL、状态码与命中的规则——因此任何分数都能核对与复算。等级是开放度坐标：A 表示对 AI 系统完全开放，F 表示主动关闭。',
+    subB: '什么让一个网站 AI 友好',
+    b1:
+      '最强的信号是 robots.txt 显式放行你认识的 AI 爬虫，而不是默默走默认或直接屏蔽。其次是机器可读的基本功：不依赖 JS 也能渲染出真实 HTML、能描述结构的标题层级、带 alt 文本的图片、含 lastmod 的 sitemap，以及为语言模型绘制内容地图的 llms.txt。',
+    b2:
+      '想对智能体更有用的网站会再进一步：公开的 HTTP API 配机读 OpenAPI 规范、人类可读的文档，以及一份 agents.md，告诉自动访客它们在和谁说话、可以抓什么、如何引用找到的内容。稳定的 HTTPS 可用性是底线——首页都打不开，其他都白搭。',
+    b3:
+      '评级从不依赖付费或热度。付费展示只出现在独立标注的区块里，不能改变等级或自然排名；验证、徽章与证据链永久免费。',
+    explore: '继续了解',
+    docsLabel: 'API 文档',
+    aboutLabel: '关于',
+    updated: '目录数据最后更新于',
+  },
+}[locale];
 ---
 
 <Base description={L.ui.heroSub}>
@@ -47,7 +94,7 @@ const generated = Number.isNaN(parsed.getTime())
       <p class="hero-stats mono">
         <span>{sitesLabel(L.ui, locale, home.total)}</span>
         <span>{uiText(L.ui, 'avgScore', locale)} {home.avgScore}</span>
-        <span>{L.ui.scanTime} {generated}</span>
+        <span>{L.ui.scanTime} <time datetime={home.generatedAt}>{generated}</time></span>
       </p>
     </div>
 
@@ -110,6 +157,46 @@ const generated = Number.isNaN(parsed.getTime())
       <span class="sec-note">{L.ui.neutralityStatement}</span>
     </div>
     <Leaderboard sites={home.leaderboard} locale={locale} />
+  </section>
+
+  <!-- How we rate — product explanation: what the score measures and what
+       makes a site AI-friendly (also the homepage's deep content section) -->
+  <section class="section container explainer" aria-labelledby="explainer-h">
+    <div class="sec-head">
+      <h2 id="explainer-h">{COPY.heading}</h2>
+      <a class="sec-more" href={href('/method')}>{L.ui.navMethod} →</a>
+    </div>
+    <div class="ex-grid">
+      <article class="ex-card">
+        <h3>{COPY.subA}</h3>
+        <p>{COPY.a1}</p>
+        <p>{COPY.a2}</p>
+        <p>{COPY.a3}</p>
+      </article>
+      <article class="ex-card">
+        <h3>{COPY.subB}</h3>
+        <p>{COPY.b1}</p>
+        <p>{COPY.b2}</p>
+        <p>{COPY.b3}</p>
+      </article>
+    </div>
+    <p class="ex-links">
+      <span class="ex-label mono">{COPY.explore}:</span>
+      <a href={href('/method')}>{L.ui.navMethod}</a>
+      <span aria-hidden="true">·</span>
+      <a href={href('/docs')}>{COPY.docsLabel}</a>
+      <span aria-hidden="true">·</span>
+      <a href="/llms.txt">llms.txt</a>
+      <span aria-hidden="true">·</span>
+      <a href="/agents.md">agents.md</a>
+      <span aria-hidden="true">·</span>
+      <a href="/openapi.json">OpenAPI</a>
+      <span aria-hidden="true">·</span>
+      <a href={href('/about')}>{COPY.aboutLabel}</a>
+    </p>
+    <p class="ex-updated mono">
+      {COPY.updated} <time datetime={home.generatedAt}>{generated}</time>
+    </p>
   </section>
 
   <!-- Grade filter: distribution segments + chips share one URL-synced state (§10.6) -->
@@ -311,5 +398,54 @@ const generated = Number.isNaN(parsed.getTime())
   .muted {
     color: var(--text-2);
     font-size: 14px;
+  }
+
+  /* How we rate explainer */
+  .ex-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: var(--gutter);
+  }
+  .ex-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 22px 24px;
+  }
+  .ex-card h3 {
+    font-size: 16px;
+    margin: 0 0 10px;
+  }
+  .ex-card p {
+    margin: 0 0 12px;
+    font-size: 14.5px;
+    line-height: 1.7;
+    color: var(--text-2);
+  }
+  .ex-card p:last-child {
+    margin-bottom: 0;
+  }
+  .ex-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    align-items: baseline;
+    margin: 16px 0 0;
+    font-size: 13.5px;
+    color: var(--text-2);
+  }
+  .ex-links a {
+    color: var(--brand);
+  }
+  .ex-label {
+    color: var(--text-3);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .ex-updated {
+    margin: 8px 0 0;
+    font-size: 12.5px;
+    color: var(--text-3);
   }
 </style>

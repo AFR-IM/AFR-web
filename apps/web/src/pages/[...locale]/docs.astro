@@ -1,0 +1,368 @@
+---
+// API documentation page — /docs (English) and /zh-CN/docs (Chinese).
+// Documents the real aiapp.im Worker API (apps/worker): GET endpoints are
+// open and key-free, POST /api/v1/submissions is rate-limited. Every example
+// below mirrors the actual response shapes the Worker returns.
+// Machine-readable companion: /openapi.json (mirror /.well-known/openapi.yaml).
+
+import Base from '../../layouts/Base.astro';
+import { pathFor, toLocale, type Locale } from '../../i18n/loader.ts';
+
+export function getStaticPaths() {
+  return [{ params: { locale: undefined } }, { params: { locale: 'zh-CN' } }];
+}
+
+const locale: Locale = toLocale(Astro.params.locale);
+const isZh = locale === 'zh-CN';
+const T = (en: string, zh: string) => (isZh ? zh : en);
+const href = (p: string) => pathFor(locale, p);
+
+const PROSE = {
+  en: {
+    title: 'API documentation',
+    description:
+      'The public aiapp.im API: rated sites, stats, categories, leaderboard, the machine-readable AFR standard, rating badges, and scan submissions — open, key-free, with example JSON responses.',
+    lede: 'Every read endpoint on aiapp.im is public: no API key, no authentication, and Access-Control-Allow-Origin: * so browsers can call it from any origin. Responses are JSON snapshots of the same data this site renders; ratings are computed from public, reproducible evidence — see the AFR standard.',
+    baseTitle: 'Base URL',
+    endpointsTitle: 'Endpoints',
+    errorsTitle: 'Errors',
+    errorsBody:
+      'Errors are JSON objects with an error code. 400 for invalid parameters, 404 for unknown domains, 429 for rate-limited submissions. When the network is down, the service worker answers /api/* requests with 503 { "error": "offline" } and a friendly message.',
+    machineTitle: 'Machine-readable formats',
+    machineItems: [
+      ['OpenAPI 3.1 spec', '/openapi.json — this API described for code generators and tools.'],
+      ['OpenAPI mirror', '/.well-known/openapi.yaml — the same spec at the well-known location.'],
+      ['AFR standard as JSON', '/api/v1/method — layers, per-check points, and grade thresholds.'],
+      ['llms.txt / llms-full.txt', 'Map of this directory for language-model readers.'],
+    ],
+    rateTitle: 'Rate limits',
+    rateBody:
+      'GET endpoints are free of keys and limits beyond normal politeness — identify yourself, keep to about one request per second, and cache responses (see /agents.md). POST /api/v1/submissions allows 5 requests per IP per day. Badge images are cached upstream for one hour.',
+    backToMethod: 'Read the AFR standard',
+    botLink: 'What our own scanner fetches',
+  },
+  'zh-CN': {
+    title: 'API 文档',
+    description:
+      'aiapp.im 公开 API：站点评级、统计、分类、排行榜、机读 AFR 标准、评级徽章与扫描提交——开放、无需密钥，附示例 JSON 响应。',
+    lede: 'aiapp.im 的所有读取端点均公开：无需 API key、无需认证，并发送 Access-Control-Allow-Origin: *，任何来源的浏览器都可调用。响应是 JSON 快照，与本站渲染的数据同源；评级来自公开、可复现的证据——参见 AFR 标准。',
+    baseTitle: 'Base URL',
+    endpointsTitle: '端点',
+    errorsTitle: '错误',
+    errorsBody:
+      '错误为带错误码的 JSON 对象：参数无效返回 400，域名不存在返回 404，提交超限返回 429。断网时 Service Worker 会对 /api/* 返回 503 { "error": "offline" } 及友好提示。',
+    machineTitle: '机读格式',
+    machineItems: [
+      ['OpenAPI 3.1 规范', '/openapi.json —— 供代码生成器与工具使用的 API 描述。'],
+      ['OpenAPI 镜像', '/.well-known/openapi.yaml —— 同一份规范的 well-known 位置。'],
+      ['AFR 标准 JSON', '/api/v1/method —— 三层结构、每个子项分值与等级阈值。'],
+      ['llms.txt / llms-full.txt', '面向语言模型读者的目录地图。'],
+    ],
+    rateTitle: '速率限制',
+    rateBody:
+      'GET 端点无需密钥，除常规礼貌性要求外无限制——标明身份、约每秒一次、缓存响应（见 /agents.md）。POST /api/v1/submissions 为每 IP 每天 5 次。徽章图片上游缓存 1 小时。',
+    backToMethod: '阅读 AFR 标准',
+    botLink: '我们自己的扫描器抓取什么',
+  },
+} as const;
+
+const P = PROSE[locale === 'zh-CN' ? 'zh-CN' : 'en'];
+
+const statsExample = `{
+  "total": 8,
+  "verified": 4,
+  "pending": 0,
+  "avg_score": 58,
+  "grades": { "A": 1, "B": 2, "C": 2, "D": 2, "F": 1 }
+}`;
+
+const leaderboardExample = `{
+  "category": null,
+  "items": [
+    { "rank": 1, "domain": "github.com", "title": "GitHub · Where software is built",
+      "grade": "A", "score": 91, "category": "dev-tools", "strategy_tag": "AI-Open" }
+  ]
+}`;
+
+const sitesExample = `{
+  "items": [ { "domain": "github.com", "grade": "A", "score_total": 91,
+               "strategy_tag": "AI-Open", "verified": true, "scanned_at": "2026-11-10T11:40:00.000Z" } ],
+  "page": 1, "per_page": 24, "total": 8, "sort": "score"
+}`;
+
+const submitExample = `// POST {"domain": "example.com", "note": "optional"}
+{ "ok": true, "id": 1, "domain": "example.com", "status": "queued" }`;
+
+interface Endpoint {
+  method: string;
+  path: string;
+  desc: string;
+  params?: string;
+  example?: string;
+}
+
+const endpoints: Endpoint[] = [
+  {
+    method: 'GET',
+    path: '/api/v1/sites',
+    desc: T(
+      'Paginated directory listing. Natural results never include Pending (unratable) sites.',
+      '分页目录列表。自然结果不包含 Pending（不可评）站点。',
+    ),
+    params: 'category · grade · q · sort (score | rank | new) · page',
+    example: sitesExample,
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/sites/:domain',
+    desc: T(
+      'One site with its latest scan and the full evidence chain of that scan.',
+      '单个站点：最新一次扫描及其完整证据链。',
+    ),
+    example: `{
+  "site":  { "domain": "github.com", "grade": "A", "score_total": 91 },
+  "scan":  { "engine_version": "afr-1.1.0", "score_l1": 33, "score_l2": 38, "score_l3": 20 },
+  "evidence": [ { "check_id": "l1.robots.ai-policy", "status": "pass",
+                  "points": 25, "max_points": 25, "evidence_ref": "GET /robots.txt" } ]
+}`,
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/sites/:domain/history',
+    desc: T('All scans for a domain, newest first — feeds the score history chart.', '某域名的全部扫描记录，最新在前——驱动分数历史图。'),
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/stats',
+    desc: T('Totals, verified count, Pending count, average score, and grade distribution.', '总数、已验证数、Pending 数、平均分与等级分布。'),
+    example: statsExample,
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/categories',
+    desc: T('The category tree with per-category counts of rated sites.', '带各分类评级站点数量的分类树。'),
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/leaderboard',
+    desc: T(
+      'Top sites sorted by pure AFR score descending. Sponsored placements are never mixed in.',
+      '按纯 AFR 分数降序的头部站点。绝不混入付费展示。',
+    ),
+    params: 'category · limit (≤ 50)',
+    example: leaderboardExample,
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/method',
+    desc: T(
+      'The machine-readable AFR standard: layers, every sub-check with its points, and grade thresholds.',
+      '机读 AFR 标准：三层结构、每个子项分值与等级阈值。',
+    ),
+  },
+  {
+    method: 'GET',
+    path: '/badge/:domain.svg',
+    desc: T(
+      'Rating badge image (SVG) for a domain — ring, grade letter, score. Cached one hour; unknown domains get a neutral gray badge.',
+      '域名的评级徽章图片（SVG）——色环、等级字母与分数。缓存 1 小时；未知域名显示中性灰徽章。',
+    ),
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/submissions',
+    desc: T(
+      'Request a scan of a site. Body: { "domain": "example.com", "note": "optional" }. Limited to 5 per IP per day.',
+      '申请扫描一个站点。请求体：{ "domain": "example.com", "note": "可选" }。每 IP 每天 5 次。',
+    ),
+    example: submitExample,
+  },
+];
+---
+
+<Base title={P.title} description={P.description}>
+  <div class="container docs">
+    <header class="hero">
+      <p class="eyebrow mono">aiapp.im · API v1</p>
+      <h1>{P.title}</h1>
+      <p class="lede">{P.lede}</p>
+    </header>
+
+    <section class="sec">
+      <h2>{P.baseTitle}</h2>
+      <pre class="mono"><code>https://aiapp.im</code></pre>
+    </section>
+
+    <section class="sec">
+      <h2>{P.endpointsTitle}</h2>
+      {endpoints.map((ep) => (
+        <div class="ep">
+          <div class="ep-head">
+            <span class={`m m-${ep.method.toLowerCase()}`}>{ep.method}</span>
+            <code class="mono">{ep.path}</code>
+          </div>
+          <p class="ep-desc">{ep.desc}</p>
+          {ep.params && <p class="ep-params mono">{ep.params}</p>}
+          {ep.example && (
+            <pre class="mono"><code>{ep.example}</code></pre>
+          )}
+        </div>
+      ))}
+    </section>
+
+    <section class="sec">
+      <h2>{P.errorsTitle}</h2>
+      <p class="body">{P.errorsBody}</p>
+      <pre class="mono"><code>{`{ "error": "not_found", "domain": "unknown.example" }`}</code></pre>
+    </section>
+
+    <section class="sec">
+      <h2>{P.rateTitle}</h2>
+      <p class="body">{P.rateBody}</p>
+    </section>
+
+    <section class="sec">
+      <h2>{P.machineTitle}</h2>
+      <ul class="links">
+        {P.machineItems.map(([label, detail]) => (
+          <li>
+            <strong>{label}</strong> — <span class="mono">{detail}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+
+    <p class="cta">
+      <a class="btn" href={href('/method')}>{P.backToMethod} →</a>
+      <a class="btn btn-ghost" href={href('/bot')}>{P.botLink} →</a>
+    </p>
+  </div>
+</Base>
+
+<style>
+  .docs {
+    padding-top: 40px;
+    max-width: 880px;
+  }
+  .hero {
+    margin-bottom: 24px;
+  }
+  .eyebrow {
+    margin: 0 0 8px;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--brand);
+  }
+  .hero h1 {
+    font-size: clamp(26px, 4vw, 38px);
+    margin-bottom: 12px;
+  }
+  .lede {
+    margin: 0;
+    font-size: 16px;
+    line-height: 1.7;
+    color: var(--text-2);
+    max-width: 72ch;
+  }
+  .sec {
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 22px 24px;
+    margin-bottom: 16px;
+  }
+  .sec h2 {
+    font-size: 19px;
+    margin-bottom: 12px;
+  }
+  .body {
+    margin: 0 0 12px;
+    color: var(--text-2);
+    font-size: 14.5px;
+    line-height: 1.7;
+    max-width: 78ch;
+  }
+  pre {
+    margin: 8px 0 0;
+    padding: 12px 14px;
+    background: var(--bg-ink);
+    border: 1px solid var(--line);
+    border-radius: var(--r-2);
+    overflow-x: auto;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    line-height: 1.65;
+    color: var(--text-1);
+  }
+  .ep {
+    padding: 14px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .ep:last-child {
+    border-bottom: none;
+    padding-bottom: 4px;
+  }
+  .ep-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .ep-head code {
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .m {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: var(--r-1);
+    border: 1px solid var(--line);
+  }
+  .m-get {
+    color: var(--grade-a, #22c55e);
+    border-color: color-mix(in srgb, var(--grade-a, #22c55e) 45%, transparent);
+  }
+  .m-post {
+    color: var(--grade-c, #eab308);
+    border-color: color-mix(in srgb, var(--grade-c, #eab308) 45%, transparent);
+  }
+  .ep-desc {
+    margin: 8px 0 0;
+    color: var(--text-2);
+    font-size: 14px;
+    line-height: 1.65;
+    max-width: 78ch;
+  }
+  .ep-params {
+    margin: 6px 0 0;
+    font-size: 12.5px;
+    color: var(--text-3);
+  }
+  .links {
+    margin: 0;
+    padding-left: 18px;
+    display: grid;
+    gap: 8px;
+    color: var(--text-2);
+    font-size: 14px;
+  }
+  .links .mono {
+    font-size: 12.5px;
+    color: var(--text-3);
+  }
+  .cta {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin: 20px 0 8px;
+  }
+
+  @media (max-width: 767px) {
+    .sec {
+      padding: 18px 16px;
+    }
+  }
+</style>

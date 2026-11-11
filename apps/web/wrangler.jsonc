@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "aiapp-web",
+  "main": "dist/_worker.js/index.js",
+  "compatibility_date": "2026-11-10",
+  "compatibility_flags": [
+    "global_fetch_strictly_public"
+  ],
+  "observability": {
+    "enabled": true
+  },
+  "assets": {
+    "binding": "ASSETS",
+    "directory": "dist"
+  },
+  "routes": [
+    { "pattern": "aiapp.im/*", "zone_name": "aiapp.im" },
+    { "pattern": "www.aiapp.im/*", "zone_name": "aiapp.im" }
+  ]
+}

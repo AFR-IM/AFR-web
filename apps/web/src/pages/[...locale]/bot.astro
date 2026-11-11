@@ -1,7 +1,7 @@
 ---
-// P7 crawler politeness page — /bot (spec §4.3 published in full, §13 X3:
-// transparent UA, capped frequency, and the "declined" degradation mechanism
-// that protects sites which explicitly refuse automated scanning).
+// P7 crawler politeness page — /bot (politeness and boundary policy published
+// in full: transparent UA, capped frequency, and the "declined" degradation
+// mechanism that protects sites which explicitly refuse automated scanning).
 
 import Base from '../../layouts/Base.astro';
 import { SCANNER_VERSION, USER_AGENT } from '../../../../../packages/scanner/src/http.ts';
@@ -17,7 +17,7 @@ const isZh = locale === 'zh-CN';
 const T = (en: string, zh: string) => (isZh ? zh : en);
 const href = (p: string) => pathFor(locale, p);
 
-/** Spec §4.2 documented identity — the shipped constant below is what is sent today. */
+/** Documented identity — the constant below is what is actually sent. */
 const SPEC_UA = 'aiapp-im-bot/1.0 (+https://aiapp.im/bot)';
 
 const PROSE = {
@@ -25,9 +25,9 @@ const PROSE = {
     title: 'Crawler politeness',
     description:
       'How the aiapp scanner behaves on your site: identity, request budget, frequency, crawl-delay, the declined mechanism, and what we store.',
-    lede: 'This page is the full politeness and boundary specification (spec §4.3). It is published so you can audit it, block us, or get in touch — transparency is the whole point.',
+    lede: 'This page is our full politeness and boundary policy. It is published so you can audit it, block us, or get in touch — transparency is the whole point.',
     idTitle: 'Identity',
-    idSpec: 'Documented identity (spec §4.2):',
+    idSpec: 'Documented identity:',
     idLive: 'Shipped user-agent string (this build):',
     idNote:
       'Both identifiers resolve to this page. If you block us in robots.txt, the next scan honours it — see the declined mechanism below.',
@@ -74,9 +74,9 @@ const PROSE = {
   'zh-CN': {
     title: '爬虫礼仪',
     description: 'aiapp 扫描器在你站点上的行为规范：身份、请求预算、频次、crawl-delay、婉拒机制与我们保存什么。',
-    lede: '本页是完整的礼貌与边界规范（方案书 §4.3）全文公开——供你审计、屏蔽我们或与我们联系：透明就是全部意义。',
+    lede: '本页是完整的礼貌与边界政策全文公开——供你审计、屏蔽我们或与我们联系：透明就是全部意义。',
     idTitle: '身份标识',
-    idSpec: '规范文档中的身份（§4.2）：',
+    idSpec: '爬虫身份：',
     idLive: '当前构建实际发送的 User-Agent：',
     idNote: '两个标识都指向本页。若你在 robots.txt 中屏蔽我们，下一次扫描即会遵守——见下方“婉拒机制”。',
     budgetTitle: '请求预算',

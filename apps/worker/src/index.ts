@@ -564,37 +564,37 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
   });
 
   // -------------------------------------------------------------------------
-  // Route skeletons — 501 until their milestones ship (spec §12)
+  // Route skeletons — 501 until each feature ships
   // -------------------------------------------------------------------------
 
-  // M3 (W6) verification & badges: three-method domain verification, owner
+  // Verification & badges: three-method domain verification, owner
   // claims, rescan requests, badge abuse reports (spec §6.2, §8.2–8.4).
   app.post('/api/v1/verify/start', (c) =>
-    c.json({ error: 'not_implemented', milestone: 'M3' }, 501),
+    c.json({ error: 'not_implemented', feature: 'verification' }, 501),
   ); // {domain, email} → magic link (DNS TXT / meta / file token, 7d validity)
   app.get('/api/v1/verify/check', (c) =>
-    c.json({ error: 'not_implemented', milestone: 'M3' }, 501),
+    c.json({ error: 'not_implemented', feature: 'verification' }, 501),
   ); // ?domain= → probes aiapp-verify token via DoH/HTTP
   app.post('/api/v1/claims', (c) =>
-    c.json({ error: 'not_implemented', milestone: 'M3' }, 501),
+    c.json({ error: 'not_implemented', feature: 'verification' }, 501),
   ); // {domain, statement} → requires verified owner
   app.post('/api/v1/rescan', (c) =>
-    c.json({ error: 'not_implemented', milestone: 'M3' }, 501),
+    c.json({ error: 'not_implemented', feature: 'verification' }, 501),
   ); // {domain} → 1/24h per site
   app.post('/api/v1/badge/report', (c) =>
-    c.json({ error: 'not_implemented', milestone: 'M3' }, 501),
+    c.json({ error: 'not_implemented', feature: 'verification' }, 501),
   ); // {domain} → forged/tampered badge report
 
-  // M7 ads domain (spec v1.2 §6.2): application → Stripe Checkout, abuse
+  // Ads domain: application → Stripe Checkout, abuse
   // reports, and the internal Stripe webhook feeding the review queue.
   app.post('/api/v1/ads/apply', (c) =>
-    c.json({ error: 'not_implemented', milestone: 'M7' }, 501),
+    c.json({ error: 'not_implemented', feature: 'ads' }, 501),
   ); // {domain, slot, headline, body} → Stripe Checkout link
   app.post('/api/v1/ads/report', (c) =>
-    c.json({ error: 'not_implemented', milestone: 'M7' }, 501),
+    c.json({ error: 'not_implemented', feature: 'ads' }, 501),
   ); // ad abuse report
   app.post('/api/v1/_ads/webhook', (c) =>
-    c.json({ error: 'not_implemented', milestone: 'M7' }, 501),
+    c.json({ error: 'not_implemented', feature: 'ads' }, 501),
   ); // Stripe callback → review queue → cron expires ads daily
 
   return app;

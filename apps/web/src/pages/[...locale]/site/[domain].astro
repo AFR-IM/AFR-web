@@ -15,7 +15,7 @@ import BadgeEmbed from '../../../components/detail/BadgeEmbed.astro';
 import HistorySpark from '../../../components/detail/HistorySpark.astro';
 import RescanButton from '../../../components/detail/RescanButton.astro';
 import { getCatalog, LOCALES, pathFor, toLocale, type Locale } from '../../../i18n/loader.ts';
-import { listSites, loadSite } from '../../../data/loader.ts';
+import { listAllSites, loadSite } from '../../../data/loader.ts';
 import type { SiteDetail } from '../../../data/types.ts';
 import { gradeVar } from '../../../utils/grade.ts';
 import { ENGINE_VERSION } from '../../../../../../packages/afr/src/index.ts';
@@ -24,18 +24,19 @@ import { SCANNER_VERSION } from '../../../../../../packages/scanner/src/http.ts'
 export function getStaticPaths() {
   const out: { params: { locale?: string; domain: string } }[] = [];
   for (const locale of LOCALES) {
-    for (const card of listSites()) {
+    // Both rated and unratable sites get a detail page (scored + pending).
+    for (const card of listAllSites()) {
       out.push({ params: { locale: locale === 'en' ? undefined : locale, domain: card.domain } });
     }
   }
   return out;
 }
 
-/** Fixture-backed now: sites without a full snapshot render a "pending scan" state. */
+/** Sites without a full snapshot render a "pending scan" state. */
 function resolveDetail(domain: string): SiteDetail | undefined {
   const full = loadSite(domain);
   if (full) return full;
-  const card = listSites().find((s) => s.domain === domain);
+  const card = listAllSites().find((s) => s.domain === domain);
   if (!card) return undefined;
   return {
     ...card,
@@ -55,6 +56,7 @@ const href = (p: string) => pathFor(locale, p);
 
 const domain = Astro.params.domain ?? '';
 const site = resolveDetail(domain);
+const isPending = site?.grade === 'Pending';
 const gc = site ? gradeVar(site.grade) : 'var(--text-3)';
 const gradeInfo = site ? L.grades[site.grade] : undefined;
 const strategyLabel = site ? (L.strategies[site.strategyTag]?.label ?? site.strategyTag) : '';
@@ -68,9 +70,15 @@ const tabs = [
 ];
 const notFound = !site;
 const title = notFound ? (L.ui.notFound as string) : `${domain} — ${site.title ?? site.grade}`;
+// Unratable scans carry no score claim — the description omits score/grade numbers.
 const description = notFound
   ? (L.ui.notFoundCta as string)
-  : `${domain}: ${site.score}/100 · ${site.grade} · ${strategyLabel} — ${T('AI-friendliness rating with full evidence chain.', '带完整证据链的 AI 友好度评级。')}`;
+  : isPending
+    ? `${domain}: ${L.ui.pendingBadge ?? 'Pending'} · ${T(
+        'AI-friendliness rating pending — no readable homepage or robots.txt yet.',
+        'AI 友好度评级待定——首页与 robots.txt 均无法读取。',
+      )}`
+    : `${domain}: ${site.score}/100 · ${site.grade} · ${strategyLabel} — ${T('AI-friendliness rating with full evidence chain.', '带完整证据链的 AI 友好度评级。')}`;
 ---
 
 <Base title={title} description={description}>
@@ -97,7 +105,7 @@ const description = notFound
             <div class="meta">
               <StrategyTag tag={site.strategyTag} locale={locale} />
               <span class="chip mono">
-                {L.ui.grade}: {site.grade} · {gradeInfo ? gradeInfo.slogan : ''}
+                {`${L.ui.grade}: ${site.grade}${gradeInfo ? ` · ${gradeInfo.slogan}` : ''}`}
               </span>
               <span class="chip mono">
                 {L.ui.scanTime} <time datetime={site.scannedAt}>{scannedAt}</time>
@@ -111,12 +119,31 @@ const description = notFound
           </div>
 
           <div class="head-ring">
-            <GradeRing score={site.score} grade={site.grade} size={96} animate />
-            <span class="ring-label mono" style={`color:${gc};`}>
-              {gradeInfo?.label ?? site.grade}
-            </span>
+            {isPending ? (
+              <>
+                <span class="ring-pending" role="img" aria-label={L.ui.pendingNotice}>
+                  <span class="ring-pending-letter mono">—</span>
+                </span>
+                <span class="ring-label mono" style="color:var(--text-3);">
+                  {L.ui.pendingBadge ?? 'Pending'}
+                </span>
+              </>
+            ) : (
+              <>
+                <GradeRing score={site.score} grade={site.grade} size={96} animate />
+                <span class="ring-label mono" style={`color:${gc};`}>
+                  {gradeInfo?.label ?? site.grade}
+                </span>
+              </>
+            )}
           </div>
         </header>
+
+        {isPending && (
+          <p class="pending-notice" role="note">
+            {L.ui.pendingNotice}
+          </p>
+        )}
 
         <div class="tabbar" role="tablist" aria-label={L.ui.reportTitle}>
           {tabs.map((t, i) => (
@@ -225,6 +252,32 @@ const description = notFound
   }
   .ring-label {
     font-size: 12px;
+  }
+
+  /* Pending (unratable) placeholder — neutral track, no grade color, no score */
+  .ring-pending {
+    display: grid;
+    place-items: center;
+    width: 96px;
+    height: 96px;
+    border: 8px solid var(--line);
+    border-radius: 50%;
+    color: var(--text-3);
+  }
+  .ring-pending-letter {
+    font-size: 34px; /* same letter size as GradeRing at 96px */
+    line-height: 1;
+    color: var(--text-3);
+  }
+  .pending-notice {
+    margin: 0 0 24px;
+    padding: 14px 16px;
+    background: var(--bg-surface);
+    border: 1px dashed var(--line);
+    border-radius: var(--radius);
+    color: var(--text-2);
+    font-size: 14px;
+    line-height: 1.6;
   }
 
   /* ── mobile tab bar (≤767) ──────────────────────────── */

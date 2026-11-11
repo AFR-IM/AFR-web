@@ -1,4 +1,4 @@
-// Sponsored-slot fixtures for M2 (spec §10.5 positions 1 and 2).
+// Sponsored-slot fixtures for development (ad slots 1 and 2).
 // Copy is synthetic sample content — real ad-server payloads replace this later.
 // A slot only renders when its domain resolves in the site list, because the
 // block must show that site's REAL GradeRing (spec §10.5) — see resolvableAds().

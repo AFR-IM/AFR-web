@@ -24,8 +24,8 @@ export interface AfrLayerDef {
   checks: AfrCheckDef[];
 }
 
-/** AFR standard version (spec §14-D: "standard": "AFR", "version": "1.0.0") */
-export const AFR_VERSION = '1.0.0';
+/** AFR standard version (spec §14-D shape) */
+export const AFR_VERSION = '1.1.0';
 
 export const LAYER_NAMES: Record<AfrLayerId, { en: string; zh: string }> = {
   L1: { en: 'Reachable', zh: '可达' },

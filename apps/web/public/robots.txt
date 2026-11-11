@@ -1,0 +1,56 @@
+# aiapp.im — AI-Friendliness Rating directory
+#
+# The directory is fully public: every page, dataset snapshot, and read-only
+# API endpoint is reachable without login. All crawlers are welcome; the 14
+# AI crawler families below are explicitly allowed (not left to the default).
+
+# Search-type AI crawlers (fetch live/indexed content for AI answers)
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: Claude-SearchBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Googlebot
+Allow: /
+
+# Hybrid AI crawlers (user-triggered fetches + retrieval-augmented training)
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: Claude-User
+Allow: /
+
+User-agent: Perplexity-User
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+# Training AI crawlers (used as model training corpus)
+User-agent: GPTBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+User-agent: Bytespider
+Allow: /
+
+User-agent: Amazonbot
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+# All other crawlers: same open policy
+User-agent: *
+Allow: /
+
+Sitemap: https://aiapp.im/sitemap.xml

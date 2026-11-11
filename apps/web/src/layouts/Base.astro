@@ -30,6 +30,63 @@ const navItems = [
 
 const pageTitle = title ? `${title} · aiapp` : (L.ui.siteName as string);
 const pageDesc = description ?? (L.ui.tagline as string);
+
+/* ── canonical / Open Graph / Twitter / JSON-LD (spec §10.1 + AFR B3 og-tags) ── */
+const SITE_URL = 'https://aiapp.im';
+const canonical = new URL(path, SITE_URL).href;
+const stripZh = (p: string) => p.replace(/^\/zh-CN(?=\/|$)/, '') || '/';
+const enUrl = new URL(stripZh(path), SITE_URL).href;
+const zhUrl = new URL(pathFor('zh-CN', stripZh(path)), SITE_URL).href;
+
+const websiteJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'WebSite',
+  name: 'aiapp.im',
+  alternateName: 'AI-Friendliness Rating',
+  url: 'https://aiapp.im/',
+  description:
+    'Objective AI-friendliness ratings for every website — open, reproducible A–F grades for how open a site is to AI crawlers and agents.',
+  inLanguage: ['en', 'zh-CN'],
+  publisher: {
+    '@type': 'Organization',
+    name: 'aiapp',
+    url: 'https://aiapp.im/',
+    logo: { '@type': 'ImageObject', url: 'https://aiapp.im/icons/icon-512.png', width: 512, height: 512 },
+  },
+};
+
+const CRUMB_NAMES: Record<string, string> = {
+  method: 'Method',
+  categories: 'Categories',
+  category: 'Category',
+  search: 'Search',
+  submit: 'Submit',
+  about: 'About',
+  bot: 'For Bots',
+  badge: 'Badge',
+  docs: 'API docs',
+  offline: 'Offline',
+  site: 'Site',
+};
+const pathSegments = path.split('/').filter(Boolean).filter((s) => s !== 'zh-CN');
+const breadcrumbJsonLd =
+  pathSegments.length > 0
+    ? {
+        '@context': 'https://schema.org',
+        '@type': 'BreadcrumbList',
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: 'aiapp.im', item: isZh ? 'https://aiapp.im/zh-CN/' : 'https://aiapp.im/' },
+          ...pathSegments.map((seg, i) => ({
+            '@type': 'ListItem',
+            position: i + 2,
+            name: CRUMB_NAMES[seg] ?? (seg.includes('.') ? seg : seg.charAt(0).toUpperCase() + seg.slice(1)),
+            item: new URL('/' + [...(isZh ? ['zh-CN'] : []), ...pathSegments.slice(0, i + 1)].join('/'), SITE_URL).href,
+          })),
+        ],
+      }
+    : null;
+
+const ldJson = (obj: unknown) => JSON.stringify(obj).replace(/</g, '\\u003c');
 ---
 
 <!doctype html>
@@ -49,6 +106,24 @@ const pageDesc = description ?? (L.ui.tagline as string);
       rel="stylesheet"
     />
     <title>{pageTitle}</title>
+    <link rel="canonical" href={canonical} />
+    <link rel="alternate" hreflang="en" href={enUrl} />
+    <link rel="alternate" hreflang="zh-CN" href={zhUrl} />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={pageDesc} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:site_name" content="aiapp.im" />
+    <meta property="og:locale" content={isZh ? 'zh_CN' : 'en_US'} />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content={pageTitle} />
+    <meta name="twitter:description" content={pageDesc} />
+    <script type="application/ld+json" is:inline set:html={ldJson(websiteJsonLd)}></script>
+    {
+      breadcrumbJsonLd && (
+        <script type="application/ld+json" is:inline set:html={ldJson(breadcrumbJsonLd)}></script>
+      )
+    }
   </head>
   <body>
     <header class="nav" id="nav">
@@ -282,5 +357,23 @@ const pageDesc = description ?? (L.ui.tagline as string);
         }
       }
     </style>
+    <script>
+      // PWA service worker registration (spec §9): secure contexts only,
+      // no duplicate registration, register after load so it never blocks rendering.
+      const registerSw = () => {
+        if (!('serviceWorker' in navigator)) return;
+        const secure =
+          location.protocol === 'https:' ||
+          location.hostname === 'localhost' ||
+          location.hostname === '127.0.0.1' ||
+          location.hostname === '[::1]';
+        if (!secure) return;
+        navigator.serviceWorker.getRegistration().then((existing) => {
+          if (!existing) navigator.serviceWorker.register('/sw.js').catch(() => {});
+        });
+      };
+      if (document.readyState === 'complete') registerSw();
+      else addEventListener('load', registerSw);
+    </script>
   </body>
 </html>

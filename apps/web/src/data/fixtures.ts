@@ -1,4 +1,4 @@
-// Fixture data for M2 development ONLY — shape mirrors what fetch-data.mjs will
+// Fixture data for development ONLY — shape mirrors what fetch-data.mjs will
 // generate from aiapp-data scans/. Scores/grades below are synthetic samples used
 // to exercise layout, never presented as real ratings in production.
 

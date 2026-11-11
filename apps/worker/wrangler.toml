@@ -8,18 +8,17 @@ workers_dev = true
 [[d1_databases]]
 binding = "DB"
 database_name = "aiapp"
-database_id = "00000000-0000-0000-0000-000000000000" # run: wrangler d1 create aiapp
+database_id = "9c00a786-d95a-462d-9727-6654c2c38135"
 
 # KV namespace — rate-limit counters (5 submissions/IP/day) + badge cache.
 [[kv_namespaces]]
 binding = "KV"
-id = "00000000000000000000000000000000" # run: wrangler kv namespace create KV
+id = "ef9bd080547240b3a2cf7b274c35b745"
 
-# Custom domain routes: aiapp.im is not bound to this Cloudflare account yet.
-# Uncomment after the zone is set up (spec §5: aiapp.im DNS + route for API and badges):
-# [[routes]]
-# pattern = "aiapp.im/api/*"
-# zone_name = "aiapp.im"
-# [[routes]]
-# pattern = "aiapp.im/badge/*"
-# zone_name = "aiapp.im"
+# Same-origin API + badges on aiapp.im (zone active in this account).
+[[routes]]
+pattern = "aiapp.im/api/*"
+zone_name = "aiapp.im"
+[[routes]]
+pattern = "aiapp.im/badge/*"
+zone_name = "aiapp.im"

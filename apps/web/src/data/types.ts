@@ -38,9 +38,12 @@ export interface Distribution {
 /** Payload for the homepage (P1). */
 export interface HomeData {
   generatedAt: string;
+  /** number of rated (scored) sites — pending sites are excluded everywhere */
   total: number;
   avgScore: number;
   distribution: Distribution;
+  /** sites scanned but not ratable (no readable homepage/robots) — excluded from total */
+  pendingCount?: number;
   categories: CategoryCount[];
   /** top sites by score — natural ranking, pure AFR desc (red line) */
   leaderboard: SiteCard[];
@@ -80,6 +83,7 @@ export interface SiteDetail extends SiteCard {
   scannerVersion: string;
   layers: SiteLayer[];
   breakdown: Record<string, number>;
-  history: { date: string; score: number; grade: Grade }[];
+  /** one entry per rescan so far; 'Pending' grade allowed for unratable scans */
+  history: { date: string; score: number; grade: GradeState }[];
   claim?: string; // published owner statement (§8.2)
 }
