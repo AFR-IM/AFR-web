@@ -238,7 +238,7 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
       return c.json({ error: 'invalid_sort', allowed: ['score', 'rank', 'new'] }, 400);
     }
 
-    // Pending = unratable (neither homepage nor robots readable, calibration Q2):
+    // Pending = unratable (neither homepage nor robots readable, calibration 2026-11-10):
     // listed nowhere in natural results; still reachable via GET /sites/:domain.
     const where: string[] = ["s.status = 'active'", "s.grade != 'Pending'"];
     const params: SqlParam[] = [];

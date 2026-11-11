@@ -152,5 +152,5 @@ export function scoreL3(signals: ScanSignals): LayerScore {
   });
 
   const awarded = round2(checks.reduce((s, c) => s + c.awarded, 0));
-  return { layer: 'L3', name: 'Interactivity', awarded, max: 25, checks };
+  return { layer: 'L3', name: 'Actionability', awarded, max: 25, checks };
 }

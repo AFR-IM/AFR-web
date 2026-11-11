@@ -301,5 +301,5 @@ export function scoreL2(signals: ScanSignals): LayerScore {
   });
 
   const awarded = round2(checks.reduce((s, c) => s + c.awarded, 0));
-  return { layer: 'L2', name: 'Comprehensibility', awarded, max: 40, checks };
+  return { layer: 'L2', name: 'Legibility', awarded, max: 40, checks };
 }

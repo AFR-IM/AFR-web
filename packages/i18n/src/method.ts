@@ -121,7 +121,7 @@ export const AFR_METHOD: {
   // Spec §3.5 (lines 209-217): A 85–100 / B 70–84 / C 50–69 / D 30–49 / F 0–29;
   // colors = design tokens §10.2 (grade-a..grade-f)
   grades: [
-    // T2 calibration 2026-11-10 (first Top1000 scan; spec §3.5)
+    // Calibrated 2026-11-10 against the first Top1000 scan (spec §3.5)
     { min: 75, grade: 'A', color: '#3ECFAD' },
     { min: 60, grade: 'B', color: '#8BD450' },
     { min: 42, grade: 'C', color: '#F2C94C' },

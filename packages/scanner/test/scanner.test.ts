@@ -122,7 +122,7 @@ describe('polite budget', () => {
   });
 });
 
-describe('challenge fallback (user-approved design)', () => {
+describe('challenge fallback (browser-UA recovery)', () => {
   it('transparent UA 403 → re-fetch with browser UA, challengedStatus preserved', async () => {
     const calls: string[] = [];
     const impl = async (url: string, init: RequestInit): Promise<Response> => {

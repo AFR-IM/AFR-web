@@ -142,7 +142,7 @@ describe('robots.txt parsing', () => {
 });
 
 describe('policy evaluation and StrategyTag', () => {
-  it('no robots.txt (404) → protocol default allow-all, full 25, tag=Unconfigured (calibration S4)', () => {
+  it('no robots.txt (404) → protocol default allow-all, full 25, tag=Unconfigured (calibration 2026-11-10)', () => {
     const ev = evaluateRobotsPolicy(null, true);
     assert.equal(ev.robotsTotal, 25);
     assert.equal(ev.tag, 'Unconfigured');
@@ -189,7 +189,7 @@ describe('policy evaluation and StrategyTag', () => {
 });
 
 describe('grade thresholds', () => {
-  it('75+ A / 60+ B / 42+ C / 25+ D / otherwise F (T2 calibration, spec §3.5)', () => {
+  it('75+ A / 60+ B / 42+ C / 25+ D / otherwise F (calibrated thresholds, spec §3.5)', () => {
     assert.equal(gradeFor(100), 'A');
     assert.equal(gradeFor(87), 'A');
     assert.equal(gradeFor(75), 'A');

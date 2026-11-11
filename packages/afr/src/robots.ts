@@ -137,7 +137,7 @@ export interface RobotsEvaluation {
 /**
  * Evaluate the robots policy for the 14 AI UAs.
  * @param robots parsed robots.txt; null means no robots.txt (404) → protocol default allows all,
- *               scored full (calibration S4, spec §3.2 "no robots.txt = default allow = full");
+ *               scored full (calibration 2026-11-10, spec §3.2 "no robots.txt = default allow = full");
  *               an existing but AI-silent robots.txt stays at 0.5 (unconfigured ≠ explicitly open)
  * @param reachable whether robots.txt itself was fetchable; false (network error) → all unknown
  *                  (0 points, no penalty, no reward)
@@ -160,7 +160,7 @@ export function evaluateRobotsPolicy(
       continue;
     }
     if (!robots) {
-      // Calibration S4 (2026-11-10): absent robots.txt = protocol default allow-all = full credit.
+      // Calibration (2026-11-10): absent robots.txt = protocol default allow-all = full credit.
       verdicts.push({
         ua,
         family,

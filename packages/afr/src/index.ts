@@ -17,8 +17,8 @@ import { scoreL2 } from './l2.ts';
 import { scoreL3 } from './l3.ts';
 import { evaluateRobotsPolicy, parseRobots, type RobotsTxt } from './robots.ts';
 
-// v1.1.0 (2026-11-10 calibration): robots-absent → full credit (S4/Q1);
-// no evaluable homepage evidence → state 'pending', grade 'Pending' (Q2).
+// v1.1.0 (2026-11-10 calibration): robots-absent → full credit (spec §3.2 protocol default);
+// no evaluable homepage evidence → state 'pending', grade 'Pending' (spec §3.5).
 // Score logic change = minor bump per spec §4.4.
 export const ENGINE_VERSION = 'afr-1.1.0';
 
@@ -50,7 +50,7 @@ export function scoreAfr(signals: ScanSignals): AfrResult {
     for (const c of layer.checks) breakdown[c.id] = c.awarded;
   }
 
-  // Calibration Q2: rating requires *some* primary evidence. A readable
+  // Calibration (2026-11-10): rating requires *some* primary evidence. A readable
   // homepage (L2/L3) or a readable robots.txt (L1, incl. spec §4.3 declined
   // sites that walled the homepage) keeps the scan scored — no evidence, no
   // reward, but a real F. Only when NEITHER source is readable (DNS/TLS/

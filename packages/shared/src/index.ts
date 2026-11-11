@@ -7,7 +7,7 @@ export type Grade = 'A' | 'B' | 'C' | 'D' | 'F';
 /** Site rating states beyond the five grades (spec §3.5): Pending = no evaluable evidence */
 export type GradeState = Grade | 'Pending';
 
-/** Scan outcome: 'scored' = homepage evidence obtained; 'pending' = no evaluable homepage (spec Q2 calibration) */
+/** Scan outcome: 'scored' = homepage evidence obtained; 'pending' = no evaluable homepage (spec §3.5 calibration) */
 export type ScanState = 'scored' | 'pending';
 
 export type StrategyTag =
@@ -44,7 +44,7 @@ export interface CheckResult {
 /** Score of a single layer (L1 35 / L2 40 / L3 25) */
 export interface LayerScore {
   layer: LayerId;
-  /** English display name: Reachability / Comprehensibility / Interactivity */
+  /** English display name: Reachability / Legibility / Actionability */
   name: string;
   awarded: number;
   max: number;
@@ -135,7 +135,7 @@ export interface ScanSignals {
 }
 
 /** Grade thresholds (spec §3.5, calibrated against the first Tranco Top1000
- * scan 2026-11-10 — decision T2; see docs/calibration/first-scan-2026-11-10.md) */
+ * scan 2026-11-10, spec §3.5) */
 export const GRADE_THRESHOLDS: { min: number; grade: Grade }[] = [
   { min: 75, grade: 'A' },
   { min: 60, grade: 'B' },

@@ -1,6 +1,6 @@
 # AFR scan pipeline (plan §5.6 T0). Runs on GitHub-hosted runners (public repo = free unlimited).
-# Schedule enabled after the first-run calibration review (2026-11-10, afr-1.1.0 + T2 thresholds,
-# see docs/calibration/first-scan-2026-11-10.md). Weekly full-rescan job: still TODO (plan §5.6).
+# Schedule: daily 02:00 UTC (enabled 2026-11-10 after first-run validation).
+# Weekly full-rescan job: TODO.
 name: scan
 
 on:
