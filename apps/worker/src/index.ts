@@ -6,11 +6,12 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import type { Context } from 'hono';
-import type { D1Database, ExecutionContext, KVNamespace } from '@cloudflare/workers-types';
+import type { D1Database, ExecutionContext, KVNamespace, ScheduledController } from '@cloudflare/workers-types';
 import { GRADE_THRESHOLDS, LAYER_MAX } from '../../../packages/shared/src/index.ts';
 import { AFR_LAYERS, AFR_VERSION } from './method-checks.ts';
 import { GRADE_COLORS } from './grade-colors.ts';
 import { badgeSvg } from './badge.ts';
+import { runDailySync } from './cron.ts';
 import { createD1Db, type Db, type Row, type SqlParam } from './db.ts';
 import { DAY_MS, RateLimiter, kvStore, memoryStore } from './rate-limit.ts';
 
@@ -19,6 +20,12 @@ export interface WorkerEnv {
   DB: D1Database;
   /** Optional: when missing the rate limiter falls back to an in-memory counter */
   KV?: KVNamespace;
+  /** Worker secret: token used to dispatch scan.yml (search-then-collect).
+   * Missing → scan requests still queue; the dispatch is deferred to the
+   * daily cron, which drains the queue's data side anyway. */
+  GITHUB_DISPATCH_TOKEN?: string;
+  /** Worker secret: shared token required by POST /api/v1/queue/:domain/done */
+  QUEUE_TOKEN?: string;
 }
 
 type AppEnv = { Bindings: WorkerEnv };
@@ -28,10 +35,25 @@ export interface AppOverrides {
   db?: Db;
   /** Injected rate limiter (tests use an isolated in-memory store) */
   rateLimiter?: RateLimiter;
+  /** Injected scan-rate limiters (tests use isolated in-memory stores) */
+  scanLimits?: ScanRateLimits;
+  /** Injected fetch for the GitHub dispatch (tests pass a fake) */
+  fetchImpl?: typeof fetch;
 }
 
 /** 5 submissions per IP per day (spec §6.2) */
 export const SUBMISSION_LIMIT = 5;
+
+// On-demand scan request limits (search-then-collect flow)
+export const SCAN_IP_LIMIT = 10; // per IP per UTC day
+export const SCAN_DOMAIN_LIMIT = 1; // per domain per UTC day
+export const SCAN_GLOBAL_LIMIT = 50; // all callers per UTC day
+export const SCAN_ETA_SECONDS = 180; // advertised queue time before the cron/CI picks it up
+export const QUEUE_LIST_LIMIT = 50;
+
+const SCAN_DISPATCH_URL =
+  'https://api.github.com/repos/imAiAPP/aiapp-web/actions/workflows/scan.yml/dispatches';
+
 const PER_PAGE = 20;
 const LEADERBOARD_SIZE = 10;
 
@@ -130,6 +152,14 @@ interface CategoryRow extends Row {
   count: number;
 }
 
+interface SubmissionRow extends Row {
+  domain: string;
+  submitter_note: string | null;
+  source: string | null;
+  status: string | null;
+  created_at: string | null;
+}
+
 function mapSite(row: SiteRow) {
   return {
     domain: row.domain,
@@ -202,14 +232,77 @@ function mapAd(row: AdRow) {
 /** Shared fallback limiter (used only when neither an override nor KV is present) */
 const fallbackLimiter = new RateLimiter(memoryStore(), SUBMISSION_LIMIT, DAY_MS, 'subs');
 
+/** The three on-demand scan request tiers */
+export interface ScanRateLimits {
+  ip: RateLimiter;
+  domain: RateLimiter;
+  global: RateLimiter;
+}
+
+/** Fallback scan limiters (per-isolate memory — degraded but serviceable) */
+const fallbackScanLimits: ScanRateLimits = {
+  ip: new RateLimiter(memoryStore(), SCAN_IP_LIMIT, DAY_MS, 'scan-ip'),
+  domain: new RateLimiter(memoryStore(), SCAN_DOMAIN_LIMIT, DAY_MS, 'scan-domain'),
+  global: new RateLimiter(memoryStore(), SCAN_GLOBAL_LIMIT, DAY_MS, 'scan-global'),
+};
+
 function dbOf(c: Context<AppEnv>, overrides: AppOverrides): Db {
   return overrides.db ?? createD1Db(c.env.DB);
 }
 
 function limiterOf(c: Context<AppEnv>, overrides: AppOverrides): RateLimiter {
   if (overrides.rateLimiter) return overrides.rateLimiter;
-  if (c.env.KV) return new RateLimiter(kvStore(c.env.KV), SUBMISSION_LIMIT, DAY_MS, 'subs');
+  if (c.env?.KV) return new RateLimiter(kvStore(c.env.KV), SUBMISSION_LIMIT, DAY_MS, 'subs');
   return fallbackLimiter;
+}
+
+function scanLimitsOf(c: Context<AppEnv>, overrides: AppOverrides): ScanRateLimits {
+  if (overrides.scanLimits) return overrides.scanLimits;
+  if (c.env?.KV) {
+    const store = kvStore(c.env.KV);
+    return {
+      ip: new RateLimiter(store, SCAN_IP_LIMIT, DAY_MS, 'scan-ip'),
+      domain: new RateLimiter(store, SCAN_DOMAIN_LIMIT, DAY_MS, 'scan-domain'),
+      global: new RateLimiter(store, SCAN_GLOBAL_LIMIT, DAY_MS, 'scan-global'),
+    };
+  }
+  return fallbackScanLimits;
+}
+
+/** Ask GitHub Actions (scan.yml, inputs {mode:'queue'}) to drain the scan
+ * queue. Soft-fail contract: a missing token or a failed call never fails
+ * the request — the daily cron picks the queue up anyway — so we log a
+ * warning and report `deferred`. */
+async function dispatchScanQueue(
+  token: string | undefined,
+  fetchImpl: typeof fetch,
+): Promise<'ok' | 'deferred'> {
+  if (!token) {
+    console.warn('search-scan: GITHUB_DISPATCH_TOKEN not set, dispatch deferred');
+    return 'deferred';
+  }
+  try {
+    const res = await fetchImpl(SCAN_DISPATCH_URL, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${token}`,
+        accept: 'application/vnd.github+json',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ ref: 'main', inputs: { mode: 'queue' } }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) {
+      console.warn(`search-scan: dispatch failed (HTTP ${res.status}), deferred`);
+      return 'deferred';
+    }
+    return 'ok';
+  } catch (err) {
+    console.warn(
+      `search-scan: dispatch error (${err instanceof Error ? err.message : String(err)}), deferred`,
+    );
+    return 'deferred';
+  }
 }
 
 export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
@@ -534,6 +627,139 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
   });
 
   // -------------------------------------------------------------------------
+  // On-demand scan requests — search-then-collect flow
+  // -------------------------------------------------------------------------
+
+  // POST /api/v1/search-scan {domain} — request an on-demand scan.
+  // Order: already-listed → already-queued → rate limits → insert → dispatch.
+  app.post('/api/v1/search-scan', async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: 'invalid_json' }, 400);
+    }
+    const payload = (body ?? {}) as { domain?: unknown };
+    if (typeof payload.domain !== 'string') {
+      return c.json({ error: 'invalid_domain', message: 'domain must be a string' }, 400);
+    }
+    const domain = normalizeDomain(payload.domain);
+    if (!domain) {
+      return c.json({ error: 'invalid_domain', message: 'expected a bare domain like example.com' }, 400);
+    }
+
+    const db = dbOf(c, overrides);
+
+    // Already listed → nothing to scan (and no quota burned).
+    const site = await db.prepare('SELECT domain FROM sites WHERE domain = ?').get<{ domain: string }>(domain);
+    if (site) return c.json({ status: 'exists', domain });
+
+    // Already waiting in the queue from any source → idempotent no-op.
+    const queued = await db
+      .prepare(
+        `SELECT status FROM submissions WHERE domain = ? AND status IN ('queued', 'pending', 'scanning')
+         ORDER BY id DESC LIMIT 1`,
+      )
+      .get<{ status: string }>(domain);
+    if (queued) return c.json({ status: 'queued', domain, etaSeconds: SCAN_ETA_SECONDS });
+
+    // Rate limits: per-IP 10/day, per-domain 1/day, global 50/day. All three
+    // tiers are pre-checked before any is consumed, so a rejected request
+    // never burns quota on another tier.
+    const limits = scanLimitsOf(c, overrides);
+    const tiers: [string, RateLimiter][] = [
+      [clientIp(c), limits.ip],
+      [domain, limits.domain],
+      ['global', limits.global],
+    ];
+    for (const [key, limiter] of tiers) {
+      const decision = await limiter.check(key);
+      if (!decision.allowed) {
+        const retryAfter = limiter.retryAfter();
+        return c.json(
+          { error: 'rate_limited', retryAfter },
+          429,
+          { 'Retry-After': String(retryAfter) },
+        );
+      }
+    }
+    for (const [key, limiter] of tiers) await limiter.consume(key);
+
+    await db
+      .prepare(
+        `INSERT INTO submissions (domain, submitter_note, source, status, created_at)
+         VALUES (?, NULL, 'on_demand', 'queued', ?)`,
+      )
+      .run(domain, new Date().toISOString());
+
+    // Soft dispatch: missing/failed token → 200 with dispatch:'deferred'.
+    const dispatch = await dispatchScanQueue(
+      c.env?.GITHUB_DISPATCH_TOKEN,
+      overrides.fetchImpl ?? fetch,
+    );
+    return c.json({ status: 'queued', domain, etaSeconds: SCAN_ETA_SECONDS, dispatch });
+  });
+
+  // GET /api/v1/queue — oldest queued submissions first (up to 50), public read.
+  app.get('/api/v1/queue', async (c) => {
+    const db = dbOf(c, overrides);
+    const rows = await db
+      .prepare(
+        `SELECT domain, submitter_note, source, created_at FROM submissions
+         WHERE status IN ('queued', 'pending', 'scanning')
+         ORDER BY created_at ASC, id ASC LIMIT ?`,
+      )
+      .all<SubmissionRow>(QUEUE_LIST_LIMIT);
+    return c.json({
+      items: rows.map((row) => ({
+        domain: row.domain,
+        source: row.source,
+        note: row.submitter_note ?? null,
+        createdAt: row.created_at,
+      })),
+    });
+  });
+
+  // POST /api/v1/queue/:domain/done — GitHub Actions reports a finished scan.
+  // Auth: X-Queue-Token must equal the QUEUE_TOKEN secret (501 when unset).
+  app.post('/api/v1/queue/:domain/done', async (c) => {
+    const queueToken = c.env?.QUEUE_TOKEN;
+    if (!queueToken) {
+      return c.json({ error: 'not_configured', message: 'QUEUE_TOKEN secret is not set' }, 501);
+    }
+    if (c.req.header('x-queue-token') !== queueToken) {
+      return c.json({ error: 'unauthorized' }, 401);
+    }
+    const domain = normalizeDomain(c.req.param('domain'));
+    if (!domain) return c.json({ error: 'invalid_domain' }, 400);
+
+    const db = dbOf(c, overrides);
+    const now = new Date().toISOString();
+    let changes = 0;
+    try {
+      ({ changes } = await db
+        .prepare(
+          `UPDATE submissions SET status = 'scanned', done_at = ?
+           WHERE domain = ? AND status IN ('queued', 'pending', 'scanning')`,
+        )
+        .run(now, domain));
+    } catch {
+      // Deployed D1 may predate the done_at column (schema.sql only creates
+      // missing tables) — fall back to marking the status alone.
+      ({ changes } = await db
+        .prepare(
+          `UPDATE submissions SET status = 'scanned'
+           WHERE domain = ? AND status IN ('queued', 'pending', 'scanning')`,
+        )
+        .run(domain));
+    }
+    if (changes === 0) {
+      return c.json({ error: 'not_queued', domain }, 404);
+    }
+    return c.json({ ok: true, domain, status: 'scanned' });
+  });
+
+  // -------------------------------------------------------------------------
   // Ads (spec v1.2 §6.2)
   // -------------------------------------------------------------------------
 
@@ -606,5 +832,12 @@ const app = createApp();
 export default {
   fetch(request: Request, env: WorkerEnv, ctx: ExecutionContext): Response | Promise<Response> {
     return app.fetch(request, env, ctx);
+  },
+
+  /** Daily cron (wrangler.toml [triggers] crons): sync the newest snapshot
+   * from the data repo into D1. The Worker never scans — scanners run in
+   * GitHub Actions (scan.yml), which reports back via /api/v1/queue/:domain/done. */
+  async scheduled(_controller: ScheduledController, env: WorkerEnv, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(runDailySync({ db: createD1Db(env.DB), fetchImpl: fetch }));
   },
 };

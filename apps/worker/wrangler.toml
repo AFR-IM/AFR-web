@@ -3,6 +3,21 @@ main = "src/index.ts"
 compatibility_date = "2026-11-10"
 workers_dev = true
 
+# Daily cron (04:30 UTC): sync the newest scan snapshot from the data repo
+# into D1. The Worker never scans — scanners run in GitHub Actions (scan.yml),
+# which reports completions back via POST /api/v1/queue/:domain/done.
+[triggers]
+crons = ["30 4 * * *"]
+
+# Required secrets — set per environment, values are never committed:
+#   GITHUB_DISPATCH_TOKEN  token that can dispatch scan.yml (search-then-collect;
+#                          if unset the API still queues requests and the daily
+#                          cron picks them up — dispatch is reported as deferred)
+#     wrangler secret put GITHUB_DISPATCH_TOKEN
+#   QUEUE_TOKEN           shared token the scan runner must present as the
+#                          X-Queue-Token header when marking a queue item done
+#     wrangler secret put QUEUE_TOKEN
+
 # D1 database binding (apply schema.sql first):
 #   wrangler d1 execute aiapp --file schema.sql --remote
 [[d1_databases]]
@@ -10,7 +25,8 @@ binding = "DB"
 database_name = "aiapp"
 database_id = "9c00a786-d95a-462d-9727-6654c2c38135"
 
-# KV namespace — rate-limit counters (5 submissions/IP/day) + badge cache.
+# KV namespace — rate-limit counters (5 submissions/IP/day; on-demand scan
+# requests: 10/IP/day, 1/domain/day, 50/day) + badge cache.
 [[kv_namespaces]]
 binding = "KV"
 id = "ef9bd080547240b3a2cf7b274c35b745"

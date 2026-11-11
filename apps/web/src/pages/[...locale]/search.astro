@@ -3,6 +3,11 @@
 // list (spec §10.3 / §10.5 position 2): the Sponsored row appears above the
 // results only while the query is non-empty and never mixes into the natural
 // cards. Zero results → searchEmpty + submit CTA. No JS → full index shown.
+//
+// Zero results for a bare domain → "not collected yet" block: an explicit,
+// user-triggered scan (POST /api/v1/search-scan) plus 10s polling of
+// GET /api/v1/sites/:domain until the report lands. The POST NEVER fires on
+// typing — only on button click (abuse guard).
 
 import Base from '../../layouts/Base.astro';
 import DomainCard from '../../components/home/DomainCard.astro';
@@ -11,6 +16,7 @@ import { getCatalog, pathFor, toLocale } from '../../i18n/loader.ts';
 import { listSites } from '../../data/loader.ts';
 import { resolvableAds } from '../../components/home/ads-fixture.ts';
 import { uiText } from '../../components/home/fallbacks.ts';
+import { GRADE_VAR } from '../../utils/grade.ts';
 
 export function getStaticPaths() {
   return [{ params: { locale: undefined } }, { params: { locale: 'zh-CN' } }];
@@ -26,6 +32,27 @@ const title = uiText(L.ui, 'searchTitle', locale);
 const placeholder = L.ui.searchPlaceholder ?? 'Search a domain…';
 const emptyText = L.ui.searchEmpty ?? 'No site matches that search.';
 const submitCta = L.ui.submitCta ?? 'Submit domain';
+
+// "not collected yet" scan block — catalog-first, inline EN/ZH fallback copy
+const scanHeading = uiText(L.ui, 'scanHeading', locale);
+const scanDesc = uiText(L.ui, 'scanDesc', locale);
+const scanBtn = uiText(L.ui, 'scanBtn', locale);
+const scanBusy = uiText(L.ui, 'scanBusy', locale);
+const scanQueued = uiText(L.ui, 'scanQueued', locale);
+const scanPolling = uiText(L.ui, 'scanPolling', locale);
+const scanStill = uiText(L.ui, 'scanStill', locale);
+const scanTimeout = uiText(L.ui, 'scanTimeout', locale);
+const scanRate = uiText(L.ui, 'scanRate', locale);
+const scanError = uiText(L.ui, 'scanError', locale);
+const scanNet = uiText(L.ui, 'scanNet', locale);
+const scanOpen = uiText(L.ui, 'scanResultOpen', locale);
+const invalidText = uiText(L.ui, 'submitInvalid', locale); // reused for the domain check
+const gradeLabel = L.ui.grade ?? 'Grade';
+const scoreLabel = L.ui.score ?? 'Score';
+const strategyLabel = L.ui.strategy ?? 'Strategy';
+const strategyLabels = JSON.stringify(
+  Object.fromEntries(Object.entries(L.strategies).map(([k, v]) => [k, v.label])),
+);
 
 const ads = resolvableAds();
 const ad = ads[1] ?? ads[0]; // slot position 2 (search-top)
@@ -63,6 +90,56 @@ const ad = ads[1] ?? ads[0]; // slot position 2 (search-top)
       <p>{emptyText}</p>
       <a class="btn" href={href('/submit')}>{submitCta}</a>
     </div>
+
+    {/* "not collected yet" — shown only when a bare-domain query has zero hits */}
+    <section
+      class="scan"
+      data-scan
+      hidden
+      data-label-idle={scanBtn}
+      data-label-busy={scanBusy}
+      data-tpl-queued={scanQueued}
+      data-tpl-polling={scanPolling}
+      data-still={scanStill}
+      data-tpl-timeout={scanTimeout}
+      data-tpl-rate={scanRate}
+      data-msg-error={scanError}
+      data-msg-net={scanNet}
+      data-msg-invalid={invalidText}
+      data-eta-default="180"
+      data-locale={locale}
+      data-report-base={href('/site/')}
+      data-label-grade={gradeLabel}
+      data-label-score={scoreLabel}
+      data-label-strategy={strategyLabel}
+      data-strategies={strategyLabels}
+      data-grade-vars={JSON.stringify(GRADE_VAR)}
+    >
+      <p class="scan-kicker mono" aria-hidden="true">{scanHeading}</p>
+      <p class="scan-domain mono" data-scan-domain></p>
+      <p class="scan-desc">{scanDesc}</p>
+
+      <div class="scan-row">
+        <button class="btn scan-btn" type="button" data-scan-btn>
+          <span class="scan-spinner" aria-hidden="true"></span>
+          <span data-scan-btn-txt>{scanBtn}</span>
+        </button>
+        <a class="scan-alt" href={href('/submit')}>{submitCta}</a>
+      </div>
+
+      <!-- visual countdown (phase changes are announced via data-scan-live) -->
+      <p class="scan-status mono" data-scan-status aria-hidden="true"></p>
+      <p class="scan-sr" data-scan-live role="status" aria-live="polite"></p>
+
+      <div class="scan-result" data-scan-result hidden>
+        <span class="sr-grade mono" data-sr-grade></span>
+        <span class="sr-info">
+          <span class="sr-domain mono" data-sr-domain></span>
+          <span class="sr-meta mono" data-sr-meta></span>
+          <a class="btn sr-open" data-sr-link href={href('/site/')}>{scanOpen}</a>
+        </span>
+      </div>
+    </section>
   </div>
 
   <!-- inline so the ?q= filter applies before first paint (no flash / CLS) -->
@@ -77,6 +154,358 @@ const ad = ads[1] ?? ads[0]; // slot position 2 (search-top)
       var sponsor = document.querySelector('[data-sponsor]');
       var countEl = document.querySelector('[data-count]');
       var countTpl = (countEl && countEl.getAttribute('data-count-template')) || '{n} sites';
+      var scanBox = document.querySelector('[data-scan]');
+
+      var DOMAIN_RE = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i;
+      var POLL_MS = 10000;
+      var MAX_MS = 300000; /* ~5 min of polite polling */
+
+      /* domain helpers — mirror the server's normalizeDomain() */
+      function normDomain(raw) {
+        return (raw || '')
+          .trim()
+          .toLowerCase()
+          .replace(/^[a-z]+:\/\//, '')
+          .replace(/^www\./, '')
+          .split('/')[0]
+          .split('?')[0]
+          .split('#')[0]
+          .replace(/:\d+$/, '')
+          .replace(/\.$/, '');
+      }
+      function isDomainish(raw) {
+        var q = (raw || '').trim();
+        if (!q || /\s/.test(q)) return false;
+        var d = normDomain(q);
+        return d.length >= 4 && d.length <= 253 && d.indexOf('.') > 0;
+      }
+
+      /* ── scan state machine: idle → submitting → queued → polling → done ── */
+      var SCAN = {
+        domain: '',
+        phase: 'idle', /* idle | submitting | polling | done */
+        eta: 0,
+        polled: false,
+        msgUntil: 0, /* body-message flash window (degraded 5xx responses) */
+        deadline: 0,
+        tickTimer: 0,
+        waitTimer: 0,
+        inFlight: false,
+      };
+      var els = {};
+
+      function attr(name) {
+        return (scanBox && scanBox.getAttribute(name)) || '';
+      }
+      function fmtEta(sec) {
+        sec = Math.max(1, Math.round(Number(sec) || 0));
+        var zh = attr('data-locale') === 'zh-CN';
+        if (sec >= 90) {
+          var m = Math.round(sec / 60);
+          return zh ? m + ' 分钟' : m + ' min';
+        }
+        return zh ? sec + ' 秒' : sec + ' s';
+      }
+      function tpl(name, eta) {
+        return attr(name).replace('{eta}', fmtEta(eta));
+      }
+      function msgOf(body, fallback) {
+        return body && typeof body.message === 'string' && body.message ? body.message : fallback;
+      }
+      function retryAfterOf(r, body) {
+        var h = r && r.headers && r.headers.get ? r.headers.get('Retry-After') : null;
+        var n = parseInt(h, 10);
+        if (!isFinite(n)) n = parseInt(body && (body.retry_after || body.retryAfter), 10);
+        if (!isFinite(n)) n = parseInt(body && body.etaSeconds, 10);
+        return isFinite(n) && n > 0 ? n : 60;
+      }
+      function readJson(r) {
+        return r.json().then(
+          function (b) {
+            return b;
+          },
+          function () {
+            return null;
+          },
+        );
+      }
+
+      function setBtn(mode) {
+        /* 'idle' | 'busy' | 'hidden' — .scan-row keeps its height either way */
+        if (!els.btn || !els.btnTxt) return;
+        if (mode === 'hidden') {
+          els.btn.hidden = true;
+          return;
+        }
+        els.btn.hidden = false;
+        els.btn.disabled = mode === 'busy';
+        els.btn.classList.toggle('is-busy', mode === 'busy');
+        els.btnTxt.textContent = mode === 'busy' ? attr('data-label-busy') : attr('data-label-idle');
+      }
+      function setStatus(msg, isErr) {
+        if (!els.status) return;
+        els.status.textContent = msg || '';
+        els.status.classList.toggle('is-err', !!isErr);
+        els.status.classList.toggle('is-busy', SCAN.phase === 'polling' && !isErr && !!msg);
+      }
+      function announce(msg) {
+        if (els.live) els.live.textContent = msg || '';
+      }
+      function paint() {
+        if (SCAN.msgUntil) {
+          if (Date.now() < SCAN.msgUntil) return; /* keep a body message visible */
+          SCAN.msgUntil = 0;
+        }
+        var t = SCAN.phase === 'done' ? '' : SCAN.polled ? 'data-tpl-polling' : 'data-tpl-queued';
+        if (SCAN.phase === 'polling' && SCAN.eta <= 0) setStatus(attr('data-still'), false);
+        else if (t) setStatus(tpl(t, SCAN.eta), false);
+      }
+
+      function clearTimers() {
+        if (SCAN.tickTimer) clearInterval(SCAN.tickTimer);
+        if (SCAN.waitTimer) clearInterval(SCAN.waitTimer);
+        SCAN.tickTimer = 0;
+        SCAN.waitTimer = 0;
+      }
+
+      function resetScan(domain) {
+        clearTimers();
+        SCAN.domain = domain || '';
+        SCAN.phase = 'idle';
+        SCAN.eta = 0;
+        SCAN.polled = false;
+        SCAN.deadline = 0;
+        SCAN.msgUntil = 0;
+        SCAN.inFlight = false;
+        setBtn('idle');
+        setStatus('', false);
+        announce('');
+        if (els.result) els.result.hidden = true;
+        if (els.domain) els.domain.textContent = SCAN.domain;
+      }
+
+      function fail(msg) {
+        clearTimers();
+        SCAN.phase = 'idle';
+        setBtn('idle');
+        setStatus(msg, true);
+        announce(msg);
+      }
+
+      function timeoutScan() {
+        clearTimers();
+        SCAN.phase = 'idle';
+        setBtn('idle');
+        var msg = attr('data-tpl-timeout');
+        setStatus(msg, false);
+        announce(msg);
+      }
+
+      function waitCountdown(sec, onDone) {
+        /* 429 → polite Retry-After countdown in the status line, then onDone() */
+        var left = Math.max(5, Math.round(sec));
+        if (SCAN.waitTimer) clearInterval(SCAN.waitTimer);
+        setStatus(tpl('data-tpl-rate', left), false);
+        announce(tpl('data-tpl-rate', left));
+        SCAN.waitTimer = setInterval(function () {
+          left -= 1;
+          if (left <= 0) {
+            clearInterval(SCAN.waitTimer);
+            SCAN.waitTimer = 0;
+            onDone();
+          } else {
+            setStatus(tpl('data-tpl-rate', left), false);
+          }
+        }, 1000);
+      }
+
+      function startTicker() {
+        /* one 1s tick: countdown repaint + a poll every 10th tick */
+        if (SCAN.tickTimer) clearInterval(SCAN.tickTimer);
+        var sec = 0;
+        SCAN.tickTimer = setInterval(function () {
+          if (Date.now() > SCAN.deadline) {
+            timeoutScan();
+            return;
+          }
+          sec += 1;
+          SCAN.eta = Math.max(0, SCAN.eta - 1);
+          if (SCAN.waitTimer) return; /* a 429 countdown owns the status line */
+          paint();
+          if (sec % (POLL_MS / 1000) === 0) poll();
+        }, 1000);
+      }
+
+      function poll() {
+        if (SCAN.inFlight || SCAN.phase !== 'polling') return;
+        var d = SCAN.domain;
+        SCAN.inFlight = true;
+        fetch('/api/v1/sites/' + encodeURIComponent(d), {
+          headers: { accept: 'application/json' },
+        })
+          .then(function (r) {
+            return readJson(r).then(function (body) {
+              if (d !== SCAN.domain) return; /* query changed — drop the stale response */
+              SCAN.inFlight = false;
+              if (SCAN.phase !== 'polling') return; /* timed out / failed meanwhile */
+              if (r.status === 200) {
+                renderResult(body);
+                return;
+              }
+              if (r.status === 404) {
+                SCAN.polled = true;
+                paint();
+                return;
+              }
+              if (r.status === 429) {
+                /* stop the loop, honor Retry-After, then keep polling */
+                if (SCAN.tickTimer) {
+                  clearInterval(SCAN.tickTimer);
+                  SCAN.tickTimer = 0;
+                }
+                waitCountdown(retryAfterOf(r, body), startTicker);
+                return;
+              }
+              if (r.status === 400) {
+                fail(msgOf(body, attr('data-msg-invalid')));
+                return;
+              }
+              /* 5xx / unknown shape — show the body message, keep politely polling */
+              SCAN.polled = true;
+              var m = msgOf(body, null);
+              if (m) {
+                setStatus(m, true);
+                announce(m);
+                SCAN.msgUntil = Date.now() + POLL_MS;
+              }
+            });
+          })
+          .catch(function () {
+            if (d !== SCAN.domain) return;
+            SCAN.inFlight = false; /* network blip — the ticker keeps trying until deadline */
+          });
+      }
+
+      function renderResult(body) {
+        clearTimers();
+        SCAN.phase = 'done';
+        var site = (body && body.site) || body || {};
+        var grade = site.grade || (body && body.scan && body.scan.grade) || '';
+        var score = site.score_total != null ? site.score_total : site.score;
+        var strat = site.strategy_tag || site.strategyTag || '';
+        var domain = site.domain || SCAN.domain;
+        var stratLabels = {};
+        try {
+          stratLabels = JSON.parse(attr('data-strategies') || '{}');
+        } catch (e) {
+          stratLabels = {};
+        }
+        var gradeVars = {};
+        try {
+          gradeVars = JSON.parse(attr('data-grade-vars') || '{}');
+        } catch (e) {
+          gradeVars = {};
+        }
+
+        if (els.rGrade) {
+          els.rGrade.textContent = grade || '—';
+          els.rGrade.style.color = (grade && gradeVars[grade]) || 'var(--text-3)';
+        }
+        if (els.rDomain) els.rDomain.textContent = domain;
+        var parts = [];
+        if (grade) parts.push(attr('data-label-grade') + ' ' + grade);
+        if (score !== undefined && score !== null && score !== '') {
+          parts.push(attr('data-label-score') + ' ' + score);
+        }
+        if (strat) parts.push(attr('data-label-strategy') + ' ' + (stratLabels[strat] || strat));
+        if (els.rMeta) els.rMeta.textContent = parts.join(' · ');
+        if (els.rLink) els.rLink.href = attr('data-report-base') + domain + '/';
+
+        setBtn('hidden');
+        setStatus('', false);
+        if (els.result) els.result.hidden = false;
+        announce(domain + ' — ' + (els.rLink ? els.rLink.textContent : ''));
+      }
+
+      function startScan() {
+        if (SCAN.phase !== 'idle') return;
+        var d = SCAN.domain;
+        if (!DOMAIN_RE.test(d)) {
+          /* invalid domain → inline message, NO request */
+          setStatus(attr('data-msg-invalid'), true);
+          announce(attr('data-msg-invalid'));
+          return;
+        }
+        SCAN.phase = 'submitting';
+        setBtn('busy');
+        setStatus('', false);
+        announce(attr('data-label-busy'));
+
+        fetch('/api/v1/search-scan', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', accept: 'application/json' },
+          body: JSON.stringify({ domain: d }),
+        })
+          .then(function (r) {
+            if (d !== SCAN.domain) return; /* query changed — abandon silently */
+            return readJson(r).then(function (body) {
+              if (r.status === 200) {
+                var eta = parseInt(body && body.etaSeconds, 10);
+                if (!isFinite(eta) || eta <= 0) eta = parseInt(attr('data-eta-default'), 10) || 180;
+                var exists = body && body.status === 'exists';
+                if (exists) eta = 0; /* already collected → the report is one fetch away */
+                SCAN.phase = 'polling';
+                SCAN.eta = eta;
+                SCAN.polled = !!exists;
+                SCAN.deadline = Date.now() + MAX_MS;
+                setBtn('hidden');
+                paint();
+                announce(
+                  exists
+                    ? tpl('data-tpl-polling', eta)
+                    : tpl('data-tpl-queued', eta),
+                );
+                startTicker();
+                if (exists) poll();
+                return;
+              }
+              if (r.status === 429) {
+                /* phase is still 'submitting' → button stays busy during the wait */
+                waitCountdown(retryAfterOf(r, body), function () {
+                  setStatus('', false);
+                  SCAN.phase = 'idle';
+                  setBtn('idle');
+                });
+                return;
+              }
+              if (r.status === 400) {
+                fail(msgOf(body, attr('data-msg-invalid')));
+                return;
+              }
+              fail(msgOf(body, attr('data-msg-error')));
+            });
+          })
+          .catch(function () {
+            if (d !== SCAN.domain) return;
+            fail(attr('data-msg-net'));
+          });
+      }
+
+      if (scanBox) {
+        els = {
+          btn: scanBox.querySelector('[data-scan-btn]'),
+          btnTxt: scanBox.querySelector('[data-scan-btn-txt]'),
+          status: scanBox.querySelector('[data-scan-status]'),
+          live: scanBox.querySelector('[data-scan-live]'),
+          domain: scanBox.querySelector('[data-scan-domain]'),
+          result: scanBox.querySelector('[data-scan-result]'),
+          rGrade: scanBox.querySelector('[data-sr-grade]'),
+          rDomain: scanBox.querySelector('[data-sr-domain]'),
+          rMeta: scanBox.querySelector('[data-sr-meta]'),
+          rLink: scanBox.querySelector('[data-sr-link]'),
+        };
+        if (els.btn) els.btn.addEventListener('click', startScan);
+      }
 
       function apply(raw) {
         var q = (raw || '').trim().toLowerCase();
@@ -86,7 +515,18 @@ const ad = ads[1] ?? ads[0]; // slot position 2 (search-top)
           cards[i].hidden = !hit;
           if (hit) visible++;
         }
-        if (empty) empty.hidden = !(q !== '' && visible === 0);
+        var domainish = q !== '' && visible === 0 && isDomainish(q);
+        if (scanBox) {
+          if (domainish) {
+            var d = normDomain(q);
+            if (d !== SCAN.domain) resetScan(d);
+            scanBox.hidden = false;
+          } else {
+            if (SCAN.domain !== '') resetScan('');
+            scanBox.hidden = true;
+          }
+        }
+        if (empty) empty.hidden = !(q !== '' && visible === 0 && !domainish);
         if (grid) grid.hidden = q !== '' && visible === 0;
         if (sponsor) sponsor.hidden = q === '';
         if (countEl) {
@@ -198,5 +638,157 @@ const ad = ads[1] ?? ads[0]; // slot position 2 (search-top)
   }
   .empty[hidden] {
     display: none;
+  }
+
+  /* ── "not collected yet" scan block ─────────────────────────────────── */
+  .scan {
+    display: grid;
+    gap: 10px;
+    margin-top: 32px;
+    padding: 22px;
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    animation: scan-in var(--t-standard) var(--ease);
+  }
+  .scan[hidden] {
+    display: none;
+  }
+  @keyframes scan-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .scan-kicker {
+    margin: 0;
+    font-size: 11.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+  .scan-domain {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--brand);
+    overflow-wrap: anywhere;
+  }
+  .scan-desc {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--text-2);
+    max-width: 60ch;
+  }
+  .scan-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 14px;
+    min-height: 38px; /* reserved: button ↔ hidden swap must not shift layout */
+    margin-top: 4px;
+  }
+  .scan-btn[disabled] {
+    cursor: not-allowed;
+    opacity: 0.85;
+  }
+  .scan-spinner {
+    display: none;
+    width: 13px;
+    height: 13px;
+    border: 2px solid color-mix(in srgb, currentColor 35%, transparent);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: scan-spin 0.8s linear infinite;
+  }
+  .scan-btn.is-busy .scan-spinner {
+    display: inline-block;
+  }
+  @keyframes scan-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  .scan-alt {
+    font-size: 13.5px;
+    color: var(--brand-link);
+  }
+  .scan-alt:hover {
+    text-decoration: underline;
+  }
+  .scan-status {
+    margin: 0;
+    min-height: 1.3em; /* reserved: countdown repaints never shift layout */
+    font-size: 12.5px;
+    color: var(--text-3);
+  }
+  .scan-status.is-err {
+    color: var(--grade-f);
+  }
+  .scan-status.is-busy::before {
+    content: '';
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    margin-right: 7px;
+    border: 2px solid color-mix(in srgb, currentColor 35%, transparent);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    vertical-align: -1px;
+    animation: scan-spin 0.8s linear infinite;
+  }
+  .scan-sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .scan-result {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    animation: scan-in var(--t-standard) var(--ease);
+  }
+  .scan-result[hidden] {
+    display: none;
+  }
+  .sr-grade {
+    flex: none;
+    font-size: 34px;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .sr-info {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+  }
+  .sr-domain {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-1);
+    overflow-wrap: anywhere;
+  }
+  .sr-meta {
+    font-size: 12.5px;
+    color: var(--text-2);
+  }
+  .sr-open {
+    justify-self: start;
   }
 </style>

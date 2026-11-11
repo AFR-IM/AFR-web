@@ -2,7 +2,9 @@
 // SearchBox — mono input with instant LOCAL autocomplete over the indexed
 // domains (spec §10.4 / §10.6): ≤8 suggestions, keyboard ↑/↓/Enter/Escape,
 // empty result → searchEmpty + "submit it" CTA. Enter posts to /search?q=
-// (progressive enhancement: the form works without JS).
+// (progressive enhancement: the form works without JS). The dropdown never
+// fires a scan request by itself — scanning is triggered only by the explicit
+// "Scan it now" button on the search page (abuse guard).
 
 import { getCatalog, pathFor, type Locale } from '../../i18n/loader.ts';
 import type { SiteCard } from '../../data/types.ts';

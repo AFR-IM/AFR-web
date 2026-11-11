@@ -1,0 +1,731 @@
+---
+// VerifyPanel — spec §8.2 three-method domain verification, right column below
+// the badge embed. Not verified → "Are you the owner?" + "Verify this site" →
+// POST /api/v1/verify/start → three method tabs (File recommended / Meta / DNS)
+// with exact copyable values (BadgeEmbed's "Copy" → "Copied ✓" 1.5s pattern —
+// never alert/toast) → "Run check" → GET /api/v1/verify/check:
+//   verified → green tick, panel switches to the claim form
+//   pending  → per-method ok/fail checklist, retry allowed (429 → countdown)
+// Already-verified sites (site.verified) render the green state immediately.
+
+import { getCatalog, toLocale, type Locale } from '../../i18n/loader.ts';
+import { uiText } from '../home/fallbacks.ts';
+
+interface Props {
+  domain: string;
+  locale: string;
+  /** build-time payload: site.verified === 1 → show the verified state */
+  verified?: boolean;
+}
+
+const { domain, locale, verified = false } = Astro.props;
+const loc: Locale = toLocale(locale);
+const L = getCatalog(loc);
+const isZh = loc === 'zh-CN';
+const T = (en: string, zh: string) => (isZh ? zh : en);
+
+const title = uiText(L.ui, 'verifyTitle', loc);
+const desc = uiText(L.ui, 'verifyDesc', loc);
+const cta = uiText(L.ui, 'verifyCta', loc);
+const busyText = uiText(L.ui, 'verifyBusy', loc);
+const methodsLabel = uiText(L.ui, 'verifyMethods', loc);
+const fileTab = uiText(L.ui, 'verifyFileTab', loc);
+const metaTab = uiText(L.ui, 'verifyMetaTab', loc);
+const dnsTab = uiText(L.ui, 'verifyDnsTab', loc);
+const fileUrlLabel = uiText(L.ui, 'verifyFileUrl', loc);
+const fileContentLabel = uiText(L.ui, 'verifyFileContent', loc);
+const metaTagLabel = uiText(L.ui, 'verifyMetaTag', loc);
+const dnsNameLabel = uiText(L.ui, 'verifyDnsName', loc);
+const dnsValueLabel = uiText(L.ui, 'verifyDnsValue', loc);
+const dnsTypeLabel = uiText(L.ui, 'verifyDnsType', loc);
+const placeNote = uiText(L.ui, 'verifyPlace', loc);
+const runCheck = uiText(L.ui, 'verifyRunCheck', loc);
+const checkingText = uiText(L.ui, 'verifyChecking', loc);
+const okText = uiText(L.ui, 'verifyOk', loc);
+const okNote = uiText(L.ui, 'verifyOkNote', loc);
+const failTitle = uiText(L.ui, 'verifyFailTitle', loc);
+const retryNote = uiText(L.ui, 'verifyRetryNote', loc);
+const rateTpl = uiText(L.ui, 'verifyRate', loc);
+const errorText = uiText(L.ui, 'verifyError', loc);
+const copyLabel = L.ui.copy ?? 'Copy';
+const copiedLabel = `${L.ui.copied ?? 'Copied'} ✓`;
+const mFile = uiText(L.ui, 'verifyMethodFile', loc);
+const mMeta = uiText(L.ui, 'verifyMethodMeta', loc);
+const mDns = uiText(L.ui, 'verifyMethodDns', loc);
+---
+
+<section
+  class="verify"
+  id="verify-panel"
+  data-verify
+  data-domain={domain}
+  data-verified={verified ? '1' : '0'}
+  data-label-idle={cta}
+  data-label-busy={busyText}
+  data-label-check={runCheck}
+  data-label-checking={checkingText}
+  data-tpl-rate={rateTpl}
+  data-msg-error={errorText}
+  data-ok={okText}
+  data-ok-note={okNote}
+  data-fail-title={failTitle}
+  data-retry-note={retryNote}
+  data-copy-label={copyLabel}
+  data-copied-label={copiedLabel}
+  data-method-file={mFile}
+  data-method-meta={mMeta}
+  data-method-dns={mDns}
+  data-label-file-url={fileUrlLabel}
+  data-label-file-content={fileContentLabel}
+  data-label-meta={metaTagLabel}
+  data-label-dns-name={dnsNameLabel}
+  data-label-dns-value={dnsValueLabel}
+  data-label-dns-type={dnsTypeLabel}
+  data-locale={loc}
+  aria-labelledby="verify-title"
+>
+  <header class="v-head">
+    <h2 id="verify-title">{title}</h2>
+  </header>
+
+  {/* already verified at build time → green state, no interactions */}
+  {
+    verified ? (
+      <div class="v-ok" data-v-ok>
+        <span class="v-tick" role="img" aria-label={L.ui.verifiedOwner ?? okText}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M20 6L9 17l-5-5" />
+          </svg>
+        </span>
+        <span class="v-ok-txt mono">{okText}</span>
+      </div>
+    ) : (
+      <>
+        <p class="v-desc">{desc}</p>
+        <button class="btn v-start" type="button" data-v-start>
+          {cta}
+        </button>
+      </>
+    )
+  }
+
+  {/* method tabs + run check — revealed after verify/start succeeds */}
+  <div class="v-steps" data-v-steps hidden>
+    <p class="v-place">{placeNote}</p>
+
+    <div class="tabs" role="tablist" aria-label={methodsLabel}>
+      <button class="tab mono" type="button" role="tab" id="vtab-file" aria-controls="vpanel-file" aria-selected="true" data-vtab="file">
+        {fileTab}
+      </button>
+      <button class="tab mono" type="button" role="tab" id="vtab-meta" aria-controls="vpanel-meta" aria-selected="false" tabindex="-1" data-vtab="meta">
+        {metaTab}
+      </button>
+      <button class="tab mono" type="button" role="tab" id="vtab-dns" aria-controls="vpanel-dns" aria-selected="false" tabindex="-1" data-vtab="dns">
+        {dnsTab}
+      </button>
+    </div>
+
+    <div class="panel" role="tabpanel" id="vpanel-file" aria-labelledby="vtab-file" data-vpanel="file">
+      <div class="snippet">
+        <div class="snippet-top">
+          <span class="kind mono">{fileUrlLabel}</span>
+          <button class="copy mono" type="button" data-vcopy data-label={copyLabel} data-done={copiedLabel}>
+            {copyLabel}
+          </button>
+        </div>
+        <textarea class="mono" readonly rows={2} spellcheck="false" aria-label={fileUrlLabel} data-vf="file-url"></textarea>
+      </div>
+      <div class="snippet">
+        <div class="snippet-top">
+          <span class="kind mono">{fileContentLabel}</span>
+          <button class="copy mono" type="button" data-vcopy data-label={copyLabel} data-done={copiedLabel}>
+            {copyLabel}
+          </button>
+        </div>
+        <textarea class="mono" readonly rows={3} spellcheck="false" aria-label={fileContentLabel} data-vf="file-content"></textarea>
+      </div>
+    </div>
+
+    <div class="panel" role="tabpanel" id="vpanel-meta" aria-labelledby="vtab-meta" data-vpanel="meta" hidden>
+      <div class="snippet">
+        <div class="snippet-top">
+          <span class="kind mono">{metaTagLabel}</span>
+          <button class="copy mono" type="button" data-vcopy data-label={copyLabel} data-done={copiedLabel}>
+            {copyLabel}
+          </button>
+        </div>
+        <textarea class="mono" readonly rows={3} spellcheck="false" aria-label={metaTagLabel} data-vf="meta-tag"></textarea>
+      </div>
+    </div>
+
+    <div class="panel" role="tabpanel" id="vpanel-dns" aria-labelledby="vtab-dns" data-vpanel="dns" hidden>
+      <div class="snippet">
+        <div class="snippet-top">
+          <span class="kind mono">{dnsNameLabel}</span>
+          <button class="copy mono" type="button" data-vcopy data-label={copyLabel} data-done={copiedLabel}>
+            {copyLabel}
+          </button>
+        </div>
+        <textarea class="mono" readonly rows={1} spellcheck="false" aria-label={dnsNameLabel} data-vf="dns-name"></textarea>
+      </div>
+      <div class="snippet">
+        <div class="snippet-top">
+          <span class="kind mono">{dnsValueLabel}</span>
+          <button class="copy mono" type="button" data-vcopy data-label={copyLabel} data-done={copiedLabel}>
+            {copyLabel}
+          </button>
+        </div>
+        <textarea class="mono" readonly rows={2} spellcheck="false" aria-label={dnsValueLabel} data-vf="dns-value"></textarea>
+      </div>
+      <p class="v-dnstype mono" data-v-dns-type hidden></p>
+    </div>
+
+    <div class="v-actions">
+      <button class="btn v-check" type="button" data-v-check>{runCheck}</button>
+    </div>
+
+    {/* result of the last check: green state or per-method checklist */}
+    <div class="v-result" data-v-result hidden>
+      <div class="v-ok" data-v-ok hidden>
+        <span class="v-tick" role="img" aria-label={L.ui.verifiedOwner ?? okText}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M20 6L9 17l-5-5" />
+          </svg>
+        </span>
+        <span class="v-ok-txt mono">{okText}</span>
+      </div>
+      <div data-v-fail hidden>
+        <p class="v-fail-title">{failTitle}</p>
+        <ul class="v-checks" data-v-checks></ul>
+        <p class="v-retry">{retryNote}</p>
+      </div>
+    </div>
+  </div>
+
+  <p class="v-status mono" data-v-status role="status" aria-live="polite"></p>
+</section>
+
+<style>
+  .verify {
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 14px;
+    display: grid;
+    gap: 10px;
+    scroll-margin-top: calc(var(--nav-h) + 20px);
+  }
+  .v-head h2 {
+    font-size: 15px;
+    margin: 0;
+  }
+  .v-desc {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-2);
+  }
+  .v-start {
+    justify-self: start;
+  }
+  .v-start[disabled] {
+    cursor: not-allowed;
+    opacity: 0.85;
+  }
+
+  /* verified state (build-time or after a successful check) */
+  .v-ok {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: color-mix(in srgb, var(--grade-a) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--grade-a) 45%, transparent);
+    border-radius: var(--r-1);
+  }
+  .v-tick {
+    display: inline-grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border: 1px solid var(--grade-a);
+    border-radius: 50%;
+    color: var(--grade-a);
+    flex: none;
+  }
+  .v-ok-txt {
+    font-size: 12.5px;
+    color: var(--grade-a);
+  }
+
+  .v-steps {
+    display: grid;
+    gap: 10px;
+  }
+  .v-steps[hidden] {
+    display: none;
+  }
+  .v-place {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--text-3);
+  }
+
+  /* tabs (micro motion, §10.8) */
+  .tabs {
+    display: flex;
+    gap: 6px;
+    border-bottom: 1px solid var(--line);
+  }
+  .tab {
+    padding: 6px 10px;
+    font-size: 12px;
+    color: var(--text-3);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition:
+      color var(--t-micro) var(--ease),
+      border-color var(--t-micro) var(--ease);
+  }
+  .tab:hover {
+    color: var(--text-1);
+  }
+  .tab[aria-selected='true'] {
+    color: var(--text-1);
+    border-bottom-color: var(--brand);
+  }
+  .panel {
+    display: grid;
+    gap: 8px;
+  }
+  .panel[hidden] {
+    display: none;
+  }
+
+  /* copyable value rows — same shape as BadgeEmbed snippets */
+  .snippet {
+    border: 1px solid var(--line);
+    border-radius: var(--r-1);
+    overflow: hidden;
+  }
+  .snippet-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 5px 8px;
+    background: var(--bg-elevated);
+    border-bottom: 1px solid var(--line);
+  }
+  .kind {
+    font-size: 11px;
+    color: var(--text-3);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .copy {
+    padding: 3px 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-1);
+    font-size: 11.5px;
+    color: var(--text-1);
+    transition:
+      border-color var(--t-micro) var(--ease),
+      color var(--t-micro) var(--ease);
+  }
+  .copy:hover {
+    border-color: var(--brand);
+    color: var(--brand);
+  }
+  .copy[data-state='done'] {
+    border-color: var(--grade-a);
+    color: var(--grade-a);
+  }
+  textarea {
+    display: block;
+    width: 100%;
+    resize: vertical;
+    padding: 8px 10px;
+    background: var(--bg-ink);
+    border: none;
+    color: var(--text-1);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    line-height: 1.6;
+    outline: none;
+  }
+  textarea:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: -2px;
+  }
+  .v-dnstype {
+    margin: 0;
+    font-size: 11.5px;
+    color: var(--text-3);
+  }
+
+  .v-actions {
+    display: flex;
+    gap: 8px;
+  }
+  .v-check[disabled] {
+    cursor: not-allowed;
+    opacity: 0.85;
+  }
+
+  /* check result: per-method ok/fail checklist */
+  .v-result {
+    display: grid;
+    gap: 8px;
+  }
+  .v-result[hidden] {
+    display: none;
+  }
+  .v-fail-title {
+    margin: 0 0 6px;
+    font-size: 13px;
+    color: var(--text-2);
+  }
+  .v-checks {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 6px;
+  }
+  .v-checks li {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 12.5px;
+    line-height: 1.5;
+  }
+  .v-dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    transform: translateY(-1px);
+  }
+  .v-dot[data-ok='1'] {
+    background: var(--grade-a);
+  }
+  .v-dot[data-ok='0'] {
+    background: var(--grade-f);
+  }
+  .v-m {
+    font-size: 11.5px;
+    color: var(--text-1);
+    min-width: 44px;
+  }
+  .v-d {
+    color: var(--text-3);
+    font-size: 11.5px;
+    word-break: break-word;
+  }
+  .v-retry {
+    margin: 6px 0 0;
+    font-size: 11.5px;
+    color: var(--text-3);
+  }
+
+  .v-status {
+    margin: 0;
+    min-height: 1.2em;
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: var(--text-3);
+  }
+  .v-status:empty {
+    display: none;
+  }
+  .v-status[data-tone='error'] {
+    color: var(--grade-f);
+  }
+</style>
+
+<script>
+  // Verify/start → tabs → verify/check. Vanilla, one state machine per panel.
+  function readJson(r: Response): Promise<any> {
+    return r.json().catch(() => null);
+  }
+
+  function fmtClock(ms: number): string {
+    const total = Math.max(0, Math.ceil(ms / 1000));
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    return h > 0 ? `${h}:${String(m).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`;
+  }
+
+  function toMs(v: unknown): number {
+    if (typeof v === 'number' && isFinite(v) && v > 0) return v > 1e12 ? v : v * 1000;
+    if (typeof v === 'string' && v) {
+      const asNum = Number(v);
+      if (isFinite(asNum) && asNum > 0 && /^\d+$/.test(v)) return asNum > 1e12 ? asNum : asNum * 1000;
+      const t = Date.parse(v);
+      if (!isNaN(t)) return t;
+    }
+    return 0;
+  }
+
+  for (const root of document.querySelectorAll<HTMLElement>('[data-verify]')) {
+    const domain = root.dataset.domain ?? '';
+    const startBtn = root.querySelector<HTMLButtonElement>('[data-v-start]');
+    const steps = root.querySelector<HTMLElement>('[data-v-steps]');
+    const checkBtn = root.querySelector<HTMLButtonElement>('[data-v-check]');
+    const status = root.querySelector<HTMLElement>('[data-v-status]');
+    const result = root.querySelector<HTMLElement>('[data-v-result]');
+    const okBox = result?.querySelector<HTMLElement>('[data-v-ok]') ?? null;
+    const failBox = result?.querySelector<HTMLElement>('[data-v-fail]') ?? null;
+    const checksList = result?.querySelector<HTMLElement>('[data-v-checks]') ?? null;
+
+    const attr = (name: string) => root.getAttribute(name) ?? '';
+    let waitTimer = 0;
+
+    function say(msg: string, tone?: string) {
+      if (!status) return;
+      status.textContent = msg;
+      if (tone) status.dataset.tone = tone;
+      else delete status.dataset.tone;
+    }
+
+    function rateCountdown(r: Response, body: any, onDone: () => void) {
+      const until =
+        toMs(body && body.nextAllowedAt) ||
+        (Number(body && body.retryAfter) > 0 ? Date.now() + Number(body.retryAfter) * 1000 : 0) ||
+        (() => {
+          const h = Number(r.headers.get('Retry-After'));
+          return h > 0 ? Date.now() + h * 1000 : Date.now() + 60000;
+        })();
+      if (waitTimer) clearInterval(waitTimer);
+      const paint = () => {
+        const left = until - Date.now();
+        if (left <= 0) {
+          if (waitTimer) clearInterval(waitTimer);
+          waitTimer = 0;
+          say('');
+          onDone();
+          return;
+        }
+        say(attr('data-tpl-rate').replace('{t}', fmtClock(left)));
+      };
+      paint();
+      waitTimer = window.setInterval(paint, 1000);
+    }
+
+    /* ── copy rows: "Copy" → "Copied ✓" → revert after 1.5s (no toast) ── */
+    const copyTimers = new WeakMap<Element, number>();
+    for (const btn of root.querySelectorAll<HTMLButtonElement>('[data-vcopy]')) {
+      btn.addEventListener('click', async () => {
+        const box = btn.closest('.snippet')?.querySelector('textarea');
+        if (!box) return;
+        try {
+          await navigator.clipboard.writeText(box.value);
+        } catch {
+          box.select();
+          document.execCommand('copy');
+          window.getSelection()?.removeAllRanges();
+        }
+        btn.textContent = btn.dataset.done ?? 'Copied ✓';
+        btn.dataset.state = 'done';
+        const prev = copyTimers.get(btn);
+        if (prev) clearTimeout(prev);
+        copyTimers.set(
+          btn,
+          window.setTimeout(() => {
+            btn.textContent = btn.dataset.label ?? 'Copy';
+            delete btn.dataset.state;
+          }, 1500),
+        );
+      });
+    }
+
+    /* ── tabs: click + arrow keys (keyboard accessible tablist) ── */
+    const tabs = Array.from(root.querySelectorAll<HTMLButtonElement>('[data-vtab]'));
+    const panels = Array.from(root.querySelectorAll<HTMLElement>('[data-vpanel]'));
+    function selectTab(name: string) {
+      for (const t of tabs) {
+        const on = t.dataset.vtab === name;
+        t.setAttribute('aria-selected', String(on));
+        t.tabIndex = on ? 0 : -1;
+      }
+      for (const p of panels) p.hidden = p.dataset.vpanel !== name;
+    }
+    tabs.forEach((tab, i) => {
+      tab.addEventListener('click', () => selectTab(tab.dataset.vtab ?? 'file'));
+      tab.addEventListener('keydown', (e) => {
+        let next = -1;
+        if (e.key === 'ArrowRight') next = (i + 1) % tabs.length;
+        else if (e.key === 'ArrowLeft') next = (i - 1 + tabs.length) % tabs.length;
+        else if (e.key === 'Home') next = 0;
+        else if (e.key === 'End') next = tabs.length - 1;
+        if (next < 0) return;
+        e.preventDefault();
+        const t = tabs[next]!;
+        selectTab(t.dataset.vtab ?? 'file');
+        t.focus();
+      });
+    });
+
+    function fillMethods(m: any) {
+      const set = (key: string, v: string) => {
+        const box = root.querySelector<HTMLTextAreaElement>(`[data-vf="${key}"]`);
+        if (box) box.value = v ?? '';
+      };
+      const file = m?.file;
+      const meta = m?.meta;
+      const dns = m?.dns;
+      if (file) {
+        set('file-url', file.url ?? '');
+        set('file-content', file.content ?? '');
+      }
+      if (meta) {
+        const name = meta.name ?? '';
+        const content = meta.content ?? '';
+        set('meta-tag', `<meta name="${name}" content="${content}">`);
+      }
+      if (dns) {
+        set('dns-name', dns.name ?? '');
+        set('dns-value', dns.value ?? '');
+        const typeEl = root.querySelector<HTMLElement>('[data-v-dns-type]');
+        if (typeEl) {
+          const t = dns.type ?? '';
+          if (t) {
+            typeEl.textContent = `${attr('data-label-dns-type')}: ${t}`;
+            typeEl.hidden = false;
+          } else {
+            typeEl.hidden = true;
+          }
+        }
+      }
+    }
+
+    /* ── start: POST /api/v1/verify/start ── */
+    startBtn?.addEventListener('click', () => {
+      if (startBtn.disabled) return;
+      startBtn.disabled = true;
+      startBtn.textContent = attr('data-label-busy');
+      say('');
+
+      fetch('/api/v1/verify/start', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify({ domain }),
+      })
+        .then((r) => readJson(r).then((body) => ({ r, body })))
+        .then(({ r, body }) => {
+          if (r.status >= 200 && r.status < 300 && body && body.methods) {
+            fillMethods(body.methods);
+            if (steps) steps.hidden = false;
+            startBtn.hidden = true;
+            const desc = root.querySelector<HTMLElement>('.v-desc');
+            if (desc) desc.hidden = true;
+            say('');
+            root.querySelector<HTMLButtonElement>('[data-v-check]')?.focus();
+            return;
+          }
+          if (r.status === 429) {
+            startBtn.textContent = attr('data-label-idle');
+            rateCountdown(r, body, () => {
+              startBtn.disabled = false;
+            });
+            return;
+          }
+          startBtn.disabled = false;
+          startBtn.textContent = attr('data-label-idle');
+          say(attr('data-msg-error'), 'error');
+        })
+        .catch(() => {
+          startBtn.disabled = false;
+          startBtn.textContent = attr('data-label-idle');
+          say(attr('data-msg-error'), 'error');
+        });
+    });
+
+    /* ── check: GET /api/v1/verify/check?domain= ── */
+    function renderChecks(checks: any[]) {
+      if (!checksList) return;
+      checksList.replaceChildren();
+      for (const c of checks ?? []) {
+        const li = document.createElement('li');
+        const dot = document.createElement('span');
+        dot.className = 'v-dot';
+        dot.setAttribute('aria-hidden', 'true');
+        dot.dataset.ok = c && c.ok ? '1' : '0';
+        const m = document.createElement('span');
+        m.className = 'v-m mono';
+        const method = String((c && c.method) || '').toLowerCase();
+        m.textContent =
+          method === 'file'
+            ? attr('data-method-file')
+            : method === 'meta'
+              ? attr('data-method-meta')
+              : method === 'dns'
+                ? attr('data-method-dns')
+                : method;
+        const d = document.createElement('span');
+        d.className = 'v-d';
+        d.textContent = String((c && c.detail) || '');
+        li.append(dot, m, d);
+        checksList.append(li);
+      }
+    }
+
+    function showVerified() {
+      if (result) result.hidden = false;
+      if (okBox) okBox.hidden = false;
+      if (failBox) failBox.hidden = true;
+      if (steps) steps.hidden = true;
+      say('');
+      /* panel switches to the claim form */
+      const claim = document.querySelector<HTMLElement>('[data-claim-form]');
+      if (claim) claim.hidden = false;
+      root.dataset.verified = '1';
+    }
+
+    checkBtn?.addEventListener('click', () => {
+      if (checkBtn.disabled) return;
+      checkBtn.disabled = true;
+      checkBtn.textContent = attr('data-label-checking');
+      say('');
+
+      fetch('/api/v1/verify/check?domain=' + encodeURIComponent(domain), {
+        headers: { accept: 'application/json' },
+      })
+        .then((r) => readJson(r).then((body) => ({ r, body })))
+        .then(({ r, body }) => {
+          if (r.status >= 200 && r.status < 300 && body && body.verified === true) {
+            showVerified();
+            return;
+          }
+          if (r.status >= 200 && r.status < 300 && body && Array.isArray(body.checks)) {
+            if (result) result.hidden = false;
+            if (okBox) okBox.hidden = true;
+            if (failBox) failBox.hidden = false;
+            renderChecks(body.checks);
+            checkBtn.disabled = false;
+            checkBtn.textContent = attr('data-label-check');
+            say('');
+            return;
+          }
+          if (r.status === 429) {
+            rateCountdown(r, body, () => {
+              checkBtn.disabled = false;
+              checkBtn.textContent = attr('data-label-check');
+            });
+            return;
+          }
+          checkBtn.disabled = false;
+          checkBtn.textContent = attr('data-label-check');
+          say(attr('data-msg-error'), 'error');
+        })
+        .catch(() => {
+          checkBtn.disabled = false;
+          checkBtn.textContent = attr('data-label-check');
+          say(attr('data-msg-error'), 'error');
+        });
+    });
+  }
+</script>

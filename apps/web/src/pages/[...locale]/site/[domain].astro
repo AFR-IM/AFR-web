@@ -11,10 +11,13 @@ import VerifiedTick from '../../../components/detail/VerifiedTick.astro';
 import ReportCard from '../../../components/detail/ReportCard.astro';
 import EvidenceChain from '../../../components/detail/EvidenceChain.astro';
 import ClaimBlock from '../../../components/detail/ClaimBlock.astro';
+import ClaimForm from '../../../components/detail/ClaimForm.astro';
 import BadgeEmbed from '../../../components/detail/BadgeEmbed.astro';
+import VerifyPanel from '../../../components/detail/VerifyPanel.astro';
 import HistorySpark from '../../../components/detail/HistorySpark.astro';
 import RescanButton from '../../../components/detail/RescanButton.astro';
 import { getCatalog, LOCALES, pathFor, toLocale, type Locale } from '../../../i18n/loader.ts';
+import { uiText } from '../../../components/home/fallbacks.ts';
 import { listAllSites, loadSite } from '../../../data/loader.ts';
 import type { SiteDetail } from '../../../data/types.ts';
 import { gradeVar } from '../../../utils/grade.ts';
@@ -68,6 +71,8 @@ const tabs = [
   { id: 'evidence', label: L.ui.evidenceTitle ?? T('Evidence', '证据') },
   { id: 'statement', label: L.ui.statementTitle ?? T('Statement', '声明') },
 ];
+const viewsLabel = uiText(L.ui, 'viewsLabel', locale);
+const claimFormVisible = !!site?.verified || !!site?.claim;
 const notFound = !site;
 const title = notFound ? (L.ui.notFound as string) : `${domain} — ${site.title ?? site.grade}`;
 // Unratable scans carry no score claim — the description omits score/grade numbers.
@@ -108,7 +113,8 @@ const description = notFound
                 {`${L.ui.grade}: ${site.grade}${gradeInfo ? ` · ${gradeInfo.slogan}` : ''}`}
               </span>
               <span class="chip mono">
-                {L.ui.scanTime} <time datetime={site.scannedAt}>{scannedAt}</time>
+                {L.ui.scanTime}{' '}
+                <time datetime={site.scannedAt} data-scan-time>{scannedAt}</time>
               </span>
               {site.category && (
                 <a class="chip mono" href={href(`/c/${site.category}`)}>
@@ -169,9 +175,30 @@ const description = notFound
           <div class="col col-right">
             <ClaimBlock claim={site.claim} locale={locale} />
             <BadgeEmbed domain={site.domain} grade={site.grade} locale={locale} badgeHref={href('/badge')} />
+            <VerifyPanel domain={site.domain} locale={locale} verified={!!site.verified} />
+            <ClaimForm domain={site.domain} locale={locale} visible={claimFormVisible} />
             <HistorySpark site={site} locale={locale} />
-            <RescanButton domain={site.domain} locale={locale} />
+            <p class="views mono" data-views data-domain={site.domain} data-label={viewsLabel}>
+              <span class="views-sk" aria-hidden="true"></span>
+              <span class="views-txt" data-views-txt hidden></span>
+            </p>
+            <RescanButton
+              domain={site.domain}
+              locale={locale}
+              scannedAt={site.scannedAt}
+              score={site.score}
+            />
           </div>
+
+          {/* PV pixel — counts this detail view; absolute + 1×1 ⇒ zero CLS */}
+          <img
+            class="pv-pixel"
+            src={`/api/v1/pv?site=${encodeURIComponent(site.domain)}`}
+            alt=""
+            aria-hidden="true"
+            width="1"
+            height="1"
+          />
         </div>
       </div>
     )
@@ -280,6 +307,63 @@ const description = notFound
     line-height: 1.6;
   }
 
+  /* ── runtime views counter (right column) ─────────────── */
+  /* one reserved line: skeleton → count → (on API failure) hidden, no shift */
+  .views {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    min-height: 18px;
+    font-size: 11.5px;
+    color: var(--text-3);
+    font-variant-numeric: tabular-nums;
+  }
+  .views[data-state='error'] {
+    /* keep the reserved line, hide the content — zero layout shift */
+    visibility: hidden;
+  }
+  .views-sk {
+    width: 64px;
+    height: 11px;
+    border-radius: var(--r-1);
+    background: var(--line);
+    animation: views-breathe 1.6s ease-in-out infinite;
+  }
+  .views[data-state='ready'] .views-sk {
+    display: none;
+  }
+  .views-txt {
+    font-variant-numeric: tabular-nums;
+  }
+  .views-txt[hidden] {
+    display: none;
+  }
+  @keyframes views-breathe {
+    0%,
+    100% {
+      filter: brightness(1);
+    }
+    50% {
+      filter: brightness(1.6);
+    }
+  }
+
+  /* PV pixel: absolute offscreen, 1×1 — counts the view with zero CLS */
+  .pv-pixel {
+    position: absolute;
+    top: 0;
+    left: -9999px;
+    width: 1px;
+    height: 1px;
+    border: 0;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
   /* ── mobile tab bar (≤767) ──────────────────────────── */
   .tabbar {
     display: none;
@@ -386,5 +470,32 @@ const description = notFound
         for (const other of buttons) other.setAttribute('aria-selected', String(other === btn));
       });
     }
+  }
+
+  // Runtime views counter — GET /api/v1/sites/:domain/views. Skeleton until the
+  // response lands; on API failure the element hides but keeps its reserved
+  // line (visibility) so the right column never shifts.
+  for (const el of document.querySelectorAll<HTMLElement>('[data-views]')) {
+    const domain = el.dataset.domain ?? '';
+    const label = el.dataset.label ?? 'Views';
+    const out = el.querySelector<HTMLElement>('[data-views-txt]');
+    const done = (text: string | null) => {
+      if (text !== null && out) {
+        out.textContent = text;
+        out.hidden = false;
+        el.dataset.state = 'ready';
+      } else {
+        el.dataset.state = 'error';
+      }
+    };
+    fetch('/api/v1/sites/' + encodeURIComponent(domain) + '/views', {
+      headers: { accept: 'application/json' },
+    })
+      .then((r) => (r.status === 200 ? r.json().catch(() => null) : null))
+      .then((body) => {
+        const n = body && typeof body.views === 'number' ? body.views : null;
+        done(n !== null ? `${label} · ${n}` : null);
+      })
+      .catch(() => done(null));
   }
 </script>

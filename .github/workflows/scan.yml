@@ -1,15 +1,31 @@
-# AFR scan pipeline (plan §5.6 T0). Runs on GitHub-hosted runners (public repo = free unlimited).
-# Schedule: daily 02:00 UTC (enabled 2026-11-10 after first-run validation).
-# Weekly full-rescan job: TODO.
+# Scan pipeline — daily Tranco top-N crawl plus the on-demand submission queue.
+# Runs on GitHub-hosted runners (public repo = free unlimited).
+# Schedule: daily 02:00 UTC (scheduled runs behave as mode=daily).
+# Manual runs pick mode=daily (Tranco top-N + queue drain) or mode=queue
+# (on-demand queue only — exits quickly when the queue is empty).
+#
+# Required repository secrets (Settings -> Secrets and variables -> Actions):
+#   DATA_REPO_TOKEN  PAT that can check out / push imAiAPP/aiapp-data and can
+#                    open repository_dispatch on this repo (site rebuild).
+#   QUEUE_TOKEN      shared token for POST /api/v1/queue/<domain>/done;
+#                    must match the worker's QUEUE_TOKEN secret.
 name: scan
 
 on:
   workflow_dispatch:
     inputs:
       topN:
-        description: "Number of Tranco top domains to scan"
+        description: "Number of Tranco top domains to scan (mode=daily)"
         required: false
         default: "1000"
+      mode:
+        description: "daily = Tranco top-N + queue drain; queue = on-demand queue only"
+        required: false
+        default: "daily"
+        type: choice
+        options:
+          - daily
+          - queue
   schedule:
     - cron: "0 2 * * *"
 
@@ -35,31 +51,53 @@ jobs:
         with:
           node-version: 22
 
+      # Scheduled runs have no inputs at all -> empty mode falls back to daily.
+      - name: Resolve run mode
+        id: mode
+        env:
+          INPUT_MODE: ${{ inputs.mode }}
+        run: |
+          MODE="${INPUT_MODE:-daily}"
+          case "$MODE" in
+            daily|queue) ;;
+            *) echo "::error::Invalid mode '$MODE' (expected: daily or queue)"; exit 1 ;;
+          esac
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+
+      # One shared date for every scan step in this run, so top-N and queue
+      # snapshots land in the same scans/YYYY/MM/DD directory even if the run
+      # crosses UTC midnight (the site publishes the latest date that has data).
+      - name: Resolve scan date
+        id: date
+        run: echo "date=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+
+      # ── mode=daily: Tranco top-N flow (same as always) ─────────────────────
+
       - name: Fetch Tranco top list
+        if: steps.mode.outputs.mode == 'daily'
+        env:
+          TOP_N: ${{ inputs.topN || '1000' }}
         run: |
           curl -fsSL -o top-1m.csv.zip https://tranco-list.eu/top-1m.csv.zip
           unzip -o -q top-1m.csv.zip
-          TOP_N="${{ inputs.topN || '1000' }}"
           head -n "$TOP_N" top-1m.csv | cut -d, -f2 > targets.txt
           echo "Targets: $(wc -l < targets.txt)"
 
-      - name: Scan
+      - name: Scan Tranco top list
+        if: steps.mode.outputs.mode == 'daily'
+        shell: bash # adds pipefail: a scanner crash must fail the step
+        env:
+          SCAN_DATE: ${{ steps.date.outputs.date }}
         run: |
-          DATE=$(date -u +%Y/%m/%d)
-          mkdir -p "data/scans/$DATE"
-          node packages/scanner/src/cli.ts --file targets.txt --out "data/scans/$DATE" --concurrency 5 | tee scan-summary.txt
+          DATE_DIR="data/scans/${SCAN_DATE//-//}"
+          mkdir -p "$DATE_DIR"
+          node packages/scanner/src/cli.ts --file targets.txt --out "$DATE_DIR" --concurrency 5 | tee scan-summary.txt
 
-      - name: Publish job summary
-        if: always()
-        run: |
-          {
-            echo "## AFR scan $(date -u +%F) (top ${{ inputs.topN || '1000' }})"
-            echo '```'
-            tail -n 8 scan-summary.txt 2>/dev/null || echo "scan output missing"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Commit snapshots to data repo
+      - name: Commit top list snapshots to data repo
+        id: commit-topn
+        if: steps.mode.outputs.mode == 'daily'
+        env:
+          TOP_N: ${{ inputs.topN || '1000' }}
         run: |
           cd data
           git config user.name "aiapp-bot"
@@ -68,6 +106,114 @@ jobs:
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "scan $(date -u +%F) top${{ inputs.topN || '1000' }}"
+            git commit -m "scan $(date -u +%F) top${TOP_N}"
             git push
           fi
+
+      # ── on-demand queue (both modes) ───────────────────────────────────────
+      # In mode=daily this runs AFTER the top-N push, so overnight submissions
+      # are drained in the same run instead of waiting for the next schedule.
+
+      - name: Fetch on-demand queue
+        id: queue
+        env:
+          MODE: ${{ steps.mode.outputs.mode }}
+        run: |
+          if curl -fsSL https://aiapp.im/api/v1/queue -o queue.json; then
+            jq -r '(if type == "array" then . elif type == "object" then (.items // []) else [] end)[]?
+              | if type == "string" then . elif type == "object" then (.domain // empty) else empty end' \
+              queue.json > queue-raw.txt
+            grep -E '^[A-Za-z0-9.-]+$' queue-raw.txt | sort -u > queue.txt || true
+          else
+            if [ "$MODE" = "queue" ]; then
+              echo "::error::Failed to fetch the on-demand queue"
+              exit 1
+            fi
+            echo "::warning::Queue fetch failed - skipping the queue drain this run"
+            : > queue.txt
+          fi
+          COUNT="$(grep -c . queue.txt || true)"
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+          echo "Queue domains: $COUNT"
+
+      - name: Scan on-demand queue
+        if: fromJSON(steps.queue.outputs.count || '0') > 0
+        shell: bash # adds pipefail: a scanner crash must fail the step
+        env:
+          SCAN_DATE: ${{ steps.date.outputs.date }}
+        run: |
+          DATE_DIR="data/scans/${SCAN_DATE//-//}"
+          mkdir -p "$DATE_DIR"
+          node packages/scanner/src/cli.ts --file queue.txt --out "$DATE_DIR" --concurrency 5 | tee -a scan-summary.txt
+
+      - name: Commit queue snapshots to data repo
+        id: commit-queue
+        if: fromJSON(steps.queue.outputs.count || '0') > 0
+        run: |
+          cd data
+          git config user.name "aiapp-bot"
+          git config user.email "dev@aiapp.im"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "scan $(date -u +%F) queue"
+            git push
+          fi
+
+      # Acknowledge every domain we just scanned so it leaves the queue.
+      # Runs only after the data push succeeded (step-level success gate);
+      # a failed callback keeps the item queued for the next run and fails
+      # the job so a missing/rotated QUEUE_TOKEN stays visible.
+      - name: Report queue scans as done
+        if: fromJSON(steps.queue.outputs.count || '0') > 0
+        env:
+          QUEUE_TOKEN: ${{ secrets.QUEUE_TOKEN }}
+        run: |
+          FAILURES=0
+          while IFS= read -r domain; do
+            [ -n "$domain" ] || continue
+            if curl -fsS -X POST "https://aiapp.im/api/v1/queue/${domain}/done" \
+                -H "X-Queue-Token: ${QUEUE_TOKEN}" -o /dev/null; then
+              echo "reported done: ${domain}"
+            else
+              echo "::warning::done callback failed for ${domain}"
+              FAILURES=$((FAILURES + 1))
+            fi
+          done < queue.txt
+          if [ "$FAILURES" -gt 0 ]; then
+            echo "::error::${FAILURES} done callback(s) failed"
+            exit 1
+          fi
+
+      - name: Publish job summary
+        if: always()
+        env:
+          MODE: ${{ steps.mode.outputs.mode }}
+          TOP_N: ${{ inputs.topN || '1000' }}
+        run: |
+          {
+            echo "## AFR scan $(date -u +%F) - mode=${MODE:-?} (top ${TOP_N})"
+            echo '```'
+            tail -n 8 scan-summary.txt 2>/dev/null || echo "scan output not available"
+            echo '```'
+            if [ -f queue.txt ]; then
+              echo "Queue domains this run: $(grep -c . queue.txt || true)"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Rebuild the static site (sync-site.yml) after a data push succeeded.
+      # Empty mode=queue runs have no push -> no dispatch -> job ends quickly.
+      - name: Trigger site rebuild
+        if: >-
+          always() && !cancelled() &&
+          (steps.commit-topn.result == 'success' || steps.commit-queue.result == 'success') &&
+          (steps.mode.outputs.mode == 'daily' || fromJSON(steps.queue.outputs.count || '0') > 0)
+        env:
+          DATA_REPO_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+        run: |
+          curl -fsS -X POST https://api.github.com/repos/imAiAPP/aiapp-web/dispatches \
+            -H "Authorization: Bearer ${DATA_REPO_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -d '{"event_type":"scan-done"}'
+          echo "repository_dispatch scan-done sent"

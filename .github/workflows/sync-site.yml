@@ -1,0 +1,68 @@
+# Static site rebuild + deploy, triggered when a scan finishes
+# (repository_dispatch "scan-done" from scan.yml, sent after the data push)
+# or run manually via workflow_dispatch.
+#
+# Flow: data checkout -> fetch-data -> sitemap -> npm ci -> astro build
+#       -> wrangler deploy (static assets + routes for aiapp.im).
+#
+# Required repository secrets (Settings -> Secrets and variables -> Actions):
+#   DATA_REPO_TOKEN  PAT with read access to imAiAPP/aiapp-data.
+#   CF_API_TOKEN     Cloudflare API token used by wrangler deploy.
+#   CF_ACCOUNT_ID    Cloudflare account id used by wrangler deploy.
+name: sync-site
+
+on:
+  repository_dispatch:
+    types: [scan-done]
+  workflow_dispatch:
+
+# One site build at a time: overlapping triggers queue instead of colliding
+# mid-build / mid-deploy (a newer queued run always rebuilds from fresh data).
+concurrency:
+  group: sync-site
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout web repo
+        uses: actions/checkout@v4
+
+      - name: Checkout data repo
+        uses: actions/checkout@v4
+        with:
+          repository: imAiAPP/aiapp-data
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: data
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Build-time JSON payloads; the data repo is the single source of truth.
+      # Script-relative paths, so it runs fine from the repo root.
+      - name: Generate site data from the latest scans
+        run: node apps/web/scripts/fetch-data.mjs --data-dir "${GITHUB_WORKSPACE}/data/scans"
+
+      # Reads src/data/generated/details written by fetch-data -> must run after it.
+      - name: Regenerate sitemap
+        run: node apps/web/scripts/make-sitemap.mjs
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build site
+        working-directory: apps/web
+        run: npx astro build
+
+      - name: Deploy to Cloudflare
+        working-directory: apps/web
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+        run: npx wrangler deploy

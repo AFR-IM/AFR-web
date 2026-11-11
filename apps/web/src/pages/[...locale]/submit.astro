@@ -1,8 +1,11 @@
 ---
 // P4 submit page (spec §10.3): domain input + the 3-step flow (submit → scan
 // → score) + what happens afterwards + a politeness note linking to /bot.
-// M2 has no backend: the form validates client-side and shows a friendly inline
-// confirmation — it never posts anywhere.
+// Submitting posts to POST /api/v1/submissions {domain, note?} (server-side
+// rate limit: 5/IP/day) and renders the queued confirmation inline; 400/429
+// surface the response body message, network failures degrade to a friendly
+// retry hint. Client-side validation still runs first — no request on invalid
+// input.
 
 import Base from '../../layouts/Base.astro';
 import { getCatalog, pathFor, toLocale } from '../../i18n/loader.ts';
@@ -21,7 +24,12 @@ const cta = L.ui.submitCta ?? 'Submit domain';
 const domainLabel = L.ui.submitDomainLabel ?? 'Domain';
 const steps = [L.ui.submitStep1, L.ui.submitStep2, L.ui.submitStep3].map((s) => s ?? '');
 const invalidText = uiText(L.ui, 'submitInvalid', locale);
-const confirmTpl = uiText(L.ui, 'submitConfirm', locale);
+const noteLabel = uiText(L.ui, 'submitNoteLabel', locale);
+const notePlaceholder = uiText(L.ui, 'submitNotePlaceholder', locale);
+const busyText = uiText(L.ui, 'submitBusy', locale);
+const queuedTpl = uiText(L.ui, 'submitQueued', locale);
+const rateText = uiText(L.ui, 'submitRateLimited', locale);
+const errorText = uiText(L.ui, 'submitError', locale);
 const flowTitle = uiText(L.ui, 'submitFlow', locale);
 const afterTitle = uiText(L.ui, 'submitAfterTitle', locale);
 const afterBody = uiText(L.ui, 'submitAfterBody', locale);
@@ -44,7 +52,12 @@ const botLabel = L.ui.navBot ?? 'For Bots';
       class="submit-form"
       data-submit-form
       data-invalid={invalidText}
-      data-confirm={confirmTpl}
+      data-busy={busyText}
+      data-queued={queuedTpl}
+      data-rate={rateText}
+      data-error={errorText}
+      data-eta-default="180"
+      data-locale={locale}
       novalidate
     >
       <label class="field-label" for="domain">{domainLabel}</label>
@@ -60,10 +73,20 @@ const botLabel = L.ui.navBot ?? 'For Bots';
           spellcheck="false"
           aria-describedby="domain-hint"
         />
-        <button class="btn" type="submit">{cta}</button>
+        <button class="btn" type="submit" data-submit-btn>{cta}</button>
       </div>
       <p class="field-err" data-err role="alert" hidden></p>
       <p class="field-hint" id="domain-hint">{L.ui.submitDisclaimer}</p>
+
+      <label class="field-label note-label" for="note">{noteLabel}</label>
+      <textarea
+        class="note-input"
+        id="note"
+        name="note"
+        rows="3"
+        maxlength="500"
+        placeholder={notePlaceholder}
+        spellcheck="false"></textarea>
     </form>
 
     <div class="confirm" data-confirm-box hidden role="status" aria-live="polite">
@@ -99,48 +122,122 @@ const botLabel = L.ui.navBot ?? 'For Bots';
     </div>
   </div>
 
-  <!-- client-side validation + inline confirmation (no backend in M2) -->
+  <!-- client-side validation + POST /api/v1/submissions (queued confirmation) -->
   <script is:inline>
     (function () {
       var form = document.querySelector('[data-submit-form]');
       if (!form) return;
       var input = form.querySelector('input[name="domain"]');
+      var note = form.querySelector('textarea[name="note"]');
+      var btn = form.querySelector('[data-submit-btn]');
       var err = form.querySelector('[data-err]');
       var box = document.querySelector('[data-confirm-box]');
       var RE = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i;
+      var idleLabel = btn ? btn.textContent : '';
+      var isZh = (form.getAttribute('data-locale') || 'en') === 'zh-CN';
+
+      function attr(name) {
+        return form.getAttribute(name) || '';
+      }
+      function fmtEta(sec) {
+        sec = Math.max(1, Math.round(Number(sec) || 0));
+        if (sec >= 90) {
+          var m = Math.round(sec / 60);
+          return isZh ? m + ' 分钟' : m + ' min';
+        }
+        return isZh ? sec + ' 秒' : sec + ' s';
+      }
+      function msgOf(body, fallback) {
+        return body && typeof body.message === 'string' && body.message ? body.message : fallback;
+      }
+      function showErr(msg) {
+        if (err) {
+          err.textContent = msg;
+          err.hidden = false;
+        }
+        if (box) box.hidden = true;
+      }
+      function showQueued(domain, eta) {
+        if (err) err.hidden = true;
+        if (!box) return;
+        var d = box.querySelector('[data-confirm-domain]');
+        var t = box.querySelector('[data-confirm-text]');
+        if (d) d.textContent = domain;
+        if (t) {
+          t.textContent = attr('data-queued')
+            .replace('{domain}', domain)
+            .replace('{eta}', fmtEta(eta));
+        }
+        box.hidden = false;
+        var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        box.scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
+      }
+      function restoreBtn() {
+        if (!btn) return;
+        btn.disabled = false;
+        btn.textContent = idleLabel;
+      }
 
       form.addEventListener('submit', function (e) {
         e.preventDefault();
-        var v = (input && input.value ? input.value : '').trim().toLowerCase();
-        v = v
+        var v = (input && input.value ? input.value : '')
+          .trim()
+          .toLowerCase()
           .replace(/^[a-z]+:\/\//, '')
           .replace(/^www\./, '')
           .split('/')[0]
-          .split('?')[0];
+          .split('?')[0]
+          .replace(/:\d+$/, '');
 
         if (!RE.test(v)) {
-          if (err) {
-            err.textContent = form.getAttribute('data-invalid') || '';
-            err.hidden = false;
-          }
-          if (box) box.hidden = true;
+          /* invalid domain → inline message, never a request */
+          showErr(attr('data-invalid'));
           if (input) input.focus();
           return;
         }
 
         if (err) err.hidden = true;
+        if (box) box.hidden = true;
         if (input) input.value = v;
-        if (box) {
-          var d = box.querySelector('[data-confirm-domain]');
-          var t = box.querySelector('[data-confirm-text]');
-          if (d) d.textContent = v;
-          if (t) {
-            t.textContent = (form.getAttribute('data-confirm') || '').replace('{domain}', v);
-          }
-          box.hidden = false;
-          var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-          box.scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = attr('data-busy');
         }
+
+        var payload = { domain: v };
+        var n = note && note.value ? note.value.trim() : '';
+        if (n) payload.note = n; /* optional — omitted when empty */
+
+        fetch('/api/v1/submissions', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', accept: 'application/json' },
+          body: JSON.stringify(payload),
+        })
+          .then(function (r) {
+            return r.json()
+              .catch(function () {
+                return null;
+              })
+              .then(function (body) {
+                if (r.status >= 200 && r.status < 300) {
+                  var eta = parseInt(body && body.etaSeconds, 10);
+                  if (!isFinite(eta) || eta <= 0) {
+                    eta = parseInt(attr('data-eta-default'), 10) || 180;
+                  }
+                  showQueued(v, eta);
+                } else if (r.status === 429) {
+                  showErr(msgOf(body, attr('data-rate')));
+                } else if (r.status === 400) {
+                  showErr(msgOf(body, attr('data-invalid')));
+                } else {
+                  showErr(msgOf(body, attr('data-error')));
+                }
+              });
+          })
+          .catch(function () {
+            showErr(attr('data-error'));
+          })
+          .then(restoreBtn);
       });
     })();
   </script>
@@ -218,6 +315,29 @@ const botLabel = L.ui.navBot ?? 'For Bots';
   .field-hint {
     margin: 12px 0 0;
     font-size: 12.5px;
+    color: var(--text-3);
+  }
+
+  .note-label {
+    margin-top: 18px;
+  }
+  .note-input {
+    width: 100%;
+    padding: 11px 14px;
+    background: var(--bg-ink);
+    border: 1px solid var(--line);
+    border-radius: var(--r-2);
+    font-family: var(--font-body);
+    font-size: 14px;
+    color: var(--text-1);
+    resize: vertical;
+    transition: border-color var(--t-micro) var(--ease);
+  }
+  .note-input:hover,
+  .note-input:focus {
+    border-color: var(--brand);
+  }
+  .note-input::placeholder {
     color: var(--text-3);
   }
 

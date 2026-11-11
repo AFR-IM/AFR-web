@@ -12,3 +12,5 @@ dist-*/
 apps/web/src/data/generated/
 apps/web/public/data/
 .d1-batches/
+*lighthouse*/
+C:*

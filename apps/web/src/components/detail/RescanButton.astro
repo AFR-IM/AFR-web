@@ -1,36 +1,69 @@
 ---
-// RescanButton — spec §10.3 P3 right column + §10.6 state matrix:
-//   default  → primary button
-//   hover    → brightness +8% (via .btn)
-//   focus    → 2px outline (via .btn:focus-visible)
-//   clicked  → disabled + ring spinner + "queued, ~N min"; the throttle state
-//              shows a live countdown (client-side demo state, no backend).
-// While queued, the header GradeRing spins (§10.6 GradeRing "重扫时环旋转").
+// RescanButton — spec §10.3 P3 right column + §10.6 state matrix, wired to the
+// real API: POST /api/v1/rescan {domain} (one re-scan per domain per 24h).
+//   queued  → disabled + spinner + "queued · ~N min", then a 15s poll of
+//             GET /api/v1/sites/:domain (max 6 min) until scannedAt/score
+//             change → header timestamp refresh + "updated ✓" + one reload
+//   429     → disabled with an HH:MM countdown to nextAllowedAt (recomputed
+//             every second) + the one-per-24h budget explanation
+//   404/5xx → friendly error, button re-enabled
+// The status line is an aria-live region; no alert/toast anywhere.
 
-import { getCatalog } from '../../i18n/loader.ts';
+import { getCatalog, toLocale, type Locale } from '../../i18n/loader.ts';
+import { uiText } from '../home/fallbacks.ts';
 
 interface Props {
   domain: string;
   locale: string;
+  /** last published scan — the poll compares the API payload against these */
+  scannedAt?: string;
+  score?: number;
 }
 
-const { locale } = Astro.props;
-const L = getCatalog(locale);
-const isZh = locale === 'zh-CN';
+const { domain, locale, scannedAt = '', score } = Astro.props;
+const loc: Locale = toLocale(locale);
+const L = getCatalog(loc);
+const isZh = loc === 'zh-CN';
 const T = (en: string, zh: string) => (isZh ? zh : en);
 
 const label = L.ui.rescan ?? T('Re-scan', '重新检测');
-const queued = L.ui.rescanQueued ?? T('Re-scan queued — check back later.', '重扫已排队——请稍后查看。');
-const eta = T('~5 min', '约 5 分钟');
+const queuedTpl = uiText(L.ui, 'rescanQueuedEta', loc);
+const pollingText = uiText(L.ui, 'rescanPolling', loc);
+const updatedText = uiText(L.ui, 'rescanUpdated', loc);
+const timeoutText = uiText(L.ui, 'rescanTimeout', loc);
+const throttleTpl = uiText(L.ui, 'rescanThrottle', loc);
+const unknownText = uiText(L.ui, 'rescanUnknown', loc);
+const errorText = uiText(L.ui, 'rescanError', loc);
 ---
 
-<button class="btn rescan" type="button" data-rescan data-label={label} data-queued={queued} data-eta={eta}>
-  <span class="spinner" aria-hidden="true"></span>
-  <span class="txt">{label}</span>
-</button>
-<p class="sub mono" data-rescan-sub hidden></p>
+<div class="rescan-wrap">
+  <button
+    class="btn rescan"
+    type="button"
+    data-rescan
+    data-domain={domain}
+    data-scanned-at={scannedAt}
+    data-score={score !== undefined ? String(score) : ''}
+    data-label={label}
+    data-tpl-queued={queuedTpl}
+    data-polling={pollingText}
+    data-updated={updatedText}
+    data-timeout={timeoutText}
+    data-tpl-throttle={throttleTpl}
+    data-unknown={unknownText}
+    data-error={errorText}
+  >
+    <span class="spinner" aria-hidden="true"></span>
+    <span class="txt">{label}</span>
+  </button>
+  <p class="sub mono" data-rescan-sub role="status" aria-live="polite"></p>
+</div>
 
 <style>
+  .rescan-wrap {
+    display: grid;
+    gap: 8px;
+  }
   .rescan {
     width: 100%;
     justify-content: center;
@@ -56,51 +89,212 @@ const eta = T('~5 min', '约 5 分钟');
       transform: rotate(360deg);
     }
   }
+  /* status line keeps its slot (aria-live) — empty = no visual row */
   .sub {
-    margin: 8px 0 0;
+    margin: 0;
+    min-height: 1.2em;
     font-size: 11.5px;
+    line-height: 1.5;
     color: var(--text-3);
     text-align: center;
   }
-  .sub[hidden] {
+  .sub:empty {
     display: none;
+  }
+  .sub[data-tone='error'] {
+    color: var(--grade-f);
+  }
+  .sub[data-tone='ok'] {
+    color: var(--grade-a);
   }
 </style>
 
 <script>
-  // Client-side demo queue state (no backend yet): queued text + countdown.
-  const QUEUED_SECONDS = 300;
+  // Real re-scan flow: POST /api/v1/rescan → poll GET /api/v1/sites/:domain.
+  const POLL_MS = 15000;
+  const MAX_POLLS = 24; /* 6 minutes */
+
+  function pad(n: number): string {
+    return String(n).padStart(2, '0');
+  }
+
+  /** "13:45" style remaining time (hours can exceed 9). */
+  function fmtHM(ms: number): string {
+    const total = Math.max(0, Math.ceil(ms / 60000));
+    return `${pad(Math.floor(total / 60))}:${pad(total % 60)}`;
+  }
+
+  /** nextAllowedAt may arrive as ISO string, epoch seconds or epoch ms. */
+  function toMs(v: unknown): number {
+    if (typeof v === 'number' && isFinite(v) && v > 0) return v > 1e12 ? v : v * 1000;
+    if (typeof v === 'string' && v) {
+      const asNum = Number(v);
+      if (isFinite(asNum) && asNum > 0 && /^\d+$/.test(v)) return asNum > 1e12 ? asNum : asNum * 1000;
+      const t = Date.parse(v);
+      if (!isNaN(t)) return t;
+    }
+    return 0;
+  }
+
+  function readJson(r: Response): Promise<any> {
+    return r.json().catch(() => null);
+  }
+
   for (const btn of document.querySelectorAll<HTMLButtonElement>('[data-rescan]')) {
-    btn.addEventListener('click', () => {
-      if (btn.disabled) return;
-      const txt = btn.querySelector('.txt');
-      const sub = btn.parentElement?.querySelector<HTMLElement>('[data-rescan-sub]');
+    const domain = btn.dataset.domain ?? '';
+    const baseAt = btn.dataset.scannedAt ?? '';
+    const baseScore = btn.dataset.score !== undefined && btn.dataset.score !== '' ? Number(btn.dataset.score) : null;
+    const txt = btn.querySelector<HTMLElement>('.txt');
+    const sub = btn.parentElement?.querySelector<HTMLElement>('[data-rescan-sub]');
+    const ring = document.querySelector<HTMLElement>('[data-ring-count]');
+
+    let pollTimer = 0;
+    let tickTimer = 0;
+    let polls = 0;
+    let throttleUntil = 0;
+
+    const attr = (name: string) => btn.getAttribute(name) ?? '';
+
+    function say(msg: string, tone?: string) {
+      if (!sub) return;
+      sub.textContent = msg;
+      if (tone) sub.dataset.tone = tone;
+      else delete sub.dataset.tone;
+    }
+
+    function setIdle(msg = '', tone?: string) {
+      stopTimers();
+      btn.disabled = false;
+      delete btn.dataset.busy;
+      if (txt) txt.textContent = attr('data-label');
+      ring?.removeAttribute('data-rescanning');
+      say(msg, tone);
+    }
+
+    function setBusy(text: string) {
       btn.disabled = true;
       btn.dataset.busy = '1';
-      const ring = document.querySelector('[data-ring-count]');
+      if (txt) txt.textContent = text;
       ring?.setAttribute('data-rescanning', '');
-      if (txt) txt.textContent = `${btn.dataset.queued ?? 'Queued'} · ${btn.dataset.eta ?? ''}`.trim();
-      if (sub) sub.hidden = false;
+    }
 
-      let left = QUEUED_SECONDS;
+    function stopTimers() {
+      if (pollTimer) clearInterval(pollTimer);
+      if (tickTimer) clearInterval(tickTimer);
+      pollTimer = 0;
+      tickTimer = 0;
+    }
+
+    /* ── 429: disabled + live HH:MM countdown to nextAllowedAt ── */
+    function startThrottle(until: number) {
+      stopTimers();
+      throttleUntil = until;
+      btn.disabled = true;
+      delete btn.dataset.busy;
+      if (txt) txt.textContent = attr('data-label');
+      ring?.removeAttribute('data-rescanning');
       const paint = () => {
-        const m = String(Math.floor(left / 60)).padStart(2, '0');
-        const s = String(left % 60).padStart(2, '0');
-        if (sub) sub.textContent = `${btn.dataset.eta ?? ''} · ${m}:${s}`;
+        const left = throttleUntil - Date.now();
+        if (left <= 0) {
+          /* budget restored — back to the idle button */
+          if (tickTimer) clearInterval(tickTimer);
+          tickTimer = 0;
+          setIdle();
+          return;
+        }
+        say(attr('data-tpl-throttle').replace('{t}', fmtHM(left)));
       };
       paint();
-      const timer = setInterval(() => {
-        left -= 1;
-        paint();
-        if (left <= 0) {
-          clearInterval(timer);
-          delete btn.dataset.busy;
-          btn.disabled = false;
-          if (txt) txt.textContent = btn.dataset.label ?? 'Re-scan';
-          if (sub) sub.hidden = true;
-          ring?.removeAttribute('data-rescanning');
+      tickTimer = window.setInterval(paint, 1000);
+    }
+
+    /* ── queued: poll the site payload until the scan changes ── */
+    function poll() {
+      if (polls >= MAX_POLLS) {
+        setIdle(attr('data-timeout'));
+        return;
+      }
+      polls += 1;
+      fetch('/api/v1/sites/' + encodeURIComponent(domain), {
+        headers: { accept: 'application/json' },
+      })
+        .then((r) => (r.status === 200 ? readJson(r) : null))
+        .then((body) => {
+          if (!body) return; /* transient miss — keep polling */
+          const site = body.site ?? body;
+          const at = String(site.scannedAt ?? site.scanned_at ?? body.scannedAt ?? '');
+          const rawScore = site.score ?? site.score_total ?? body.score;
+          const sc = rawScore === null || rawScore === undefined || rawScore === '' ? null : Number(rawScore);
+          const atChanged = !!at && !!baseAt && at !== baseAt;
+          const scoreChanged = sc !== null && baseScore !== null && !Number.isNaN(sc) && sc !== baseScore;
+          if (atChanged || scoreChanged) finish(at);
+        })
+        .catch(() => {
+          /* network blip — the next tick retries until MAX_POLLS */
+        });
+    }
+
+    function finish(at: string) {
+      stopTimers();
+      ring?.removeAttribute('data-rescanning');
+      /* refresh the visible header timestamp when present */
+      const time = document.querySelector<HTMLElement>('time[data-scan-time]');
+      if (time && at) {
+        const d = new Date(at);
+        if (!isNaN(d.getTime())) {
+          time.setAttribute('datetime', at);
+          time.textContent = d.toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
         }
-      }, 1000);
+      }
+      btn.disabled = true; /* stays disabled through the reload */
+      delete btn.dataset.busy;
+      if (txt) txt.textContent = attr('data-updated');
+      say(attr('data-updated'), 'ok');
+      window.setTimeout(() => window.location.reload(), 1500);
+    }
+
+    btn.addEventListener('click', () => {
+      if (btn.disabled) return;
+      setBusy(attr('data-label'));
+      say(attr('data-polling'));
+
+      fetch('/api/v1/rescan', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify({ domain }),
+      })
+        .then((r) => readJson(r).then((body) => ({ r, body })))
+        .then(({ r, body }) => {
+          if (r.status >= 200 && r.status < 300) {
+            const etaRaw = Number(body && body.etaSeconds);
+            const eta = isFinite(etaRaw) && etaRaw > 0 ? etaRaw : 180;
+            const mins = Math.max(1, Math.round(eta / 60));
+            setBusy(attr('data-tpl-queued').replace('{n}', String(mins)));
+            say(attr('data-polling'));
+            polls = 0;
+            pollTimer = window.setInterval(poll, POLL_MS);
+            return;
+          }
+          if (r.status === 429) {
+            const until =
+              toMs(body && body.nextAllowedAt) ||
+              (Number(body && body.retryAfter) > 0 ? Date.now() + Number(body.retryAfter) * 1000 : 0) ||
+              (() => {
+                const h = Number(r.headers.get('Retry-After'));
+                return h > 0 ? Date.now() + h * 1000 : Date.now() + 60000;
+              })();
+            startThrottle(until);
+            return;
+          }
+          if (r.status === 404) {
+            setIdle(attr('data-unknown'), 'error');
+            return;
+          }
+          setIdle(attr('data-error'), 'error');
+        })
+        .catch(() => {
+          setIdle(attr('data-error'), 'error');
+        });
     });
   }
 </script>

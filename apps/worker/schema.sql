@@ -73,13 +73,16 @@ CREATE TABLE IF NOT EXISTS owners (
 );
 
 -- Submission queue
+-- (one-time for DBs created before done_at existed:
+--  wrangler d1 execute aiapp --command "ALTER TABLE submissions ADD COLUMN done_at TEXT" --remote)
 CREATE TABLE IF NOT EXISTS submissions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   domain TEXT,
   submitter_note TEXT,
-  source TEXT,                           -- tranco/public/owner
-  status TEXT,                           -- queued/scanning/done/rejected
-  created_at TEXT
+  source TEXT,                           -- tranco/public/owner/on_demand
+  status TEXT,                           -- queued/scanning/scanned/done/rejected
+  created_at TEXT,
+  done_at TEXT                           -- set by POST /api/v1/queue/:domain/done
 );
 
 -- Site statements (appeal / context note)
@@ -91,7 +94,7 @@ CREATE TABLE IF NOT EXISTS claims (
   created_at TEXT
 );
 
--- API keys (M5+)
+-- API keys (reserved for future tiers)
 CREATE TABLE IF NOT EXISTS api_keys (
   key_hash TEXT PRIMARY KEY,
   domain_contact TEXT,

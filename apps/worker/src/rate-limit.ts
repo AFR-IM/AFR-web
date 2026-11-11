@@ -6,6 +6,8 @@
 export interface CounterStore {
   /** Increment the counter for `key` within `windowMs` and return the new count */
   incr(key: string, windowMs: number): Promise<number>;
+  /** Read the current count for `key` without incrementing (pre-check) */
+  peek(key: string, windowMs: number): Promise<number>;
 }
 
 /** In-memory fallback (per-isolate only — degraded but serviceable when KV is unavailable) */
@@ -20,6 +22,12 @@ export function memoryStore(now: () => number = Date.now): CounterStore {
         return 1;
       }
       entry.count += 1;
+      return entry.count;
+    },
+    async peek(key: string, windowMs: number): Promise<number> {
+      const t = now();
+      const entry = buckets.get(key);
+      if (!entry || entry.expiresAt <= t) return 0;
       return entry.count;
     },
   };
@@ -40,6 +48,10 @@ export function kvStore(kv: KvLike): CounterStore {
       const count = (raw ? Number.parseInt(raw, 10) || 0 : 0) + 1;
       await kv.put(key, String(count), { expirationTtl: Math.max(60, Math.ceil(windowMs / 1000)) });
       return count;
+    },
+    async peek(key: string): Promise<number> {
+      const raw = await kv.get(key);
+      return raw ? Number.parseInt(raw, 10) || 0 : 0;
     },
   };
 }
@@ -67,6 +79,21 @@ export class RateLimiter {
     const bucket = Math.floor(now / this.windowMs);
     const count = await this.store.incr(`${this.scope}:${key}:${bucket}`, this.windowMs);
     return { allowed: count <= this.limit, remaining: Math.max(0, this.limit - count) };
+  }
+
+  /** Read-only pre-check: whether `key` still has budget in the current window.
+   * Callers run all tier pre-checks before consuming any of them, so a rejected
+   * request never burns quota on another tier. */
+  async check(key: string, now: number = Date.now()): Promise<RateDecision> {
+    const bucket = Math.floor(now / this.windowMs);
+    const count = await this.store.peek(`${this.scope}:${key}:${bucket}`, this.windowMs);
+    return { allowed: count < this.limit, remaining: Math.max(0, this.limit - count) };
+  }
+
+  /** Seconds until the current window resets (Retry-After hint for 429s) */
+  retryAfter(now: number = Date.now()): number {
+    const bucket = Math.floor(now / this.windowMs);
+    return Math.max(1, Math.ceil(((bucket + 1) * this.windowMs - now) / 1000));
   }
 }
 

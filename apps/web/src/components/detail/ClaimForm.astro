@@ -1,0 +1,305 @@
+---
+// ClaimForm — spec §8.2 owner statement (≤200 chars), right column. Rendered
+// only when the site is verified or already carries a published claim (the
+// published text itself keeps rendering through ClaimBlock — read path
+// untouched). Submit → POST /api/v1/claims:
+//   201 → form replaced by the "submitted — published after review" note
+//   403 → inline hint + link that scrolls to the VerifyPanel
+//   400 / 5xx / network → inline error, form stays usable
+// Live n/200 counter; aria-live status; no alert/toast.
+
+import { getCatalog, toLocale, type Locale } from '../../i18n/loader.ts';
+import { uiText } from '../home/fallbacks.ts';
+
+interface Props {
+  domain: string;
+  locale: string;
+  /** visible immediately when verified (build) or a claim already exists */
+  visible?: boolean;
+}
+
+const { domain, locale, visible = false } = Astro.props;
+const loc: Locale = toLocale(locale);
+const L = getCatalog(loc);
+const isZh = loc === 'zh-CN';
+const T = (en: string, zh: string) => (isZh ? zh : en);
+
+const title = uiText(L.ui, 'claimFormTitle', loc);
+const label = uiText(L.ui, 'claimLabel', loc);
+const placeholder = uiText(L.ui, 'claimPlaceholder', loc);
+const submitText = uiText(L.ui, 'claimSubmit', loc);
+const busyText = uiText(L.ui, 'claimBusy', loc);
+const doneText = uiText(L.ui, 'claimDone', loc);
+const notVerifiedText = uiText(L.ui, 'claimNotVerified', loc);
+const invalidText = uiText(L.ui, 'claimInvalid', loc);
+const errorText = uiText(L.ui, 'claimError', loc);
+const verifyCta = uiText(L.ui, 'verifyCta', loc);
+---
+
+<form
+  class="claim-form"
+  data-claim-form
+  data-domain={domain}
+  data-label-idle={submitText}
+  data-label-busy={busyText}
+  data-done={doneText}
+  data-not-verified={notVerifiedText}
+  data-invalid={invalidText}
+  data-error={errorText}
+  data-verify-cta={verifyCta}
+  data-locale={loc}
+  hidden={!visible}
+  aria-labelledby="claim-form-title"
+>
+  <header class="cf-head">
+    <h2 id="claim-form-title">{title}</h2>
+  </header>
+
+  <label class="cf-label" for="claim-input">{label}</label>
+  <textarea
+    class="cf-input"
+    id="claim-input"
+    name="statement"
+    rows="3"
+    maxlength="200"
+    placeholder={placeholder}
+    spellcheck="false"
+    aria-describedby="claim-count"></textarea>
+
+  <div class="cf-row">
+    <span class="cf-count mono" id="claim-count" data-claim-count>0/200</span>
+    <button class="btn cf-submit" type="submit" data-claim-submit>{submitText}</button>
+  </div>
+
+  <p class="cf-status" data-claim-status role="status" aria-live="polite"></p>
+  <p class="cf-hint" data-claim-hint hidden>
+    <span data-claim-hint-text></span>
+    <a href="#verify-panel" data-claim-verify-link>{verifyCta} →</a>
+  </p>
+</form>
+
+<div class="claim-done" data-claim-done role="status" aria-live="polite" hidden>
+  <span class="claim-done-mark mono" aria-hidden="true">✓</span>
+  <span>{doneText}</span>
+</div>
+
+<style>
+  .claim-form {
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 14px;
+    display: grid;
+    gap: 8px;
+    scroll-margin-top: calc(var(--nav-h) + 20px);
+  }
+  .claim-form[hidden] {
+    display: none;
+  }
+  .cf-head h2 {
+    font-size: 15px;
+    margin: 0;
+  }
+  .cf-label {
+    font-size: 12.5px;
+    color: var(--text-2);
+  }
+  .cf-input {
+    display: block;
+    width: 100%;
+    resize: vertical;
+    padding: 8px 10px;
+    background: var(--bg-ink);
+    border: 1px solid var(--line);
+    border-radius: var(--r-1);
+    color: var(--text-1);
+    font-family: var(--font-body);
+    font-size: 13.5px;
+    line-height: 1.6;
+    outline: none;
+    transition: border-color var(--t-micro) var(--ease);
+  }
+  .cf-input:focus-visible {
+    border-color: var(--brand);
+    outline: none;
+  }
+  .cf-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .cf-count {
+    font-size: 11.5px;
+    color: var(--text-3);
+    font-variant-numeric: tabular-nums;
+  }
+  .cf-count[data-full='1'] {
+    color: var(--grade-c);
+  }
+  .cf-submit[disabled] {
+    cursor: not-allowed;
+    opacity: 0.85;
+  }
+  .cf-status {
+    margin: 0;
+    min-height: 1.2em;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-3);
+  }
+  .cf-status:empty {
+    display: none;
+  }
+  .cf-status[data-tone='error'] {
+    color: var(--grade-f);
+  }
+  .cf-hint {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--text-2);
+  }
+  .cf-hint[hidden] {
+    display: none;
+  }
+  .cf-hint a {
+    color: var(--brand-link);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  /* success note replaces the form (standard motion tier) */
+  .claim-done {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 14px;
+    background: var(--bg-surface);
+    border: 1px solid color-mix(in srgb, var(--grade-a) 45%, transparent);
+    border-radius: var(--radius);
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-1);
+    animation: cf-in var(--t-standard) var(--ease);
+  }
+  .claim-done[hidden] {
+    display: none;
+  }
+  .claim-done-mark {
+    display: inline-grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border: 1px solid var(--grade-a);
+    border-radius: 50%;
+    color: var(--grade-a);
+    font-size: 12px;
+    flex: none;
+  }
+  @keyframes cf-in {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+</style>
+
+<script>
+  // Claim submission: counter + POST /api/v1/claims with inline outcomes.
+  function readJson(r: Response): Promise<any> {
+    return r.json().catch(() => null);
+  }
+
+  for (const form of document.querySelectorAll<HTMLFormElement>('[data-claim-form]')) {
+    const domain = form.dataset.domain ?? '';
+    const input = form.querySelector<HTMLTextAreaElement>('textarea[name="statement"]');
+    const count = form.querySelector<HTMLElement>('[data-claim-count]');
+    const btn = form.querySelector<HTMLButtonElement>('[data-claim-submit]');
+    const status = form.querySelector<HTMLElement>('[data-claim-status]');
+    const hint = form.querySelector<HTMLElement>('[data-claim-hint]');
+    const hintText = form.querySelector<HTMLElement>('[data-claim-hint-text]');
+    const doneBox = document.querySelector<HTMLElement>('[data-claim-done]');
+
+    const attr = (name: string) => form.getAttribute(name) ?? '';
+
+    function say(msg: string, tone?: string) {
+      if (!status) return;
+      status.textContent = msg;
+      if (tone) status.dataset.tone = tone;
+      else delete status.dataset.tone;
+    }
+
+    function paintCount() {
+      if (!count || !input) return;
+      const n = input.value.length;
+      count.textContent = `${n}/200`;
+      if (n >= 200) count.dataset.full = '1';
+      else delete count.dataset.full;
+    }
+
+    input?.addEventListener('input', paintCount);
+    paintCount();
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (!input || !btn) return;
+      const statement = input.value.trim();
+      if (!statement) {
+        say(attr('data-invalid'), 'error');
+        if (hint) hint.hidden = true;
+        input.focus();
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = attr('data-label-busy');
+      say('');
+      if (hint) hint.hidden = true;
+
+      fetch('/api/v1/claims', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify({ domain, statement }),
+      })
+        .then((r) => readJson(r).then((body) => ({ r, body })))
+        .then(({ r, body }) => {
+          if (r.status >= 200 && r.status < 300) {
+            /* 201 — replace the form with the review note */
+            form.hidden = true;
+            if (doneBox) doneBox.hidden = false;
+            return;
+          }
+          if (r.status === 403) {
+            /* not verified — inline hint + scroll link to the VerifyPanel */
+            if (hintText) hintText.textContent = attr('data-not-verified');
+            if (hint) hint.hidden = false;
+            say(attr('data-not-verified'), 'error');
+            btn.disabled = false;
+            btn.textContent = attr('data-label-idle');
+            return;
+          }
+          if (r.status === 400) {
+            const msg =
+              body && typeof body.message === 'string' && body.message ? body.message : attr('data-invalid');
+            say(msg, 'error');
+            btn.disabled = false;
+            btn.textContent = attr('data-label-idle');
+            return;
+          }
+          say(attr('data-error'), 'error');
+          btn.disabled = false;
+          btn.textContent = attr('data-label-idle');
+        })
+        .catch(() => {
+          say(attr('data-error'), 'error');
+          btn.disabled = false;
+          btn.textContent = attr('data-label-idle');
+        });
+    });
+  }
+</script>
