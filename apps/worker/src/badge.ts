@@ -14,7 +14,7 @@ export interface BadgeInput {
 }
 
 const FONT = 'ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
-const BADGE_TEXT = 'AI-Friendly Rating · aiapp.im';
+const BADGE_TEXT = 'AI-Friendly Rating · AiApp.im';
 
 /** XML-escape user-controlled text before it goes into markup */
 function esc(value: string): string {

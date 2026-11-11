@@ -1,7 +1,8 @@
-// Sponsored-slot fixtures for development (ad slots 1 and 2).
-// Copy is synthetic sample content — real ad-server payloads replace this later.
-// A slot only renders when its domain resolves in the site list, because the
-// block must show that site's REAL GradeRing (spec §10.5) — see resolvableAds().
+// Ad slot data (ad slots 1 and 2). Production ships EMPTY: a Sponsored block
+// may only ever contain a real, paid, reviewed placement — synthetic samples
+// must never render on the live site. Real payloads arrive with the ads system
+// (SSOT: data repo /ads/active.json). The render path above stays in place so
+// slots light up the moment real entries exist.
 
 import { listSites } from '../../data/loader.ts';
 
@@ -13,22 +14,7 @@ export interface AdFixture {
   bodyZh?: string;
 }
 
-export const ADS: AdFixture[] = [
-  {
-    domain: 'openai.com',
-    headline: 'Build with the OpenAI Platform',
-    body: 'Models, tools, and docs for shipping AI features — AgentKit, Realtime, and the API.',
-    headlineZh: '使用 OpenAI 平台构建',
-    bodyZh: '面向 AI 应用的模型、工具与文档——AgentKit、Realtime 与 API。',
-  },
-  {
-    domain: 'stackoverflow.com',
-    headline: 'Stack Overflow for Teams',
-    body: 'Trusted developer knowledge, now with AI-assisted answers inside your workspace.',
-    headlineZh: 'Stack Overflow for Teams',
-    bodyZh: '开发者信赖的知识库，现支持工作区内的 AI 辅助回答。',
-  },
-];
+export const ADS: AdFixture[] = [];
 
 /** Ads whose domain exists in the current site list (so a real GradeRing can be shown). */
 export function resolvableAds(): AdFixture[] {

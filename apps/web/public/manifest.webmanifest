@@ -1,6 +1,6 @@
 {
-  "name": "aiapp — AI 友好度导航",
-  "short_name": "aiapp",
+  "name": "AiApp.im — AI 友好度导航",
+  "short_name": "AiApp",
   "description": "See how friendly every website is to AI. AI-Friendliness Rating (AFR) with public, reproducible evidence.",
   "start_url": "/",
   "scope": "/",

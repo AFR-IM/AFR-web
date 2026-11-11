@@ -18,10 +18,10 @@ const href = (p: string) => pathFor(locale, p);
 
 const PROSE = {
   en: {
-    title: 'About aiapp',
+    title: 'About AiApp',
     description:
-      'aiapp.im rates how friendly every website is to AI — automated, reproducible, evidence-backed, and neutral about the answer.',
-    lede: 'See how friendly every website is to AI. aiapp.im is an open directory that rates sites A–F on their openness to AI crawlers and agents, with the evidence chain published next to every score.',
+      'AiApp.im rates how friendly every website is to AI — automated, reproducible, evidence-backed, and neutral about the answer.',
+    lede: 'See how friendly every website is to AI. AiApp.im is an open directory that rates sites A–F on their openness to AI crawlers and agents, with the evidence chain published next to every score.',
     whatTitle: 'What we do',
     whatItems: [
       'Scan public signals only — robots.txt, llms.txt, sitemap, structured data, APIs — with a transparent crawler anyone can identify and block.',
@@ -57,9 +57,9 @@ const PROSE = {
     ],
   },
   'zh-CN': {
-    title: '关于 aiapp',
-    description: 'aiapp.im 为每个网站的 AI 友好度打分——自动、可复现、有证据，且对结果保持中立。',
-    lede: '看看每个网站，对 AI 有多友好。aiapp.im 是一个开放目录，按 A–F 给网站的 AI 开放度评级，每个分数旁都附带完整证据链。',
+    title: '关于 AiApp',
+    description: 'AiApp.im 为每个网站的 AI 友好度打分——自动、可复现、有证据，且对结果保持中立。',
+    lede: '看看每个网站，对 AI 有多友好。AiApp.im 是一个开放目录，按 A–F 给网站的 AI 开放度评级，每个分数旁都附带完整证据链。',
     whatTitle: '我们做什么',
     whatItems: [
       '只扫描公开信号——robots.txt、llms.txt、sitemap、结构化数据、API——爬虫身份透明，任何人都能识别并随时屏蔽我们。',
@@ -102,7 +102,7 @@ const P = PROSE[locale === 'zh-CN' ? 'zh-CN' : 'en'];
 <Base title={P.title} description={P.description}>
   <div class="container about">
     <header class="hero">
-      <p class="eyebrow mono">aiapp.im</p>
+      <p class="eyebrow mono">AiApp.im</p>
       <h1>{P.title}</h1>
       <p class="lede">{P.lede}</p>
       <div class="hero-cta">

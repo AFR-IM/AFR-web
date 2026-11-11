@@ -1,7 +1,7 @@
 ---
 // BadgePreview — local rendering of what https://aiapp.im/badge/{domain}.svg
 // serves (spec §8.4): ring + big grade letter + score + "AI-Friendly Rating ·
-// aiapp.im". Colors come from tokens only (grade color family, --bg-surface,
+// AiApp.im". Colors come from tokens only (grade color family, --bg-surface,
 // --line) — same semantic colors in both themes.
 
 interface Props {
@@ -41,7 +41,7 @@ const label = `AI-Friendly Rating ${grade}, ${score}/100${domain ? ` — ${domai
   </text>
   <text x={cx} y={cy + 16} class="score" text-anchor="middle">{score}</text>
   <text x={74} y={cy - 4} class="line1">AI-Friendly Rating</text>
-  <text x={74} y={cy + 15} class="line2">aiapp.im · {score}/100{domain ? ` · ${domain}` : ''}</text>
+  <text x={74} y={cy + 15} class="line2">AiApp.im · {score}/100{domain ? ` · ${domain}` : ''}</text>
 </svg>
 
 <style>

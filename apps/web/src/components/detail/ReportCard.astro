@@ -66,6 +66,7 @@ const hasChecks = site.layers.some((l) => l.checks.length > 0);
 
 <style>
   .card {
+    min-width: 0; /* grid item must shrink instead of overflowing the 340px column */
     background: var(--bg-surface);
     border: 1px solid var(--line);
     border-radius: var(--radius);

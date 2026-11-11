@@ -22,8 +22,8 @@ const T = (en: string, zh: string) => (isZh ? zh : en);
 const gc = gradeVar(site.grade);
 const totalChecks = site.layers.reduce((n, l) => n + l.checks.length, 0);
 const principle = T(
-  'Principle P2 — no evidence, no points: every awarded point above links to its raw source.',
-  '原则 P2——无证据不给分：上方每个得分点都可展开查看原始证据。',
+  'No evidence, no points: every awarded point above links to its raw source.',
+  '无证据不给分：上方每个得分点都可展开查看原始证据。',
 );
 ---
 

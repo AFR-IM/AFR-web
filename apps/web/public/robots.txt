@@ -1,4 +1,4 @@
-# aiapp.im — AI-Friendliness Rating directory
+# AiApp.im — AI-Friendliness Rating directory
 #
 # The directory is fully public: every page, dataset snapshot, and read-only
 # API endpoint is reachable without login. All crawlers are welcome; the 14

@@ -1,6 +1,6 @@
-# aiapp.im — AI-Friendliness Rating
+# AiApp.im — AI-Friendliness Rating
 
-> aiapp.im publishes objective AI-friendliness ratings for websites: an open, reproducible 0–100 AFR score and an A–F grade showing how open each site is to AI crawlers and agents. Every point traces back to public evidence anyone can fetch again — robots.txt policy, llms.txt, sitemap, structured data, semantic HTML, public APIs, and agent instructions. English at https://aiapp.im/ and Chinese at https://aiapp.im/zh-CN/.
+> AiApp.im publishes objective AI-friendliness ratings for websites: an open, reproducible 0–100 AFR score and an A–F grade showing how open each site is to AI crawlers and agents. Every point traces back to public evidence anyone can fetch again — robots.txt policy, llms.txt, sitemap, structured data, semantic HTML, public APIs, and agent instructions. English at https://aiapp.im/ and Chinese at https://aiapp.im/zh-CN/.
 
 ## Pages
 
@@ -8,7 +8,7 @@
 - [Method](https://aiapp.im/method): the full AFR standard — three layers, every sub-check and its points, grade thresholds, and the neutrality pledge.
 - [Categories](https://aiapp.im/categories): browse rated sites by category.
 - [Submit](https://aiapp.im/submit): request a scan of a site you care about.
-- [About](https://aiapp.im/about): who runs aiapp.im and how to get in touch.
+- [About](https://aiapp.im/about): who runs AiApp.im and how to get in touch.
 - [For bots](https://aiapp.im/bot): what our own scanner fetches and how a score is produced.
 - [Badge](https://aiapp.im/badge): embeddable rating badge for your site.
 - [Search](https://aiapp.im/search): search the directory.
@@ -31,6 +31,6 @@
 ## Optional: agent usage policy
 
 - [Agent instructions](https://aiapp.im/agents.md): how to identify yourself, fetch budget, what content may be reused, and how to cite a rating.
-- [AI crawler policy](https://aiapp.im/ai.txt): short machine-readable summary of what aiapp.im allows and why.
+- [AI crawler policy](https://aiapp.im/ai.txt): short machine-readable summary of what AiApp.im allows and why.
 - [robots.txt](https://aiapp.im/robots.txt): explicit Allow rules for the 14 AI user-agent families plus the Sitemap declaration.
-- Ratings, grades, and check names may be reused with attribution to aiapp.im; the AFR standard text is CC BY 4.0. See [About](https://aiapp.im/about) for contact and correction channels.
+- Ratings, grades, and check names may be reused with attribution to AiApp.im; the AFR standard text is CC BY 4.0. See [About](https://aiapp.im/about) for contact and correction channels.

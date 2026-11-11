@@ -1,4 +1,4 @@
-// src/index.ts — aiapp.im Worker API (Hono on Cloudflare Workers).
+// src/index.ts — AiApp.im Worker API (Hono on Cloudflare Workers).
 // Endpoints per spec v1.0 §6.2 + v1.2 §6.2; the AFR method schema per §14-D;
 // the SVG badge per §8.4. D1 is wrapped by src/db.ts so tests can inject a
 // node:sqlite database through createApp({ db }).

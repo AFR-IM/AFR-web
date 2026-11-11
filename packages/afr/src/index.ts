@@ -12,7 +12,7 @@ import {
   type ScanSignals,
   type ScanState,
 } from '../../shared/src/index.ts';
-import { scoreL1 } from './l1.ts';
+import { scoreL1, round2 } from './l1.ts';
 import { scoreL2 } from './l2.ts';
 import { scoreL3 } from './l3.ts';
 import { evaluateRobotsPolicy, parseRobots, type RobotsTxt } from './robots.ts';
@@ -42,6 +42,14 @@ export function scoreAfr(signals: ScanSignals): AfrResult {
   const robotsEval = evaluateRobotsPolicy(robotsTxt, robotsReachable);
 
   const layers = [scoreL1(signals, robotsEval), scoreL2(signals), scoreL3(signals)];
+  // Precision normalization: family-score arithmetic can yield long floats
+  // (e.g. 23.333333333333336). Round per check, then re-derive each layer
+  // total from the rounded checks so layer == sum(checks) exactly — display,
+  // API and snapshots all see the same two-decimal values.
+  for (const layer of layers) {
+    for (const c of layer.checks) c.awarded = round2(c.awarded);
+    layer.awarded = round2(layer.checks.reduce((s, c) => s + c.awarded, 0));
+  }
   const total = Math.round((layers[0]!.awarded + layers[1]!.awarded + layers[2]!.awarded) * 100) / 100;
   const score = Math.round(total);
 

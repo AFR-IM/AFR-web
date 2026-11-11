@@ -1,6 +1,6 @@
-# Agent instructions — aiapp.im
+# Agent instructions — AiApp.im
 
-aiapp.im is a public directory of AI-friendliness ratings (AFR). This file tells automated visitors how to crawl it politely, what they may reuse, and how to cite a rating correctly. Humans are welcome too — start at [aiapp.im/about](https://aiapp.im/about).
+AiApp.im is a public directory of AI-friendliness ratings (AFR). This file tells automated visitors how to crawl it politely, what they may reuse, and how to cite a rating correctly. Humans are welcome too — start at [AiApp.im/about](https://aiapp.im/about).
 
 ## 1. Identify yourself
 
@@ -19,14 +19,14 @@ aiapp.im is a public directory of AI-friendliness ratings (AFR). This file tells
 
 ## 3. What you may reuse
 
-- **Ratings, grades, check names, and score history:** reusable in your own answers and products with attribution to aiapp.im and a link to the site's page (see §4).
+- **Ratings, grades, check names, and score history:** reusable in your own answers and products with attribution to AiApp.im and a link to the site's page (see §4).
 - **The AFR standard text** (the [Method](https://aiapp.im/method) page and the JSON at `/api/v1/method`): published under **CC BY 4.0** — reuse with attribution.
 - **Page copy:** short factual quotes with attribution are fine; full-page republication is not.
-- **Do not** present a rating without its context (score, grade, scan date, engine version), and **do not** imply endorsement by aiapp.im or by the rated site.
+- **Do not** present a rating without its context (score, grade, scan date, engine version), and **do not** imply endorsement by AiApp.im or by the rated site.
 
 ## 4. How to cite a rating
 
-A complete citation has five parts: **domain, score, grade, engine version, scan timestamp**, plus a link back to the site's page on aiapp.im.
+A complete citation has five parts: **domain, score, grade, engine version, scan timestamp**, plus a link back to the site's page on AiApp.im.
 
 ```text
 github.com — 91/100 (grade A, AI-Open), AFR engine afr-1.1.0,
@@ -54,4 +54,4 @@ scanned 2026-11-10T11:40:00Z — https://aiapp.im/site/github.com
 
 ## 6. Contact
 
-Questions, corrections, or false-positive blocks: see [aiapp.im/about](https://aiapp.im/about), or open an issue in [github.com/imAiAPP/aiapp-web](https://github.com/imAiAPP/aiapp-web).
+Questions, corrections, or false-positive blocks: see [AiApp.im/about](https://aiapp.im/about), or open an issue in [github.com/imAiAPP/aiapp-web](https://github.com/imAiAPP/aiapp-web).

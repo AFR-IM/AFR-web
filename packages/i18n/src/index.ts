@@ -1,4 +1,4 @@
-// @aiapp/i18n — locale catalogs for aiapp.im.
+// @aiapp/i18n — locale catalogs for AiApp.im.
 // Single source of localized vocabulary for the web app (apps/web/src/i18n/loader.ts
 // imports `catalogs` / `getCatalog` from this module — do not rename exports).
 //
@@ -27,7 +27,7 @@ export interface Catalog {
 const en: Catalog = {
   ui: {
     // Global chrome / nav (Base.astro + P1-P7)
-    siteName: 'aiapp — AI Friendliness Directory',
+    siteName: 'AiApp.im — AI Friendliness Directory',
     tagline: 'Objective AI-friendliness ratings for every website.',
     navHome: 'Home',
     navCategories: 'Categories',
@@ -40,7 +40,7 @@ const en: Catalog = {
     searchSubmitHint: 'Not found? Submit it for scanning.',
     themeToggle: 'Toggle theme',
     footerPledge: 'Scores cannot be bought: payments never affect ratings.',
-    footerRights: '© 2026 aiapp.im · All rights reserved.',
+    footerRights: '© 2026 AiApp.im · All rights reserved.',
 
     // P1 home
     heroSlogan: 'See how friendly each website is to AI.',
@@ -128,10 +128,10 @@ const en: Catalog = {
     methodLicense: 'AFR v1.0 published under CC BY 4.0.',
 
     // P6 badge page
-    badgeAntiForgery: 'Official badges always load from aiapp.im — click one to verify it.',
+    badgeAntiForgery: 'Official badges always load from AiApp.im — click one to verify it.',
 
     // P7 about / bot / offline
-    aboutTitle: 'About aiapp',
+    aboutTitle: 'About AiApp',
     botTitle: 'Bot etiquette',
     offlineTitle: 'You are offline',
     offlineHint: 'Showing the last synced directory data.',
@@ -257,7 +257,7 @@ const en: Catalog = {
 const zhCN: Catalog = {
   ui: {
     // Global chrome / nav (Base.astro + P1-P7)
-    siteName: 'aiapp — AI 友好度导航',
+    siteName: 'AiApp.im — AI 友好度导航',
     tagline: '每个网站的客观 AI 友好度评级。',
     navHome: '首页',
     navCategories: '分类',
@@ -270,7 +270,7 @@ const zhCN: Catalog = {
     searchSubmitHint: '没找到？提交它进入扫描。',
     themeToggle: '切换主题',
     footerPledge: '付费不能改分：评分永远不受付费影响。',
-    footerRights: '© 2026 aiapp.im · 保留所有权利。',
+    footerRights: '© 2026 AiApp.im · 保留所有权利。',
 
     // P1 home
     heroSlogan: '看看每个网站，对 AI 有多友好。',
@@ -355,10 +355,10 @@ const zhCN: Catalog = {
     methodLicense: 'AFR v1.0 以 CC BY 4.0 发布。',
 
     // P6 badge page
-    badgeAntiForgery: '官方徽章一律从 aiapp.im 引用——点击徽章即可验真。',
+    badgeAntiForgery: '官方徽章一律从 AiApp.im 引用——点击徽章即可验真。',
 
     // P7 about / bot / offline
-    aboutTitle: '关于 aiapp',
+    aboutTitle: '关于 AiApp',
     botTitle: '爬虫礼仪',
     offlineTitle: '当前离线',
     offlineHint: '显示上次同步的目录数据。',
