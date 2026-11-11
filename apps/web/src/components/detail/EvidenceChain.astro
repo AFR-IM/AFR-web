@@ -97,6 +97,7 @@ const principle = T(
   .term-body {
     padding: 14px;
     display: grid;
+    grid-template-columns: minmax(0, 1fr); /* content can never stretch the column */
     gap: 18px;
   }
   .empty {

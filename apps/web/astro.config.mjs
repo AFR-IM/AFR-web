@@ -12,7 +12,7 @@ export default defineConfig({
   // Locale routing is managed by pages/[[locale]]/ + src/i18n/loader.ts:
   // English at /, zh-CN at /zh-CN/ — one template renders both.
   build: {
-    inlineStylesheets: 'auto',
+    inlineStylesheets: 'always', // inline all CSS: a cached HTML can never arrive without its styles
   },
 
   // Allow parallel self-check builds without fighting over dist/ (CI uses default).

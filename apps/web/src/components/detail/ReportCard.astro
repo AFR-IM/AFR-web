@@ -67,6 +67,7 @@ const hasChecks = site.layers.some((l) => l.checks.length > 0);
 <style>
   .card {
     min-width: 0; /* grid item must shrink instead of overflowing the 340px column */
+    overflow: hidden; /* last-resort guard: content can never spill past the card */
     background: var(--bg-surface);
     border: 1px solid var(--line);
     border-radius: var(--radius);
@@ -95,6 +96,9 @@ const hasChecks = site.layers.some((l) => l.checks.length > 0);
 
   .layers {
     display: grid;
+    /* minmax(0,1fr): a plain auto column stretches to the content's min-content
+       width and pushes long rows past the card (measured 402px in a 340px card) */
+    grid-template-columns: minmax(0, 1fr);
     gap: 18px;
   }
   .layer-top {
@@ -103,6 +107,8 @@ const hasChecks = site.layers.some((l) => l.checks.length > 0);
     gap: 8px;
     font-size: 13px;
     margin-bottom: 6px;
+    min-width: 0; /* row may shrink with the column, never spill past the card */
+    overflow: hidden;
   }
   .layer-id {
     color: var(--text-3);
@@ -110,9 +116,15 @@ const hasChecks = site.layers.some((l) => l.checks.length > 0);
   }
   .layer-name {
     flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     color: var(--text-1);
   }
   .layer-score {
+    flex: none;
+    white-space: nowrap;
     font-size: 12.5px;
     font-weight: 500;
   }
