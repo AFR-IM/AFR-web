@@ -4,6 +4,12 @@
 
 export type Grade = 'A' | 'B' | 'C' | 'D' | 'F';
 
+/** Site rating states beyond the five grades (spec §3.5): Pending = no evaluable evidence */
+export type GradeState = Grade | 'Pending';
+
+/** Scan outcome: 'scored' = homepage evidence obtained; 'pending' = no evaluable homepage (spec Q2 calibration) */
+export type ScanState = 'scored' | 'pending';
+
 export type StrategyTag =
   | 'AI-Open'
   | 'Middle-Path'
@@ -53,7 +59,10 @@ export interface AfrResult {
   scannedAt: string;
   /** 0–100, rounded to an integer */
   score: number;
-  grade: Grade;
+  /** 'Pending' when state === 'pending' (no evaluable homepage evidence; excluded from ranking) */
+  grade: GradeState;
+  /** scored = full evidence available; pending = homepage unreachable/challenged with no fallback content */
+  state: ScanState;
   strategyTag: StrategyTag;
   layers: LayerScore[];
   /** checkId -> awarded, convenient for diffs and incremental notifications */

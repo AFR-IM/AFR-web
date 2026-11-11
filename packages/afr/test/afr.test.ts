@@ -142,8 +142,14 @@ describe('robots.txt parsing', () => {
 });
 
 describe('policy evaluation and StrategyTag', () => {
-  it('no robots.txt (404) → all unconfigured at 0.5, tag=Unconfigured', () => {
+  it('no robots.txt (404) → protocol default allow-all, full 25, tag=Unconfigured (calibration S4)', () => {
     const ev = evaluateRobotsPolicy(null, true);
+    assert.equal(ev.robotsTotal, 25);
+    assert.equal(ev.tag, 'Unconfigured');
+  });
+
+  it('existing but AI-silent robots.txt → half score (unconfigured ≠ explicitly open)', () => {
+    const ev = evaluateRobotsPolicy(parseRobots('User-agent: *\nDisallow: /private/'), true);
     assert.equal(ev.robotsTotal, 12.5);
     assert.equal(ev.tag, 'Unconfigured');
   });

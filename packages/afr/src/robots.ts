@@ -136,7 +136,9 @@ export interface RobotsEvaluation {
 
 /**
  * Evaluate the robots policy for the 14 AI UAs.
- * @param robots parsed robots.txt; null means no robots.txt (404) → all scored as unconfigured 0.5
+ * @param robots parsed robots.txt; null means no robots.txt (404) → protocol default allows all,
+ *               scored full (calibration S4, spec §3.2 "no robots.txt = default allow = full");
+ *               an existing but AI-silent robots.txt stays at 0.5 (unconfigured ≠ explicitly open)
  * @param reachable whether robots.txt itself was fetchable; false (network error) → all unknown
  *                  (0 points, no penalty, no reward)
  */
@@ -157,13 +159,24 @@ export function evaluateRobotsPolicy(
       });
       continue;
     }
-    if (!robots || robots.groups.length === 0) {
+    if (!robots) {
+      // Calibration S4 (2026-11-10): absent robots.txt = protocol default allow-all = full credit.
+      verdicts.push({
+        ua,
+        family,
+        access: 'unconfigured',
+        factor: 1,
+        detail: 'no robots.txt (404) → protocol default allows all → full score (unconfigured)',
+      });
+      continue;
+    }
+    if (robots.groups.length === 0) {
       verdicts.push({
         ua,
         family,
         access: 'unconfigured',
         factor: 0.5,
-        detail: robots ? 'robots.txt is empty → unconfigured (default reachable)' : 'no robots.txt (404) → unconfigured (default reachable)',
+        detail: 'robots.txt exists but is empty → unconfigured (half score, not explicitly open)',
       });
       continue;
     }

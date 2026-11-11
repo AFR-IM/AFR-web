@@ -10,13 +10,17 @@ import {
   type CheckResult,
   type Grade,
   type ScanSignals,
+  type ScanState,
 } from '../../shared/src/index.ts';
 import { scoreL1 } from './l1.ts';
 import { scoreL2 } from './l2.ts';
 import { scoreL3 } from './l3.ts';
 import { evaluateRobotsPolicy, parseRobots, type RobotsTxt } from './robots.ts';
 
-export const ENGINE_VERSION = 'afr-1.0.0';
+// v1.1.0 (2026-11-10 calibration): robots-absent → full credit (S4/Q1);
+// no evaluable homepage evidence → state 'pending', grade 'Pending' (Q2).
+// Score logic change = minor bump per spec §4.4.
+export const ENGINE_VERSION = 'afr-1.1.0';
 
 export function gradeFor(score: number): Grade {
   for (const t of GRADE_THRESHOLDS) {
@@ -46,13 +50,26 @@ export function scoreAfr(signals: ScanSignals): AfrResult {
     for (const c of layer.checks) breakdown[c.id] = c.awarded;
   }
 
+  // Calibration Q2: rating requires *some* primary evidence. A readable
+  // homepage (L2/L3) or a readable robots.txt (L1, incl. spec §4.3 declined
+  // sites that walled the homepage) keeps the scan scored — no evidence, no
+  // reward, but a real F. Only when NEITHER source is readable (DNS/TLS/
+  // timeout, e.g. infrastructure domains) is the site not ratable at all:
+  // state 'pending', excluded from grades and natural ranking.
+  const hpProbe = signals.homepage;
+  const rpProbe = signals.robots;
+  const ok = (p?: { status?: number; error?: string }) =>
+    !!p && !p.error && p.status !== undefined && p.status >= 200 && p.status < 400;
+  const state: ScanState = ok(hpProbe) || ok(rpProbe) ? 'scored' : 'pending';
+
   return {
     domain: signals.domain,
     engineVersion: ENGINE_VERSION,
     scannerVersion: signals.scannerVersion,
     scannedAt: signals.fetchedAt,
     score,
-    grade: gradeFor(score),
+    grade: state === 'pending' ? 'Pending' : gradeFor(score),
+    state,
     strategyTag: robotsEval.tag,
     layers,
     breakdown,
