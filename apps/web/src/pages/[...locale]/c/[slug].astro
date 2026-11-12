@@ -15,7 +15,7 @@ import Sorter from '../../../components/home/Sorter.astro';
 import SponsoredCard from '../../../components/home/SponsoredCard.astro';
 import { getCatalog, pathFor, toLocale } from '../../../i18n/loader.ts';
 import { listCategories, loadCategory } from '../../../data/loader.ts';
-import { GRADES, gradeVar } from '../../../utils/grade.ts';
+import { GRADES, GRADE_VAR, gradeVar } from '../../../utils/grade.ts';
 import { resolvableAds } from '../../../components/home/ads-fixture.ts';
 import { sitesLabel, uiText } from '../../../components/home/fallbacks.ts';
 
@@ -46,6 +46,11 @@ const sites = data?.sites ?? [];
 const count = data?.count ?? 0;
 const hasSites = sites.length > 0;
 
+// Bounded DOM (catalogs grow to 100k domains): only the first page is
+// server-rendered; "Show more" appends further pages from GET /api/v1/sites.
+const PAGE_SIZE = 50;
+const firstPage = sites.slice(0, PAGE_SIZE);
+
 const tags = [...new Set(sites.flatMap((s) => s.tags ?? []))].sort();
 const langs = [
   ...new Set(sites.map((s) => s.lang).filter((v): v is string => Boolean(v))),
@@ -60,6 +65,15 @@ const sortOptions = [
   { value: 'rank', label: L.ui.sortRank ?? 'Rank' },
   { value: 'new', label: L.ui.sortNew ?? 'Newest' },
 ];
+const strategyLabels = JSON.stringify(
+  Object.fromEntries(Object.entries(L.strategies).map(([k, v]) => [k, v.label])),
+);
+// "Show more" copy — catalog-first with inline EN/ZH fallbacks
+const loadMoreLabel = L.ui.loadMore ?? 'Load more';
+const loadingText = L.ui.loading ?? 'Loading…';
+const doneTpl = uiText(L.ui, 'loadMoreDone', locale);
+const progressTpl = uiText(L.ui, 'loadMoreProgress', locale);
+const loadMoreErrorText = uiText(L.ui, 'loadMoreError', locale);
 ---
 
 <Base title={name} description={blurb !== '' ? blurb : L.ui.tagline}>
@@ -137,9 +151,41 @@ const sortOptions = [
           <Sorter options={sortOptions} active="score" label={uiText(L.ui, 'sortBy', locale)} />
         </div>
 
-        <div class="grid" data-grid>
-          {sites.map((s, i) => <DomainCard site={s} locale={locale} index={i} />)}
+        <div
+          class="grid"
+          data-grid
+          data-page-size={PAGE_SIZE}
+          data-total={count}
+          data-category={slug}
+          data-report-base={href('/site/')}
+          data-cat-name={name}
+          data-grade-vars={JSON.stringify(GRADE_VAR)}
+          data-strategies={strategyLabels}
+        >
+          {firstPage.map((s, i) => <DomainCard site={s} locale={locale} index={i} />)}
         </div>
+
+        {count > PAGE_SIZE && (
+          <div
+            class="more"
+            data-more-wrap
+            data-tpl-done={doneTpl}
+            data-tpl-progress={progressTpl}
+            data-msg-error={loadMoreErrorText}
+            data-msg-loading={loadingText}
+          >
+            <button type="button" class="btn more-btn" data-more>{loadMoreLabel}</button>
+            <p class="more-status mono" data-more-status role="status" aria-live="polite"></p>
+          </div>
+        )}
+
+        {/* inert card template — client-appended cards clone this markup so
+            Astro-scoped classes/styles stay identical to server-rendered cards */}
+        {count > PAGE_SIZE && (
+          <template data-card-tpl>
+            <DomainCard site={sites[0]} locale={locale} index={0} />
+          </template>
+        )}
 
         <div class="empty" data-empty hidden>
           <p>{L.ui.searchEmpty}</p>
@@ -237,8 +283,11 @@ const sortOptions = [
 
         if (empty) empty.hidden = visible > 0;
         if (countEl) {
-          var txt = countTpl.replace('{n}', String(visible));
-          if (visible === 1) txt = txt.replace(/\bsites\b/, 'site'); /* EN singular */
+          /* unfiltered → the full category total (not all cards may be loaded
+             yet); filtered → how many of the loaded cards match */
+          var n = state.grade || state.tag || state.lang ? visible : total;
+          var txt = countTpl.replace('{n}', String(n));
+          if (n === 1) txt = txt.replace(/\bsites\b/, 'site'); /* EN singular */
           countEl.textContent = txt;
         }
 
@@ -293,6 +342,151 @@ const sortOptions = [
           render(true);
           syncUrl();
         });
+      }
+
+      /* ── incremental "Show more": fetch the next page and append cards ── */
+      var PAGE = parseInt(grid.getAttribute('data-page-size'), 10) || 50;
+      var total = parseInt(grid.getAttribute('data-total'), 10) || cards.length;
+      var category = grid.getAttribute('data-category') || '';
+      var reportBase = grid.getAttribute('data-report-base') || '/site/';
+      var catName = grid.getAttribute('data-cat-name') || '';
+      var gradeVars = {};
+      var stratLabels = {};
+      try { gradeVars = JSON.parse(grid.getAttribute('data-grade-vars') || '{}'); } catch (e) {}
+      try { stratLabels = JSON.parse(grid.getAttribute('data-strategies') || '{}'); } catch (e) {}
+      var tpl = document.querySelector('[data-card-tpl]');
+      var moreWrap = document.querySelector('[data-more-wrap]');
+      var moreBtn = moreWrap && moreWrap.querySelector('[data-more]');
+      var moreStatus = moreWrap && moreWrap.querySelector('[data-more-status]');
+      var nextPage = 2; /* page 1 is the server-rendered slice */
+      var loadingMore = false;
+
+      function setMoreStatus(msg, isErr) {
+        if (!moreStatus) return;
+        moreStatus.textContent = msg || '';
+        moreStatus.classList.toggle('is-err', !!isErr);
+      }
+      function progressText() {
+        return (moreWrap && moreWrap.getAttribute('data-tpl-progress') || 'Showing {n} of {t}')
+          .replace('{n}', String(cards.length))
+          .replace('{t}', String(total));
+      }
+      function showAllShown() {
+        if (!moreBtn) return;
+        moreBtn.disabled = true;
+        moreBtn.textContent = (moreWrap && moreWrap.getAttribute('data-tpl-done') || 'All {n} shown')
+          .replace('{n}', String(total));
+      }
+
+      /* map one GET /api/v1/sites item onto the DomainCard shape */
+      function fromApi(it) {
+        return {
+          domain: it.domain || '',
+          title: it.title || '',
+          score: Number(it.score_total) || 0,
+          grade: it.grade || 'F',
+          strategyTag: it.strategy_tag || '',
+          category: it.category || category,
+          lang: it.lang || '',
+          rankSource: it.rank_source == null ? null : Number(it.rank_source),
+          scannedAt: it.scanned_at || '',
+          tags: [], /* the API does not expose tags */
+        };
+      }
+
+      /* clone the inert template and fill it — same classes / data-* as a
+         server-rendered card (the clone carries Astro's scope attributes) */
+      function buildCard(s, i) {
+        var el = tpl.content.firstElementChild.cloneNode(true);
+        var pct = Math.max(0, Math.min(100, s.score));
+        var gvar = gradeVars[s.grade] || 'var(--text-3)';
+        el.setAttribute('href', reportBase + s.domain);
+        el.style.setProperty('--i', String(i));
+        el.style.setProperty('--g', gvar);
+        el.setAttribute('data-site-grade', s.grade);
+        el.setAttribute('data-score', String(s.score));
+        el.setAttribute('data-rank', s.rankSource == null ? '' : String(s.rankSource));
+        el.setAttribute('data-scanned', s.scannedAt);
+        el.setAttribute('data-cat', s.category || '');
+        el.setAttribute('data-tags', (s.tags || []).join(' '));
+        el.setAttribute('data-lang', s.lang || '');
+        el.setAttribute('data-search', [s.domain, s.title, (s.tags || []).join(' ')]
+          .join(' ').toLowerCase());
+        var ring = el.querySelector('[data-grade]');
+        if (ring) {
+          ring.setAttribute('data-grade', s.grade);
+          ring.setAttribute('aria-label', 'Grade ' + s.grade + ', score ' + s.score + ' of 100');
+          ring.style.setProperty('--pct', pct + '%');
+          ring.removeAttribute('data-ring-count'); /* no count-up on appended cards */
+          ring.removeAttribute('data-animate');
+          var fill = ring.querySelector('.ring-fill');
+          if (fill) fill.style.setProperty('--sweep', pct + '%');
+          var letter = ring.querySelector('.ring-letter');
+          if (letter) letter.textContent = s.grade;
+          var sc = ring.querySelector('.ring-score');
+          if (sc) sc.textContent = String(s.score);
+        }
+        var dom = el.querySelector('.card-domain');
+        if (dom) dom.textContent = s.domain;
+        var title = el.querySelector('.card-title');
+        if (title) title.textContent = s.title;
+        var chips = el.querySelectorAll('.card-chips .chip');
+        if (chips[0]) chips[0].textContent = catName;
+        var strat = stratLabels[s.strategyTag] || s.strategyTag;
+        if (chips[1]) {
+          if (strat) chips[1].textContent = strat;
+          else chips[1].remove();
+        }
+        return el;
+      }
+
+      if (moreBtn && moreWrap) {
+        moreBtn.addEventListener('click', function () {
+          if (loadingMore || cards.length >= total) return;
+          loadingMore = true;
+          moreBtn.disabled = true;
+          setMoreStatus(moreWrap.getAttribute('data-msg-loading') || 'Loading…', false);
+          var url = '/api/v1/sites?category=' + encodeURIComponent(category) +
+            '&page=' + nextPage + '&per_page=' + PAGE +
+            '&sort=' + encodeURIComponent(state.sort);
+          fetch(url, { headers: { accept: 'application/json' } })
+            .then(function (r) {
+              if (!r.ok) throw new Error('http ' + r.status);
+              return r.json();
+            })
+            .then(function (body) {
+              loadingMore = false;
+              if (body && Number(body.total) > 0) total = Number(body.total);
+              var items = (body && body.items) || [];
+              var fresh = [];
+              for (var k = 0; k < items.length; k++) {
+                var card = buildCard(fromApi(items[k]), cards.length);
+                cards.push(card);
+                fresh.push(card);
+              }
+              nextPage += 1;
+              render(false);
+              /* stagger only the freshly appended cards (nothing above shifts) */
+              var idx = 0;
+              for (var f = 0; f < fresh.length; f++) {
+                var c = fresh[f];
+                if (c.hidden) continue;
+                c.style.setProperty('--i', String(idx++));
+                c.classList.remove('card-enter');
+                void c.offsetWidth; /* restart the CSS animation */
+                c.classList.add('card-enter');
+              }
+              setMoreStatus(progressText(), false);
+              if (items.length === 0 || cards.length >= total) showAllShown();
+              else moreBtn.disabled = false;
+            })
+            .catch(function () {
+              loadingMore = false;
+              setMoreStatus(moreWrap.getAttribute('data-msg-error') || 'Retry.', true);
+              moreBtn.disabled = false; /* quiet inline error, button stays retryable */
+            });
+        });
+        if (cards.length >= total) showAllShown();
       }
 
       render(false);
@@ -421,6 +615,31 @@ const sortOptions = [
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
     gap: var(--gutter);
+  }
+
+  /* incremental pagination — status line reserves its height (no layout shift) */
+  .more {
+    display: grid;
+    justify-items: center;
+    gap: 8px;
+    margin-top: 24px;
+  }
+  .more-btn {
+    transition: opacity var(--t-micro) var(--ease), border-color var(--t-micro) var(--ease);
+  }
+  .more-btn[disabled] {
+    cursor: default;
+    opacity: 0.7;
+  }
+  .more-status {
+    margin: 0;
+    min-height: 1.3em; /* reserved: status repaints never shift the layout */
+    font-size: 12.5px;
+    color: var(--text-3);
+    text-align: center;
+  }
+  .more-status.is-err {
+    color: var(--grade-f);
   }
 
   .empty {

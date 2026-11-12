@@ -154,7 +154,10 @@ const COPY = {
   <section class="section container">
     <div class="sec-head">
       <h2>{L.ui.leaderboardTitle}</h2>
-      <span class="sec-note">{L.ui.neutralityStatement}</span>
+      <div class="sec-tools">
+        <a class="sec-more" href={href('/categories')}>{L.ui.viewAll} →</a>
+        <span class="sec-note">{L.ui.neutralityStatement}</span>
+      </div>
     </div>
     <Leaderboard sites={home.leaderboard} locale={locale} />
   </section>
@@ -324,6 +327,12 @@ const COPY = {
     font-size: 12.5px;
     color: var(--text-3);
     text-align: right;
+  }
+  .sec-tools {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    flex: none;
   }
 
   /* card grids: §10.7 auto-fill minmax, no media query */

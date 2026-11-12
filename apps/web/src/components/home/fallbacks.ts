@@ -45,6 +45,13 @@ export const COPY = {
     en: 'No sites in this category yet.',
     zh: '该分类还没有收录站点。',
   },
+  // incremental list pagination (category + search "Show more")
+  loadMoreDone: { en: 'All {n} shown', zh: '已显示全部 {n} 个' },
+  loadMoreProgress: { en: 'Showing {n} of {t}', zh: '已显示 {n} / {t}' },
+  loadMoreError: {
+    en: "Couldn't load more — check your connection and try again.",
+    zh: '无法加载更多——请检查网络后重试。',
+  },
   // search page — "not collected yet" scan flow
   scanHeading: { en: 'Not collected yet', zh: '尚未收录' },
   scanDesc: {

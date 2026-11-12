@@ -398,8 +398,10 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
   // Directory (spec §6.2)
   // -------------------------------------------------------------------------
 
-  // GET /api/v1/sites?category=&grade=&q=&sort=&page=
+  // GET /api/v1/sites?category=&grade=&q=&sort=&page=&per_page=
   // sort: score (default, AFR score DESC — product invariant, spec §7) | rank | new
+  // per_page: optional page size for incremental list loads, clamped 1..100
+  // (invalid or absent → the default, 20); echoed back in the response.
   app.get('/api/v1/sites', async (c) => {
     const db = dbOf(c, overrides);
     const category = c.req.query('category') ?? '';
@@ -408,6 +410,8 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     const sortRaw = c.req.query('sort');
     const sort = (sortRaw && sortRaw.toLowerCase()) || 'score';
     const page = Math.max(1, Number.parseInt(c.req.query('page') ?? '1', 10) || 1);
+    const perPageRaw = Number.parseInt(c.req.query('per_page') ?? '', 10);
+    const perPage = Number.isFinite(perPageRaw) ? Math.min(100, Math.max(1, perPageRaw)) : PER_PAGE;
 
     if (!['score', 'rank', 'new'].includes(sort)) {
       return c.json({ error: 'invalid_sort', allowed: ['score', 'rank', 'new'] }, 400);
@@ -446,12 +450,12 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
       .prepare(
         `SELECT s.*, c.slug AS category_slug FROM sites s ${joinSql} ${whereSql} ${orderSql} LIMIT ? OFFSET ?`,
       )
-      .all<SiteRow>(...params, PER_PAGE, (page - 1) * PER_PAGE);
+      .all<SiteRow>(...params, perPage, (page - 1) * perPage);
 
     return c.json({
       items: rows.map(mapSite),
       page,
-      per_page: PER_PAGE,
+      per_page: perPage,
       total: totalRow?.n ?? 0,
       sort,
     });

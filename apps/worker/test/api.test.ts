@@ -74,6 +74,24 @@ describe('GET /api/v1/sites', () => {
     assert.equal(body.error, 'invalid_sort');
   });
 
+  it('honors per_page with a 1..100 clamp (default stays 20)', async () => {
+    const dflt = await (await app().request('/api/v1/sites')).json();
+    assert.equal(dflt.per_page, 20);
+
+    const custom = await (await app().request('/api/v1/sites?per_page=50')).json();
+    assert.equal(custom.per_page, 50);
+    assert.equal(custom.items.length, 4);
+
+    const over = await (await app().request('/api/v1/sites?per_page=500')).json();
+    assert.equal(over.per_page, 100);
+
+    const under = await (await app().request('/api/v1/sites?per_page=0')).json();
+    assert.equal(under.per_page, 1);
+
+    const bogus = await (await app().request('/api/v1/sites?per_page=abc')).json();
+    assert.equal(bogus.per_page, 20);
+  });
+
   it('serves open CORS headers on the API surface', async () => {
     const res = await app().request('/api/v1/sites');
     assert.equal(res.headers.get('access-control-allow-origin'), '*');
