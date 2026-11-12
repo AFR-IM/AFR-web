@@ -93,6 +93,14 @@ const ldJson = (obj: unknown) => JSON.stringify(obj).replace(/</g, '\\u003c');
 <!doctype html>
 <html lang={isZh ? 'zh-CN' : 'en'}>
   <head>
+    <script is:inline>
+      // Set the theme BEFORE first paint — the body-tail script alone let the
+      // system color scheme win for one frame (light/dark flash on entry).
+      try {
+        var __t = localStorage.getItem('afr-theme');
+        if (__t === 'light' || __t === 'dark') document.documentElement.dataset.theme = __t;
+      } catch (e) {}
+    </script>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content={pageDesc} />

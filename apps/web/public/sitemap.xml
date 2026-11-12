@@ -277,6 +277,18 @@
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
+    <loc>https://afr.im/site/01.ai</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/01.ai"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/01.ai"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/site/01.ai</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/01.ai"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/01.ai"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
     <loc>https://afr.im/site/0xrpc.io</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/0xrpc.io"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/0xrpc.io"/>
@@ -673,6 +685,18 @@
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
+    <loc>https://afr.im/site/afr.im</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/afr.im"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/afr.im"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/site/afr.im</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/afr.im"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/afr.im"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
     <loc>https://afr.im/site/afternic.com</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/afternic.com"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/afternic.com"/>
@@ -745,15 +769,15 @@
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
-    <loc>https://afr.im/site/afr.im</loc>
-    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/afr.im"/>
-    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/afr.im"/>
+    <loc>https://afr.im/site/aiapp.im</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/aiapp.im"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/aiapp.im"/>
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
-    <loc>https://afr.im/zh-CN/site/afr.im</loc>
-    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/afr.im"/>
-    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/afr.im"/>
+    <loc>https://afr.im/zh-CN/site/aiapp.im</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/aiapp.im"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/aiapp.im"/>
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
@@ -2677,6 +2701,18 @@
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
+    <loc>https://afr.im/site/cerebras.ai</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/cerebras.ai"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/cerebras.ai"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/site/cerebras.ai</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/cerebras.ai"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/cerebras.ai"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
     <loc>https://afr.im/site/certcenter.com</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/certcenter.com"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/certcenter.com"/>
@@ -3013,6 +3049,18 @@
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
+    <loc>https://afr.im/site/cohere.com</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/cohere.com"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/cohere.com"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/site/cohere.com</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/cohere.com"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/cohere.com"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
     <loc>https://afr.im/site/comcast.com</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/comcast.com"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/comcast.com"/>
@@ -3313,6 +3361,18 @@
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
+    <loc>https://afr.im/site/cursor.com</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/cursor.com"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/cursor.com"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/site/cursor.com</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/cursor.com"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/cursor.com"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
     <loc>https://afr.im/site/cursor.sh</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/cursor.sh"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/cursor.sh"/>
@@ -3514,6 +3574,18 @@
     <loc>https://afr.im/zh-CN/site/deviantart.com</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/deviantart.com"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/deviantart.com"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/site/devv.ai</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/devv.ai"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/devv.ai"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/site/devv.ai</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/devv.ai"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/devv.ai"/>
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
@@ -3790,6 +3862,18 @@
     <loc>https://afr.im/zh-CN/site/dotomi.com</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/dotomi.com"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/dotomi.com"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/site/doubao.com</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/doubao.com"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/doubao.com"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/site/doubao.com</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/doubao.com"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/doubao.com"/>
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
@@ -4117,6 +4201,18 @@
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
+    <loc>https://afr.im/site/elevenlabs.io</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/elevenlabs.io"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/elevenlabs.io"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/site/elevenlabs.io</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/elevenlabs.io"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/elevenlabs.io"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
     <loc>https://afr.im/site/elpais.com</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/elpais.com"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/elpais.com"/>
@@ -4282,6 +4378,18 @@
     <loc>https://afr.im/zh-CN/site/example.com</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/example.com"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/example.com"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/site/example.org</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/example.org"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/example.org"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/site/example.org</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/example.org"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/example.org"/>
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
@@ -4537,6 +4645,18 @@
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
+    <loc>https://afr.im/site/fireworks.ai</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/fireworks.ai"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/fireworks.ai"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/site/fireworks.ai</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/fireworks.ai"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/fireworks.ai"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
     <loc>https://afr.im/site/fiverr.com</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/fiverr.com"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/fiverr.com"/>
@@ -4786,6 +4906,18 @@
     <loc>https://afr.im/zh-CN/site/gamepass.com</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/gamepass.com"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/gamepass.com"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/site/gamma.app</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/gamma.app"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/gamma.app"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/site/gamma.app</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/gamma.app"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/gamma.app"/>
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
@@ -5317,6 +5449,18 @@
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
+    <loc>https://afr.im/site/groq.com</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/groq.com"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/groq.com"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/site/groq.com</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/groq.com"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/groq.com"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
     <loc>https://afr.im/site/gstatic.com</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/gstatic.com"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/gstatic.com"/>
@@ -5662,6 +5806,18 @@
     <loc>https://afr.im/zh-CN/site/hugedomains.com</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/hugedomains.com"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/hugedomains.com"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/site/huggingface.co</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/huggingface.co"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/huggingface.co"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/site/huggingface.co</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/huggingface.co"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/huggingface.co"/>
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
@@ -6085,6 +6241,18 @@
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
+    <loc>https://afr.im/site/jasper.ai</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/jasper.ai"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/jasper.ai"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/site/jasper.ai</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/jasper.ai"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/jasper.ai"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
     <loc>https://afr.im/site/javis.im</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/javis.im"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/javis.im"/>
@@ -6217,6 +6385,18 @@
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
+    <loc>https://afr.im/site/kimi.com</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/kimi.com"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/kimi.com"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/site/kimi.com</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/kimi.com"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/kimi.com"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
     <loc>https://afr.im/site/kismet.my</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/kismet.my"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/kismet.my"/>
@@ -6310,6 +6490,18 @@
     <loc>https://afr.im/zh-CN/site/kwai.net</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/kwai.net"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/kwai.net"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/site/langchain.ai</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/langchain.ai"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/langchain.ai"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/site/langchain.ai</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/langchain.ai"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/langchain.ai"/>
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
@@ -6610,6 +6802,18 @@
     <loc>https://afr.im/zh-CN/site/lsrelayaccess.com</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/lsrelayaccess.com"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/lsrelayaccess.com"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/site/luma.ai</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/luma.ai"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/luma.ai"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/site/luma.ai</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/luma.ai"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/luma.ai"/>
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
@@ -6973,6 +7177,18 @@
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
+    <loc>https://afr.im/site/midjourney.com</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/midjourney.com"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/midjourney.com"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/site/midjourney.com</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/midjourney.com"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/midjourney.com"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
     <loc>https://afr.im/site/miit.gov.cn</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/miit.gov.cn"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/miit.gov.cn"/>
@@ -6982,6 +7198,30 @@
     <loc>https://afr.im/zh-CN/site/miit.gov.cn</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/miit.gov.cn"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/miit.gov.cn"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/site/minimax.ai</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/minimax.ai"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/minimax.ai"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/site/minimax.ai</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/minimax.ai"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/minimax.ai"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/site/mistral.ai</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/mistral.ai"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/mistral.ai"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/site/mistral.ai</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/mistral.ai"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/mistral.ai"/>
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
@@ -7054,6 +7294,18 @@
     <loc>https://afr.im/zh-CN/site/moloco.com</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/moloco.com"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/moloco.com"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/site/moonshot.cn</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/moonshot.cn"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/moonshot.cn"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/site/moonshot.cn</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/moonshot.cn"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/moonshot.cn"/>
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
@@ -7921,6 +8173,18 @@
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
+    <loc>https://afr.im/site/ollama.com</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/ollama.com"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/ollama.com"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/site/ollama.com</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/ollama.com"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/ollama.com"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
     <loc>https://afr.im/site/omtrdc.net</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/omtrdc.net"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/omtrdc.net"/>
@@ -8062,6 +8326,18 @@
     <loc>https://afr.im/zh-CN/site/opendns.com</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/opendns.com"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/opendns.com"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/site/openrouter.ai</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/openrouter.ai"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/openrouter.ai"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/site/openrouter.ai</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/openrouter.ai"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/openrouter.ai"/>
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
@@ -8521,6 +8797,18 @@
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
+    <loc>https://afr.im/site/poe.com</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/poe.com"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/poe.com"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/site/poe.com</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/poe.com"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/poe.com"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
     <loc>https://afr.im/site/poki.com</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/poki.com"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/poki.com"/>
@@ -8773,6 +9061,18 @@
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
+    <loc>https://afr.im/site/qwen.ai</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/qwen.ai"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/qwen.ai"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/site/qwen.ai</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/qwen.ai"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/qwen.ai"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
     <loc>https://afr.im/site/rakuten.co.jp</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/rakuten.co.jp"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/rakuten.co.jp"/>
@@ -8878,6 +9178,18 @@
     <loc>https://afr.im/zh-CN/site/registrar-servers.com</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/registrar-servers.com"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/registrar-servers.com"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/site/replicate.com</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/replicate.com"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/replicate.com"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/site/replicate.com</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/replicate.com"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/replicate.com"/>
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
@@ -9073,6 +9385,18 @@
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
+    <loc>https://afr.im/site/runwayml.com</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/runwayml.com"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/runwayml.com"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/site/runwayml.com</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/runwayml.com"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/runwayml.com"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
     <loc>https://afr.im/site/rustore.ru</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/rustore.ru"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/rustore.ru"/>
@@ -9118,6 +9442,18 @@
     <loc>https://afr.im/zh-CN/site/salesforce.com</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/salesforce.com"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/salesforce.com"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/site/salesforceliveagent.com</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/salesforceliveagent.com"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/salesforceliveagent.com"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/site/salesforceliveagent.com</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/salesforceliveagent.com"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/salesforceliveagent.com"/>
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
@@ -9565,6 +9901,18 @@
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
+    <loc>https://afr.im/site/siliconflow.cn</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/siliconflow.cn"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/siliconflow.cn"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/site/siliconflow.cn</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/siliconflow.cn"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/siliconflow.cn"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
     <loc>https://afr.im/site/sina.com.cn</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/sina.com.cn"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/sina.com.cn"/>
@@ -9925,6 +10273,18 @@
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
+    <loc>https://afr.im/site/stability.ai</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/stability.ai"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/stability.ai"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/site/stability.ai</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/stability.ai"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/stability.ai"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
     <loc>https://afr.im/site/stackadapt.com</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/stackadapt.com"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/stackadapt.com"/>
@@ -10105,6 +10465,18 @@
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
+    <loc>https://afr.im/site/suno.com</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/suno.com"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/suno.com"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/site/suno.com</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/suno.com"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/suno.com"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
     <loc>https://afr.im/site/supabase.co</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/supabase.co"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/supabase.co"/>
@@ -10174,6 +10546,18 @@
     <loc>https://afr.im/zh-CN/site/synology.com</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/synology.com"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/synology.com"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/site/synthesia.io</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/synthesia.io"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/synthesia.io"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/site/synthesia.io</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/synthesia.io"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/synthesia.io"/>
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
@@ -10690,6 +11074,18 @@
     <loc>https://afr.im/zh-CN/site/tm-azurefd.net</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/tm-azurefd.net"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/tm-azurefd.net"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/site/together.ai</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/together.ai"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/together.ai"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/site/together.ai</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/together.ai"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/together.ai"/>
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
@@ -11230,6 +11626,18 @@
     <loc>https://afr.im/zh-CN/site/usps.com</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/usps.com"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/usps.com"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/site/v0.dev</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/v0.dev"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/v0.dev"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/site/v0.dev</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/v0.dev"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/v0.dev"/>
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
@@ -12061,6 +12469,18 @@
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
+    <loc>https://afr.im/site/x.ai</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/x.ai"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/x.ai"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/site/x.ai</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/x.ai"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/x.ai"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
     <loc>https://afr.im/site/x.com</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/x.com"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/x.com"/>
@@ -12382,6 +12802,18 @@
     <loc>https://afr.im/zh-CN/site/zendesk.com</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/zendesk.com"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/zendesk.com"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/site/zhipu.ai</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/zhipu.ai"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/zhipu.ai"/>
+    <lastmod>2026-11-12</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/site/zhipu.ai</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/site/zhipu.ai"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/site/zhipu.ai"/>
     <lastmod>2026-11-12</lastmod>
   </url>
   <url>
