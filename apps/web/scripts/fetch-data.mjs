@@ -5,7 +5,8 @@
 // Usage (from anywhere inside the repo):
 //   node apps/web/scripts/fetch-data.mjs [--date YYYY-MM-DD] [--data-dir PATH]
 //
-//   --date      scan date to publish; defaults to the latest date present
+//   --date      publish one date only (debug); default = merged view, newest wins
+//   --allow-shrink  bypass the >20% drop guard
 //               under the scans root
 //   --data-dir  explicit scans root (…/aiapp-data/scans); otherwise resolved
 //               from a few well-known relative locations
@@ -41,7 +42,9 @@ function parseArgs(argv) {
   const args = { date: undefined, dataDir: undefined };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--date') {
+    if (a === '--allow-shrink') {
+      args.allowShrink = true;
+    } else if (a === '--date') {
       args.date = argv[++i];
     } else if (a.startsWith('--date=')) {
       args.date = a.slice('--date='.length);
@@ -50,7 +53,7 @@ function parseArgs(argv) {
     } else if (a.startsWith('--data-dir=')) {
       args.dataDir = a.slice('--data-dir='.length);
     } else if (a === '--help' || a === '-h') {
-      console.log('Usage: fetch-data.mjs [--date YYYY-MM-DD] [--data-dir PATH]');
+      console.log('Usage: fetch-data.mjs [--date YYYY-MM-DD] [--data-dir PATH] [--allow-shrink]');
       process.exit(0);
     } else {
       console.error(`Unknown argument: ${a}`);
@@ -124,6 +127,29 @@ async function latestDate(scansRoot) {
   return null;
 }
 
+/** All date directories (YYYY-MM-DD), oldest first — for the merged view. */
+async function listAllDates(scansRoot) {
+  const out = [];
+  const years = (await readdir(scansRoot, { withFileTypes: true }))
+    .filter((d) => d.isDirectory() && /^\d{4}$/.test(d.name))
+    .map((d) => d.name)
+    .sort();
+  for (const y of years) {
+    const months = (await readdir(path.join(scansRoot, y), { withFileTypes: true }))
+      .filter((d) => d.isDirectory() && /^\d{2}$/.test(d.name))
+      .map((d) => d.name)
+      .sort();
+    for (const m of months) {
+      const days = (await readdir(path.join(scansRoot, y, m), { withFileTypes: true }))
+        .filter((d) => d.isDirectory() && /^\d{2}$/.test(d.name))
+        .map((d) => d.name)
+        .sort();
+      for (const d of days) out.push({ date: `${y}-${m}-${d}`, dir: path.join(scansRoot, y, m, d) });
+    }
+  }
+  return out;
+}
+
 /** Homepage <title> text, normalized; undefined when the homepage is unreadable. */
 function extractTitle(body) {
   if (typeof body !== 'string') return undefined;
@@ -158,31 +184,74 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const scansRoot = await resolveScansRoot(args.dataDir);
 
-  let date = args.date ?? (await latestDate(scansRoot));
-  if (!date) {
-    console.error(`No dated scan directories with .json files under ${scansRoot}`);
-    process.exit(1);
-  }
-  const [y, m, d] = date.split('-');
-  const dateDir = path.join(scansRoot, y, m, d);
-  if (!(await isDir(dateDir))) {
-    console.error(`Scan date not found: ${date} (${dateDir})`);
-    process.exit(1);
+  // Merged view (default): every snapshot dir, one file per domain — the
+  // newest date wins. A single partial date (e.g. two queue scans on a new
+  // day) must never overwrite the full catalog again (2026-11-12 incident).
+  // --date keeps the old single-day behavior for targeted rebuilds.
+  let plan; // [{dir, names[]}] or [{dir, names[]}]
+  let mode = 'merged';
+  if (args.date) {
+    mode = 'date';
+    const [y, m, d] = args.date.split('-');
+    const dateDir = path.join(scansRoot, y, m, d);
+    if (!(await isDir(dateDir))) {
+      console.error(`Scan date not found: ${args.date} (${dateDir})`);
+      process.exit(1);
+    }
+    const names = (await readdir(dateDir)).filter((f) => f.endsWith('.json')).sort();
+    if (names.length === 0) {
+      console.error(`No .json snapshots in ${dateDir}`);
+      process.exit(1);
+    }
+    plan = [{ dir: dateDir, names }];
+  } else {
+    const dates = await listAllDates(scansRoot);
+    const byDomain = new Map(); // domain -> {dir, name} (later dates overwrite)
+    for (const { dir } of dates) {
+      const names = (await readdir(dir)).filter((f) => f.endsWith('.json'));
+      for (const name of names) byDomain.set(name, { dir, name });
+    }
+    if (byDomain.size === 0) {
+      console.error(`No dated scan directories with .json files under ${scansRoot}`);
+      process.exit(1);
+    }
+    const grouped = new Map();
+    for (const entry of byDomain.values()) {
+      if (!grouped.has(entry.dir)) grouped.set(entry.dir, []);
+      grouped.get(entry.dir).push(entry.name);
+    }
+    plan = [...grouped.entries()].map(([dir, names]) => ({ dir, names: names.sort() }));
+    console.log(`merged view: ${byDomain.size} domains across ${plan.length} date dir(s)`);
   }
 
-  const fileNames = (await readdir(dateDir)).filter((f) => f.endsWith('.json')).sort();
-  if (fileNames.length === 0) {
-    console.error(`No .json snapshots in ${dateDir}`);
-    process.exit(1);
+  // shrink guard: a big drop vs the previous build almost always means a
+  // partial dataset, never an intentional purge (data lives in git history).
+  if (!args.allowShrink) {
+    try {
+      const prev = JSON.parse(await readFile(new URL('./generated/index.json', import.meta.url), 'utf8'));
+      const planned = plan.reduce((n, p) => n + p.names.length, 0);
+      const floor = Math.floor((prev.sites ?? 0) * 0.8);
+      if (prev.sites > 0 && planned < floor) {
+        console.error(
+          `REFUSING to build: ${planned} snapshots vs ${prev.sites} in the previous build ` +
+            `(drop > 20%). Data is never deleted — check the scan dirs, or pass --allow-shrink ` +
+            `if this is intentional.`,
+        );
+        process.exit(1);
+      }
+    } catch {
+      /* no previous manifest — first build */
+    }
   }
 
   // ── read + normalize snapshots ────────────────────────────────────────────
   const sites = [];
   let skipped = 0;
-  for (const name of fileNames) {
+  const entries = plan.flatMap((p) => p.names.map((name) => ({ dir: p.dir, name })));
+  for (const { dir, name } of entries) {
     let raw;
     try {
-      raw = JSON.parse(await readFile(path.join(dateDir, name), 'utf8'));
+      raw = JSON.parse(await readFile(path.join(dir, name), 'utf8'));
     } catch (err) {
       skipped++;
       console.warn(`skip ${name}: ${err.message}`);
@@ -299,7 +368,7 @@ async function main() {
     return (await stat(file)).size;
   };
 
-  const manifest = { date, sites: sites.length, scored: scored.length, pending: pending.length };
+  const manifest = { date: mode === 'date' ? args.date : 'merged', mode, sites: sites.length, scored: scored.length, pending: pending.length };
   await writeJson(path.join(GENERATED_DIR, 'index.json'), manifest);
   const homeBytes = await writeJson(path.join(GENERATED_DIR, 'home.json'), home);
   const catBytes = await writeJson(path.join(GENERATED_DIR, 'categories.json'), grouped);
@@ -319,7 +388,7 @@ async function main() {
     .join(' ');
 
   console.log(`scans root : ${scansRoot}`);
-  console.log(`date       : ${date}${args.date ? '' : ' (latest available)'}`);
+  console.log(`view       : ${mode === 'date' ? args.date : 'merged (newest per domain)'}`);
   console.log(`sites      : ${sites.length} (scored ${scored.length}, pending ${pending.length}${skipped ? `, skipped ${skipped}` : ''})`);
   console.log(`avg score  : ${home.avgScore} (scored only)`);
   console.log(`distribution: ${distStr}`);

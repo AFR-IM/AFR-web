@@ -1,7 +1,10 @@
-# Scan pipeline — daily Tranco top-N crawl plus the on-demand submission queue.
+# Scan pipeline — daily Tranco top-1M segment crawl plus the on-demand submission queue.
+# Daily mode walks the Tranco top 1M in 1000-domain segments: each run resolves
+# segment_start = floor(collected / 1000) * 1000 from the data repo snapshots
+# (or uses the manual `segment` input) and scans the next 1000 domains.
 # Runs on GitHub-hosted runners (public repo = free unlimited).
 # Schedule: daily 02:00 UTC (scheduled runs behave as mode=daily).
-# Manual runs pick mode=daily (Tranco top-N + queue drain) or mode=queue
+# Manual runs pick mode=daily (Tranco segment + queue drain) or mode=queue
 # (on-demand queue only — exits quickly when the queue is empty).
 #
 # Required repository secrets (Settings -> Secrets and variables -> Actions):
@@ -15,17 +18,21 @@ on:
   workflow_dispatch:
     inputs:
       topN:
-        description: "Number of Tranco top domains to scan (mode=daily)"
+        description: "Legacy Tranco top-N count (daily runs scan fixed 1000-domain segments)"
         required: false
         default: "1000"
       mode:
-        description: "daily = Tranco top-N + queue drain; queue = on-demand queue only"
+        description: "daily = Tranco top-1M segment + queue drain; queue = on-demand queue only"
         required: false
         default: "daily"
         type: choice
         options:
           - daily
           - queue
+      segment:
+        description: "Tranco segment start override (mode=daily), e.g. 2000; leave empty to derive it from collected data"
+        required: false
+        default: ""
   schedule:
     - cron: "0 2 * * *"
 
@@ -64,27 +71,84 @@ jobs:
           esac
           echo "mode=$MODE" >> "$GITHUB_OUTPUT"
 
-      # One shared date for every scan step in this run, so top-N and queue
+      # One shared date for every scan step in this run, so segment and queue
       # snapshots land in the same scans/YYYY/MM/DD directory even if the run
       # crosses UTC midnight (the site publishes the latest date that has data).
       - name: Resolve scan date
         id: date
         run: echo "date=$(date -u +%F)" >> "$GITHUB_OUTPUT"
 
-      # ── mode=daily: Tranco top-N flow (same as always) ─────────────────────
+      # ── mode=daily: Tranco top-1M segment flow (1000 domains per run) ──────
+      # Each daily run advances one 1000-domain segment down the Tranco top 1M.
+      # collected counts every snapshot JSON already stored in the data repo
+      # (today's directory excluded, so reruns of the same run resolve the same
+      # segment and stay idempotent); curated domains in the data slightly
+      # inflate the count, which only shifts the window.
+
+      - name: Resolve scan segment
+        id: segment
+        if: steps.mode.outputs.mode == 'daily'
+        env:
+          INPUT_SEGMENT: ${{ inputs.segment }}
+          SCAN_DATE: ${{ steps.date.outputs.date }}
+        run: |
+          if [ -n "$INPUT_SEGMENT" ]; then
+            if ! [[ "$INPUT_SEGMENT" =~ ^[0-9]+$ ]]; then
+              echo "::error::Invalid segment '$INPUT_SEGMENT' (expected a non-negative integer)"
+              exit 1
+            fi
+            SEGMENT_START="$INPUT_SEGMENT"
+          else
+            TODAY_DIR="data/scans/${SCAN_DATE//-//}"
+            COLLECTED=0
+            if [ -d data/scans ]; then
+              COLLECTED="$(find data/scans -mindepth 4 -maxdepth 4 -type f -name '*.json' ! -path "$TODAY_DIR/*" | wc -l | tr -d '[:space:]')"
+            fi
+            SEGMENT_START=$(( COLLECTED / 1000 * 1000 ))
+          fi
+          echo "Collected snapshots resolve to segment start ${SEGMENT_START} (window +1 .. +1000)"
+          echo "start=$SEGMENT_START" >> "$GITHUB_OUTPUT"
 
       - name: Fetch Tranco top list
         if: steps.mode.outputs.mode == 'daily'
+        id: tranco
         env:
-          TOP_N: ${{ inputs.topN || '1000' }}
+          SEGMENT_START: ${{ steps.segment.outputs.start }}
+          SCAN_DATE: ${{ steps.date.outputs.date }}
         run: |
+          SEGMENT_START="${SEGMENT_START:-0}"
+          SEGMENT_END=$((SEGMENT_START + 1000))
+          if [ "$SEGMENT_START" -ge 100000 ]; then
+            echo "Segment coverage complete: segment start ${SEGMENT_START} >= 100000"
+            echo "count=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           curl -fsSL -o top-1m.csv.zip https://tranco-list.eu/top-1m.csv.zip
           unzip -o -q top-1m.csv.zip
-          head -n "$TOP_N" top-1m.csv | cut -d, -f2 > targets.txt
-          echo "Targets: $(wc -l < targets.txt)"
+          awk -F, -v s=$((SEGMENT_START + 1)) -v e="$SEGMENT_END" 'NR >= s && NR <= e { print $2 }' top-1m.csv > segment.txt
+          # Skip domains already snapshotted: today's directory first, then the
+          # previous day's directory (cheap guard against duplicate re-scans).
+          DATE_DIR="data/scans/${SCAN_DATE//-//}"
+          PREV_DATE="$(date -u -d "$SCAN_DATE -1 day" +%F)"
+          PREV_DIR="data/scans/${PREV_DATE//-//}"
+          : > scanned.txt
+          for d in "$DATE_DIR" "$PREV_DIR"; do
+            if [ -d "$d" ]; then
+              find "$d" -maxdepth 1 -type f -name '*.json' -printf '%f\n' >> scanned.txt
+            fi
+          done
+          sed 's/\.json$//' scanned.txt | grep . | sort -u > exclude.txt || true
+          grep -F -x -v -f exclude.txt segment.txt > targets.txt || true
+          SLICE_COUNT="$(grep -c . segment.txt || true)"
+          COUNT="$(grep -c . targets.txt || true)"
+          if [ "$COUNT" -eq 0 ]; then
+            echo "Segment coverage complete: no new domains to scan in segment ${SEGMENT_START}-$((SEGMENT_END - 1))"
+          fi
+          echo "Segment ${SEGMENT_START}-$((SEGMENT_END - 1)): ${COUNT} new of ${SLICE_COUNT} listed"
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
 
       - name: Scan Tranco top list
-        if: steps.mode.outputs.mode == 'daily'
+        if: steps.mode.outputs.mode == 'daily' && fromJSON(steps.tranco.outputs.count || '0') > 0
         shell: bash # adds pipefail: a scanner crash must fail the step
         env:
           SCAN_DATE: ${{ steps.date.outputs.date }}
@@ -97,7 +161,7 @@ jobs:
         id: commit-topn
         if: steps.mode.outputs.mode == 'daily'
         env:
-          TOP_N: ${{ inputs.topN || '1000' }}
+          SEGMENT: ${{ steps.segment.outputs.start }}
         run: |
           cd data
           git config user.name "aiapp-bot"
@@ -106,12 +170,12 @@ jobs:
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "scan $(date -u +%F) top${TOP_N}"
+            git commit -m "scan $(date -u +%F) segment${SEGMENT}"
             git push
           fi
 
       # ── on-demand queue (both modes) ───────────────────────────────────────
-      # In mode=daily this runs AFTER the top-N push, so overnight submissions
+      # In mode=daily this runs AFTER the segment push, so overnight submissions
       # are drained in the same run instead of waiting for the next schedule.
 
       - name: Fetch on-demand queue
@@ -190,10 +254,10 @@ jobs:
         if: always()
         env:
           MODE: ${{ steps.mode.outputs.mode }}
-          TOP_N: ${{ inputs.topN || '1000' }}
+          SEGMENT: ${{ steps.segment.outputs.start }}
         run: |
           {
-            echo "## AFR scan $(date -u +%F) - mode=${MODE:-?} (top ${TOP_N})"
+            echo "## AFR scan $(date -u +%F) - mode=${MODE:-?} (segment ${SEGMENT:-n/a})"
             echo '```'
             tail -n 8 scan-summary.txt 2>/dev/null || echo "scan output not available"
             echo '```'

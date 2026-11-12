@@ -38,3 +38,7 @@ zone_name = "aiapp.im"
 [[routes]]
 pattern = "aiapp.im/badge/*"
 zone_name = "aiapp.im"
+# MCP endpoint — stateless JSON-RPC 2.0 over HTTP (POST /mcp)
+[[routes]]
+pattern = "aiapp.im/mcp*"
+zone_name = "aiapp.im"

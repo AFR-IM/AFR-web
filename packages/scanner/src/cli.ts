@@ -1,7 +1,9 @@
-// Scan CLI (M1 trial-scan entry point)
+// Scan CLI entry point
 // Usage:
 //   node packages/scanner/src/cli.ts example.com openai.com ...
 //   node packages/scanner/src/cli.ts --file domains.txt --out scans --concurrency 5
+//   node packages/scanner/src/cli.ts --file top-1m.csv.domains --offset 1000 --limit 1000
+// --offset skips the first N domains of the combined list, --limit keeps at most N after the offset.
 // Output: {out}/{domain}.json = { signals, afr } (local version of the spec's scans snapshot structure)
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -15,17 +17,24 @@ interface CliOptions {
   domains: string[];
   out: string;
   concurrency: number;
+  offset: number;
+  limit: number;
 }
 
 export async function parseArgs(argv: string[]): Promise<CliOptions> {
-  const opts: CliOptions = { domains: [], out: 'scans', concurrency: 5 };
+  const opts: CliOptions = { domains: [], out: 'scans', concurrency: 5, offset: 0, limit: Infinity };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === '--file') opts.domains.push(...(await readFileLines(argv[++i])));
     else if (a === '--out') opts.out = argv[++i]!;
     else if (a === '--concurrency') opts.concurrency = Math.max(1, Number(argv[++i]));
+    else if (a === '--offset') opts.offset = Math.max(0, Number(argv[++i]) || 0);
+    else if (a === '--limit') opts.limit = Math.max(0, Number(argv[++i]) || Infinity);
     else if (!a.startsWith('--')) opts.domains.push(a);
   }
+  // Slice once at the end so flag order does not matter: skip `offset` domains, then keep at most `limit`.
+  if (opts.offset > 0) opts.domains = opts.domains.slice(opts.offset);
+  if (Number.isFinite(opts.limit)) opts.domains = opts.domains.slice(0, opts.limit);
   return opts;
 }
 
@@ -96,7 +105,7 @@ export async function scanBatch(
 async function main(): Promise<void> {
   const opts = await parseArgs(process.argv.slice(2));
   if (opts.domains.length === 0) {
-    console.error('Usage: node packages/scanner/src/cli.ts [--file domains.txt] [--out scans] [--concurrency 5] [domain ...]');
+    console.error('Usage: node packages/scanner/src/cli.ts [--file domains.txt] [--out scans] [--concurrency 5] [--offset N] [--limit N] [domain ...]');
     process.exit(1);
   }
 

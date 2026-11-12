@@ -13,6 +13,8 @@ import { GRADE_COLORS } from './grade-colors.ts';
 import { badgeSvg } from './badge.ts';
 import { runDailySync } from './cron.ts';
 import { createD1Db, type Db, type Row, type SqlParam } from './db.ts';
+import { normalizeDomain } from './domain.ts';
+import { handleMcpRequest, MCP_RATE_LIMIT, MCP_RATE_WINDOW_MS } from './mcp.ts';
 import { DAY_MS, HOUR_MS, RateLimiter, kvStore, memoryStore } from './rate-limit.ts';
 import {
   createVerifyToken,
@@ -46,6 +48,8 @@ export interface AppOverrides {
   /** Injected verification/claim rate limiters (tests use isolated in-memory stores) */
   verifyLimits?: VerifyRateLimits;
   claimLimits?: ClaimRateLimits;
+  /** Injected MCP rate limiter (default: 60 requests/IP/minute) */
+  mcpLimit?: RateLimiter;
   /** Injected fetch for the GitHub dispatch (tests pass a fake) */
   fetchImpl?: typeof fetch;
 }
@@ -74,24 +78,10 @@ const SCAN_DISPATCH_URL =
 const PER_PAGE = 20;
 const LEADERBOARD_SIZE = 10;
 
-// ---------------------------------------------------------------------------
-// Domain validation (bare lowercase domains only, spec §6.1 sites.domain)
-// ---------------------------------------------------------------------------
-
-const LABEL_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
-
-/** Normalize a submitted/requested domain to a bare lowercase FQDN,
- * or null when the syntax is invalid (scheme/path/port/IP literals rejected). */
-export function normalizeDomain(raw: string): string | null {
-  const domain = raw.trim().toLowerCase().replace(/\.$/, '');
-  if (domain.length < 4 || domain.length > 253) return null;
-  const labels = domain.split('.');
-  if (labels.length < 2) return null;
-  if (!labels.every((label) => LABEL_RE.test(label))) return null;
-  const tld = labels.at(-1);
-  if (!tld || tld.length < 2 || !/^[a-z]/.test(tld)) return null;
-  return domain;
-}
+// Domain validation lives in src/domain.ts (shared with the MCP tools in
+// src/mcp.ts) and is re-exported here so `import { normalizeDomain } from
+// './index.ts'` keeps working.
+export { normalizeDomain };
 
 function clientIp(c: Context<AppEnv>): string {
   const forwarded = c.req.header('x-forwarded-for');
@@ -325,6 +315,17 @@ function claimLimitsOf(c: Context<AppEnv>, overrides: AppOverrides): ClaimRateLi
     return { domain: new RateLimiter(kvStore(c.env.KV), CLAIMS_DOMAIN_LIMIT, DAY_MS, 'claim-domain') };
   }
   return fallbackClaimLimits;
+}
+
+/** Fallback MCP limiter (per-isolate memory — degraded but serviceable) */
+const fallbackMcpLimiter = new RateLimiter(memoryStore(), MCP_RATE_LIMIT, MCP_RATE_WINDOW_MS, 'mcp');
+
+function mcpLimiterOf(c: Context<AppEnv>, overrides: AppOverrides): RateLimiter {
+  if (overrides.mcpLimit) return overrides.mcpLimit;
+  if (c.env?.KV) {
+    return new RateLimiter(kvStore(c.env.KV), MCP_RATE_LIMIT, MCP_RATE_WINDOW_MS, 'mcp');
+  }
+  return fallbackMcpLimiter;
 }
 
 /** Shared 429 payload: seconds until the window resets + the absolute time */
@@ -641,6 +642,52 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     }));
     return c.json({ standard: 'AFR', version: AFR_VERSION, layers, grades });
   });
+
+  // -------------------------------------------------------------------------
+  // MCP — Model Context Protocol endpoint (stateless JSON-RPC 2.0 over HTTP)
+  // -------------------------------------------------------------------------
+
+  // Open CORS for the MCP endpoint too (browser-based assistants and MCP
+  // playgrounds preflight POST /mcp), same policy as /api/v1/*.
+  app.use('/mcp', cors({ origin: '*' }));
+
+  // POST /mcp — one JSON-RPC 2.0 message per request. No SSE streams and no
+  // session state; the transport is documented in the initialize instructions.
+  app.post('/mcp', async (c) => {
+    // 60 requests per IP per minute (KV-backed when bound, in-memory otherwise)
+    const limiter = mcpLimiterOf(c, overrides);
+    const decision = await limiter.consume(clientIp(c));
+    if (!decision.allowed) {
+      const retryAfter = limiter.retryAfter();
+      return c.json(
+        { error: 'rate_limited', retryAfter },
+        429,
+        { 'Retry-After': String(retryAfter), 'Cache-Control': 'no-store' },
+      );
+    }
+    const outcome = await handleMcpRequest({
+      db: dbOf(c, overrides),
+      rawBody: await c.req.text(),
+    });
+    if (outcome.status === 202) {
+      return new Response(null, { status: 202, headers: { 'cache-control': 'no-store' } });
+    }
+    return c.json(outcome.body, outcome.status, { 'cache-control': 'no-store' });
+  });
+
+  // Every other method on /mcp → 405. MCP clients probe GET /mcp; this server
+  // offers no SSE stream, so GET cannot carry a session either.
+  app.on(['GET', 'HEAD', 'PUT', 'DELETE', 'PATCH'], '/mcp', (c) =>
+    c.json(
+      {
+        error: 'method_not_allowed',
+        allow: 'POST',
+        message: 'MCP transport is stateless JSON-RPC 2.0 over HTTP: POST a JSON-RPC message to /mcp.',
+      },
+      405,
+      { Allow: 'POST', 'Cache-Control': 'no-store' },
+    ),
+  );
 
   // -------------------------------------------------------------------------
   // Badge (spec §8.4)
