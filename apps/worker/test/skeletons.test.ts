@@ -8,10 +8,6 @@ import { createApp } from '../src/index.ts';
 import { openSeededDb } from './helpers.ts';
 
 const VERIFY_ROUTES: [string, string][] = [
-  ['POST', '/api/v1/verify/start'],
-  ['GET', '/api/v1/verify/check'],
-  ['POST', '/api/v1/claims'],
-  ['POST', '/api/v1/rescan'],
   ['POST', '/api/v1/badge/report'],
 ];
 

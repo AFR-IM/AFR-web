@@ -121,3 +121,32 @@ CREATE TABLE IF NOT EXISTS ads (
   created_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_ads_slot ON ads(slot, slot_key, status, ends_at);
+
+-- ---------------------------------------------------------------------------
+-- NEW statements for the post-reset apply run (all idempotent: IF NOT EXISTS).
+-- Apply together with the statements above via:
+--   wrangler d1 execute aiapp --file schema.sql --remote
+-- ---------------------------------------------------------------------------
+
+-- Verification tokens issued by POST /api/v1/verify/start
+-- (opaque, single-use, 7-day validity; consumed by a successful
+--  GET /api/v1/verify/check)
+CREATE TABLE IF NOT EXISTS verify_tokens (
+  domain TEXT,
+  token TEXT,                           -- 'av-' + 32 lowercase hex chars
+  created_at TEXT,
+  expires_at TEXT,                      -- created_at + 7 days
+  used_at TEXT                          -- set by a successful check
+);
+
+-- Page-view counter per site (one upsert per counted view; the count statement
+-- refuses to write beyond the daily cap of 70000 per UTC day)
+CREATE TABLE IF NOT EXISTS page_views (
+  domain TEXT PRIMARY KEY,
+  views INTEGER DEFAULT 0,              -- lifetime views
+  today_views INTEGER DEFAULT 0,        -- views counted on counted_on
+  counted_on TEXT                       -- UTC date (YYYY-MM-DD) of today_views
+);
+
+-- Idempotent evidence inserts: at most one row per (scan, check)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_evidence_scan_check ON evidence(scan_id, check_id);

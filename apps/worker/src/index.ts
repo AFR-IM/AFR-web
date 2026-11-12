@@ -13,7 +13,13 @@ import { GRADE_COLORS } from './grade-colors.ts';
 import { badgeSvg } from './badge.ts';
 import { runDailySync } from './cron.ts';
 import { createD1Db, type Db, type Row, type SqlParam } from './db.ts';
-import { DAY_MS, RateLimiter, kvStore, memoryStore } from './rate-limit.ts';
+import { DAY_MS, HOUR_MS, RateLimiter, kvStore, memoryStore } from './rate-limit.ts';
+import {
+  createVerifyToken,
+  ownerVerifyMethod,
+  probeAll,
+  VERIFY_TOKEN_TTL_MS,
+} from './verification.ts';
 
 /** Cloudflare bindings (wrangler.toml) */
 export interface WorkerEnv {
@@ -37,6 +43,9 @@ export interface AppOverrides {
   rateLimiter?: RateLimiter;
   /** Injected scan-rate limiters (tests use isolated in-memory stores) */
   scanLimits?: ScanRateLimits;
+  /** Injected verification/claim rate limiters (tests use isolated in-memory stores) */
+  verifyLimits?: VerifyRateLimits;
+  claimLimits?: ClaimRateLimits;
   /** Injected fetch for the GitHub dispatch (tests pass a fake) */
   fetchImpl?: typeof fetch;
 }
@@ -50,6 +59,14 @@ export const SCAN_DOMAIN_LIMIT = 1; // per domain per UTC day
 export const SCAN_GLOBAL_LIMIT = 50; // all callers per UTC day
 export const SCAN_ETA_SECONDS = 180; // advertised queue time before the cron/CI picks it up
 export const QUEUE_LIST_LIMIT = 50;
+
+// Verification flow limits
+export const VERIFY_START_DOMAIN_LIMIT = 3; // verify/start per domain per UTC day
+export const VERIFY_IP_LIMIT = 10; // verify/start + verify/check per IP per hour (shared)
+export const CLAIMS_DOMAIN_LIMIT = 5; // claims per domain per UTC day
+
+// PV pixel: daily D1 write budget, enforced inside the count upsert
+export const PV_DAILY_WRITE_CAP = 70_000;
 
 const SCAN_DISPATCH_URL =
   'https://api.github.com/repos/imAiAPP/aiapp-web/actions/workflows/scan.yml/dispatches';
@@ -239,6 +256,17 @@ export interface ScanRateLimits {
   global: RateLimiter;
 }
 
+/** Verification tiers: starts per domain per day + probes per IP per hour */
+export interface VerifyRateLimits {
+  dailyDomain: RateLimiter;
+  hourlyIp: RateLimiter;
+}
+
+/** Claim submission tier: per domain per day */
+export interface ClaimRateLimits {
+  domain: RateLimiter;
+}
+
 /** Fallback scan limiters (per-isolate memory — degraded but serviceable) */
 const fallbackScanLimits: ScanRateLimits = {
   ip: new RateLimiter(memoryStore(), SCAN_IP_LIMIT, DAY_MS, 'scan-ip'),
@@ -268,6 +296,59 @@ function scanLimitsOf(c: Context<AppEnv>, overrides: AppOverrides): ScanRateLimi
   }
   return fallbackScanLimits;
 }
+
+/** Fallback verification/claim limiters (per-isolate memory — degraded but serviceable) */
+const fallbackVerifyLimits: VerifyRateLimits = {
+  dailyDomain: new RateLimiter(memoryStore(), VERIFY_START_DOMAIN_LIMIT, DAY_MS, 'verify-domain'),
+  hourlyIp: new RateLimiter(memoryStore(), VERIFY_IP_LIMIT, HOUR_MS, 'verify-ip'),
+};
+
+const fallbackClaimLimits: ClaimRateLimits = {
+  domain: new RateLimiter(memoryStore(), CLAIMS_DOMAIN_LIMIT, DAY_MS, 'claim-domain'),
+};
+
+function verifyLimitsOf(c: Context<AppEnv>, overrides: AppOverrides): VerifyRateLimits {
+  if (overrides.verifyLimits) return overrides.verifyLimits;
+  if (c.env?.KV) {
+    const store = kvStore(c.env.KV);
+    return {
+      dailyDomain: new RateLimiter(store, VERIFY_START_DOMAIN_LIMIT, DAY_MS, 'verify-domain'),
+      hourlyIp: new RateLimiter(store, VERIFY_IP_LIMIT, HOUR_MS, 'verify-ip'),
+    };
+  }
+  return fallbackVerifyLimits;
+}
+
+function claimLimitsOf(c: Context<AppEnv>, overrides: AppOverrides): ClaimRateLimits {
+  if (overrides.claimLimits) return overrides.claimLimits;
+  if (c.env?.KV) {
+    return { domain: new RateLimiter(kvStore(c.env.KV), CLAIMS_DOMAIN_LIMIT, DAY_MS, 'claim-domain') };
+  }
+  return fallbackClaimLimits;
+}
+
+/** Shared 429 payload: seconds until the window resets + the absolute time */
+function retryPayload(limiter: RateLimiter): { retryAfter: number; nextAllowedAt: string } {
+  const retryAfter = limiter.retryAfter();
+  return { retryAfter, nextAllowedAt: new Date(Date.now() + retryAfter * 1000).toISOString() };
+}
+
+/** Single-statement PV counter with an in-place daily write cap.
+ * The guard `counted_on <> excluded.counted_on OR today_views < cap` lets a new
+ * UTC day always reset the daily counter (a yesterday-at-cap row must not
+ * freeze the counter forever); within the same day the cap refuses the upsert.
+ * A refused upsert changes no rows — D1 bills rows actually written, so a
+ * capped view is assumed to cost zero writes (0-row statements are not billed
+ * as changed rows). */
+const PV_COUNT_SQL = `
+  INSERT INTO page_views (domain, views, today_views, counted_on)
+  VALUES (?, 1, 1, ?)
+  ON CONFLICT(domain) DO UPDATE SET
+    views = views + 1,
+    today_views = CASE WHEN counted_on <> excluded.counted_on THEN 1 ELSE today_views + 1 END,
+    counted_on = CASE WHEN counted_on <> excluded.counted_on THEN excluded.counted_on ELSE counted_on END
+  WHERE counted_on <> excluded.counted_on OR today_views < ?
+`;
 
 /** Ask GitHub Actions (scan.yml, inputs {mode:'queue'}) to drain the scan
  * queue. Soft-fail contract: a missing token or a failed call never fails
@@ -396,10 +477,23 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
       ? await db.prepare('SELECT * FROM evidence WHERE scan_id = ? ORDER BY rowid').all<EvidenceRow>(scan.id)
       : [];
 
+    // Runtime view counter (best-effort: a database without the counter table
+    // still serves the detail page, with views reported as 0)
+    let views = 0;
+    try {
+      const pv = await db
+        .prepare('SELECT views FROM page_views WHERE domain = ?')
+        .get<{ views: number }>(domain);
+      views = pv?.views ?? 0;
+    } catch {
+      views = 0;
+    }
+
     return c.json({
       site: mapSite(site),
       scan: scan ? mapScan(scan) : null,
       evidence: evidence.map(mapEvidence),
+      views,
     });
   });
 
@@ -790,23 +884,310 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
   });
 
   // -------------------------------------------------------------------------
-  // Route skeletons — 501 until each feature ships
+  // Rescan requests, domain verification, owner claims, view counter
   // -------------------------------------------------------------------------
 
-  // Verification & badges: three-method domain verification, owner
-  // claims, rescan requests, badge abuse reports (spec §6.2, §8.2–8.4).
-  app.post('/api/v1/verify/start', (c) =>
-    c.json({ error: 'not_implemented', feature: 'verification' }, 501),
-  ); // {domain, email} → magic link (DNS TXT / meta / file token, 7d validity)
-  app.get('/api/v1/verify/check', (c) =>
-    c.json({ error: 'not_implemented', feature: 'verification' }, 501),
-  ); // ?domain= → probes aiapp-verify token via DoH/HTTP
-  app.post('/api/v1/claims', (c) =>
-    c.json({ error: 'not_implemented', feature: 'verification' }, 501),
-  ); // {domain, statement} → requires verified owner
-  app.post('/api/v1/rescan', (c) =>
-    c.json({ error: 'not_implemented', feature: 'verification' }, 501),
-  ); // {domain} → 1/24h per site
+  // POST /api/v1/rescan {domain} — ask for a fresh scan of a listed site.
+  // The per-domain tier is the same limiter search-scan consumes, so a search
+  // trigger and a rescan together can never exceed one request per domain per
+  // UTC day. Order: validate → known site → rate limit → queue → dispatch.
+  app.post('/api/v1/rescan', async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: 'invalid_json' }, 400);
+    }
+    const payload = (body ?? {}) as { domain?: unknown };
+    if (typeof payload.domain !== 'string') {
+      return c.json({ error: 'invalid_domain', message: 'domain must be a string' }, 400);
+    }
+    const domain = normalizeDomain(payload.domain);
+    if (!domain) {
+      return c.json({ error: 'invalid_domain', message: 'expected a bare domain like example.com' }, 400);
+    }
+
+    const db = dbOf(c, overrides);
+    const site = await db
+      .prepare('SELECT domain FROM sites WHERE domain = ?')
+      .get<{ domain: string }>(domain);
+    if (!site) return c.json({ error: 'unknown_domain' }, 404);
+
+    const limits = scanLimitsOf(c, overrides);
+    const decision = await limits.domain.check(domain);
+    if (!decision.allowed) {
+      const { retryAfter, nextAllowedAt } = retryPayload(limits.domain);
+      return c.json(
+        { error: 'rate_limited', retryAfter, nextAllowedAt },
+        429,
+        { 'Retry-After': String(retryAfter) },
+      );
+    }
+    await limits.domain.consume(domain);
+
+    await db
+      .prepare(
+        `INSERT INTO submissions (domain, submitter_note, source, status, created_at)
+         VALUES (?, NULL, 'rescan', 'queued', ?)`,
+      )
+      .run(domain, new Date().toISOString());
+
+    // Soft dispatch (same helper as search-scan): a missing or failed token
+    // never fails the request — the daily cron drains the queue anyway.
+    await dispatchScanQueue(c.env?.GITHUB_DISPATCH_TOKEN, overrides.fetchImpl ?? fetch);
+
+    // Advertised cooldown for the requester; the limiter itself enforces the
+    // shared per-UTC-day bucket.
+    return c.json({
+      status: 'queued',
+      etaSeconds: SCAN_ETA_SECONDS,
+      nextAllowedAt: new Date(Date.now() + DAY_MS).toISOString(),
+    });
+  });
+
+  // POST /api/v1/verify/start {domain} — mint an opaque verification token.
+  // The token is returned directly in the response; sending it by email is
+  // not wired up here. The requester publishes the token via one of the three
+  // methods, then GET /api/v1/verify/check probes them.
+  app.post('/api/v1/verify/start', async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: 'invalid_json' }, 400);
+    }
+    const payload = (body ?? {}) as { domain?: unknown };
+    if (typeof payload.domain !== 'string') {
+      return c.json({ error: 'invalid_domain', message: 'domain must be a string' }, 400);
+    }
+    const domain = normalizeDomain(payload.domain);
+    if (!domain) {
+      return c.json({ error: 'invalid_domain', message: 'expected a bare domain like example.com' }, 400);
+    }
+
+    // Limits: 3 starts per domain per day + 10 per IP per hour (the hourly IP
+    // budget is shared with verify/check). Both tiers are pre-checked before
+    // either is consumed, so a rejected request never burns the other tier.
+    const limits = verifyLimitsOf(c, overrides);
+    const tiers: [string, RateLimiter][] = [
+      [domain, limits.dailyDomain],
+      [clientIp(c), limits.hourlyIp],
+    ];
+    for (const [key, limiter] of tiers) {
+      const decision = await limiter.check(key);
+      if (!decision.allowed) {
+        const { retryAfter, nextAllowedAt } = retryPayload(limiter);
+        return c.json(
+          { error: 'rate_limited', retryAfter, nextAllowedAt },
+          429,
+          { 'Retry-After': String(retryAfter) },
+        );
+      }
+    }
+    for (const [key, limiter] of tiers) await limiter.consume(key);
+
+    const token = createVerifyToken();
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + VERIFY_TOKEN_TTL_MS).toISOString();
+    const db = dbOf(c, overrides);
+    await db
+      .prepare(
+        'INSERT INTO verify_tokens (domain, token, created_at, expires_at, used_at) VALUES (?, ?, ?, ?, NULL)',
+      )
+      .run(domain, token, now.toISOString(), expiresAt);
+
+    return c.json({
+      token,
+      expiresAt,
+      checkUrl: `/api/v1/verify/check?domain=${encodeURIComponent(domain)}`,
+      methods: {
+        file: { url: `https://${domain}/.well-known/aiapp-verify.txt`, content: token },
+        dns: { type: 'TXT', name: domain, value: `aiapp-verify=${token}` },
+        meta: { name: 'aiapp-verification', content: token },
+      },
+    });
+  });
+
+  // GET /api/v1/verify/check?domain= — probe file / DNS TXT / homepage meta in
+  // parallel and verify on the first pass. Unreachable sites surface as failed
+  // checks (verified:false), never as a 500.
+  app.get('/api/v1/verify/check', async (c) => {
+    const domain = normalizeDomain(c.req.query('domain') ?? '');
+    if (!domain) {
+      return c.json({ error: 'invalid_domain', message: 'expected a bare domain like example.com' }, 400);
+    }
+
+    // 10 probes per IP per hour, shared with verify/start. Quota is spent even
+    // when no token is pending, so the endpoint cannot be used for free spam.
+    const limits = verifyLimitsOf(c, overrides);
+    const ipDecision = await limits.hourlyIp.check(clientIp(c));
+    if (!ipDecision.allowed) {
+      const { retryAfter, nextAllowedAt } = retryPayload(limits.hourlyIp);
+      return c.json(
+        { error: 'rate_limited', retryAfter, nextAllowedAt },
+        429,
+        { 'Retry-After': String(retryAfter) },
+      );
+    }
+    await limits.hourlyIp.consume(clientIp(c));
+
+    const db = dbOf(c, overrides);
+    const now = new Date().toISOString();
+    const pending = await db
+      .prepare(
+        `SELECT token FROM verify_tokens
+         WHERE domain = ? AND used_at IS NULL AND expires_at > ?
+         ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+      )
+      .get<{ token: string }>(domain, now);
+    if (!pending) return c.json({ error: 'no_pending_verification' }, 400);
+
+    const results = await probeAll(domain, pending.token, overrides.fetchImpl ?? fetch);
+    const passed = results.find((result) => result.ok);
+    if (passed) {
+      const verifiedAt = new Date().toISOString();
+      // One write per table: consume the token, record/refresh the owner,
+      // flip sites.verified (a no-op for domains without a sites row).
+      await db
+        .prepare('UPDATE verify_tokens SET used_at = ? WHERE token = ?')
+        .run(verifiedAt, pending.token);
+      await db
+        .prepare(
+          `INSERT INTO owners (domain, verify_method, verified_at) VALUES (?, ?, ?)
+           ON CONFLICT(domain) DO UPDATE SET
+             verify_method = excluded.verify_method, verified_at = excluded.verified_at`,
+        )
+        .run(domain, ownerVerifyMethod(passed.method), verifiedAt);
+      await db.prepare('UPDATE sites SET verified = 1 WHERE domain = ?').run(domain);
+      return c.json({ verified: true, method: passed.method });
+    }
+    return c.json({ verified: false, checks: results });
+  });
+
+  // POST /api/v1/claims {domain, statement} — statement from a verified owner.
+  // Rows land as pending; statements are published after editorial review.
+  app.post('/api/v1/claims', async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: 'invalid_json' }, 400);
+    }
+    const payload = (body ?? {}) as { domain?: unknown; statement?: unknown };
+    if (typeof payload.domain !== 'string') {
+      return c.json({ error: 'invalid_domain', message: 'domain must be a string' }, 400);
+    }
+    const domain = normalizeDomain(payload.domain);
+    if (!domain) {
+      return c.json({ error: 'invalid_domain', message: 'expected a bare domain like example.com' }, 400);
+    }
+    if (typeof payload.statement !== 'string') {
+      return c.json({ error: 'invalid_statement', message: 'statement must be a string' }, 400);
+    }
+    const statement = payload.statement.trim();
+    if (statement.length < 1 || statement.length > 200) {
+      return c.json({ error: 'invalid_statement', message: 'statement must be 1-200 characters' }, 400);
+    }
+
+    const db = dbOf(c, overrides);
+    const site = await db
+      .prepare('SELECT verified FROM sites WHERE domain = ?')
+      .get<{ verified: number | null }>(domain);
+    const owner = await db
+      .prepare('SELECT domain FROM owners WHERE domain = ?')
+      .get<{ domain: string }>(domain);
+    // Unknown to both tables → 404; listed but unverified → 403. A recorded
+    // owner row also counts as verified (either signal is enough).
+    if (!site && !owner) return c.json({ error: 'unknown_domain' }, 404);
+    if (!(site?.verified === 1 || owner)) return c.json({ error: 'not_verified' }, 403);
+
+    const limits = claimLimitsOf(c, overrides);
+    const decision = await limits.domain.check(domain);
+    if (!decision.allowed) {
+      const { retryAfter, nextAllowedAt } = retryPayload(limits.domain);
+      return c.json(
+        { error: 'rate_limited', retryAfter, nextAllowedAt },
+        429,
+        { 'Retry-After': String(retryAfter) },
+      );
+    }
+    await limits.domain.consume(domain);
+
+    await db
+      .prepare(`INSERT INTO claims (domain, statement, status, created_at) VALUES (?, ?, 'pending', ?)`)
+      .run(domain, statement, new Date().toISOString());
+    return c.json({ status: 'pending' }, 201);
+  });
+
+  // GET /api/v1/claims?domain= — public read of the published claim, if any.
+  app.get('/api/v1/claims', async (c) => {
+    const domain = normalizeDomain(c.req.query('domain') ?? '');
+    if (!domain) return c.json({ statement: null });
+    const db = dbOf(c, overrides);
+    const row = await db
+      .prepare(
+        `SELECT statement, created_at FROM claims
+         WHERE domain = ? AND status = 'published' ORDER BY id DESC LIMIT 1`,
+      )
+      .get<{ statement: string | null; created_at: string | null }>(domain);
+    if (!row) return c.json({ statement: null });
+    return c.json({ statement: row.statement, publishedAt: row.created_at });
+  });
+
+  // GET /api/v1/pv?site=<domain> — counts a detail-page view. Always answers
+  // 204 (the pixel must never fail visibly); only domains listed in sites are
+  // counted, and the daily write budget is enforced inside the upsert — once
+  // today's count reaches PV_DAILY_WRITE_CAP the guarded statement matches no
+  // row, so a capped view costs zero rows written (a 0-row statement changes
+  // nothing — assumed not to be billed as a row write).
+  app.get('/api/v1/pv', async (c) => {
+    const domain = normalizeDomain(c.req.query('site') ?? '');
+    if (domain) {
+      try {
+        const db = dbOf(c, overrides);
+        const site = await db
+          .prepare('SELECT domain FROM sites WHERE domain = ?')
+          .get<{ domain: string }>(domain);
+        if (site) {
+          const today = new Date().toISOString().slice(0, 10);
+          await db.prepare(PV_COUNT_SQL).run(domain, today, PV_DAILY_WRITE_CAP);
+        }
+      } catch (err) {
+        // Counting is best-effort — the pixel itself must never fail visibly.
+        console.warn(`pv: count failed (${err instanceof Error ? err.message : String(err)})`);
+      }
+    }
+    // The Fetch standard forbids a body on 204 (the Response constructor throws
+    // in both Node and workerd), so the beacon ships with the image/gif content
+    // type and an empty body — the request itself is what gets counted.
+    return new Response(null, { status: 204, headers: { 'content-type': 'image/gif' } });
+  });
+
+  // GET /api/v1/sites/:domain/views — read-only counter {domain, views, today}.
+  // Unknown-but-valid domains report zeros (the pixel simply never counted them).
+  app.get('/api/v1/sites/:domain/views', async (c) => {
+    const domain = normalizeDomain(c.req.param('domain'));
+    if (!domain) return c.json({ error: 'invalid_domain' }, 400);
+    const db = dbOf(c, overrides);
+    let views = 0;
+    let today = 0;
+    try {
+      const row = await db
+        .prepare('SELECT views, today_views FROM page_views WHERE domain = ?')
+        .get<{ views: number; today_views: number }>(domain);
+      views = row?.views ?? 0;
+      today = row?.today_views ?? 0;
+    } catch {
+      // Counter table not present yet — report zeros rather than failing
+    }
+    return c.json({ domain, views, today });
+  });
+
+  // ----------------------------------------------------------------------
+  // Route skeletons — 501 until each feature ships
+  // ----------------------------------------------------------------------
+
+  // Badge abuse reports: forged/tampered badge submissions.
   app.post('/api/v1/badge/report', (c) =>
     c.json({ error: 'not_implemented', feature: 'verification' }, 501),
   ); // {domain} → forged/tampered badge report

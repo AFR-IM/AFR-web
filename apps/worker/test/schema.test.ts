@@ -57,6 +57,37 @@ describe('schema.sql', () => {
     db.close();
   });
 
+  it('creates the verification/counter tables and the evidence uniqueness index', () => {
+    const db = new DatabaseSync(':memory:');
+    db.exec(SCHEMA_SQL);
+    const tables = tableNames(db);
+    assert.ok(tables.includes('verify_tokens'), 'missing table: verify_tokens');
+    assert.ok(tables.includes('page_views'), 'missing table: page_views');
+    assert.ok(
+      indexNames(db).includes('idx_evidence_scan_check'),
+      'missing index: idx_evidence_scan_check',
+    );
+
+    // one row per (scan, check): duplicates are rejected, other checks still fit
+    db.prepare('INSERT INTO scans (id, domain, engine_version) VALUES (1, NULL, ?)').run(
+      'afr-1.0.0',
+    );
+    db.prepare('INSERT INTO evidence (scan_id, check_id, status) VALUES (1, ?, ?)').run(
+      'A1.gptbot',
+      'pass',
+    );
+    assert.throws(() =>
+      db
+        .prepare('INSERT INTO evidence (scan_id, check_id, status) VALUES (1, ?, ?)')
+        .run('A1.gptbot', 'pass'),
+    );
+    db.prepare('INSERT INTO evidence (scan_id, check_id, status) VALUES (1, ?, ?)').run(
+      'Z9.unique',
+      'pass',
+    );
+    db.close();
+  });
+
   it('supports the directory schema shape (sites columns + FK-style references)', () => {
     const db = new DatabaseSync(':memory:');
     db.exec(SCHEMA_SQL);
