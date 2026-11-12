@@ -1,5 +1,5 @@
 ---
-// ReportCard — spec §10.3 P3 left column + §10.4 "营养标签" style:
+// ReportCard — detail-page left column, "nutrition label" style:
 // three layer bars (L1 35 / L2 40 / L3 25) with the filled proportion in the
 // site's grade color, then one EvidenceRow per check.
 
@@ -24,7 +24,7 @@ const hasChecks = site.layers.some((l) => l.checks.length > 0);
 <section class="card" aria-label={L.ui.reportTitle}>
   <header class="card-head">
     <h2>{L.ui.reportTitle}</h2>
-    <span class="cap mono">{T('out of 100', '满分 100')}</span>
+    <span class="cap mono">{L.ui.outOf100 ?? T('out of 100', '满分 100')}</span>
   </header>
 
   {

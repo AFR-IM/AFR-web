@@ -1,7 +1,8 @@
 // src/index.ts — AFR.IM Worker API (Hono on Cloudflare Workers).
-// Endpoints per spec v1.0 §6.2 + v1.2 §6.2; the AFR method schema per §14-D;
-// the SVG badge per §8.4. D1 is wrapped by src/db.ts so tests can inject a
-// node:sqlite database through createApp({ db }).
+// Endpoints: public JSON API (sites / leaderboard / stats / categories / ads /
+// submissions); the AFR method schema per spec §14-D; the SVG badge rendered
+// inline. D1 is wrapped by src/db.ts so tests can inject a node:sqlite
+// database through createApp({ db }).
 
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
@@ -54,13 +55,18 @@ export interface AppOverrides {
   fetchImpl?: typeof fetch;
 }
 
-/** 5 submissions per IP per day (spec §6.2) */
+/** 5 submissions per IP per day */
 export const SUBMISSION_LIMIT = 5;
 
 // On-demand scan request limits (search-then-collect flow)
 export const SCAN_IP_LIMIT = 10; // per IP per UTC day
 export const SCAN_DOMAIN_LIMIT = 1; // per domain per UTC day
 export const SCAN_GLOBAL_LIMIT = 50; // all callers per UTC day
+/** Manual re-scan / search-triggered scan: one per domain per 30-minute window.
+ * The daily cron keeps its own once-per-day cadence (spec politeness applies to
+ * unattended crawling; an owner-triggered rescan of their own site is bounded
+ * by this window plus the IP/day and global/day tiers above). */
+export const SCAN_DOMAIN_WINDOW_MS = 30 * 60 * 1000;
 export const SCAN_ETA_SECONDS = 180; // advertised queue time before the cron/CI picks it up
 export const QUEUE_LIST_LIMIT = 50;
 
@@ -260,7 +266,7 @@ export interface ClaimRateLimits {
 /** Fallback scan limiters (per-isolate memory — degraded but serviceable) */
 const fallbackScanLimits: ScanRateLimits = {
   ip: new RateLimiter(memoryStore(), SCAN_IP_LIMIT, DAY_MS, 'scan-ip'),
-  domain: new RateLimiter(memoryStore(), SCAN_DOMAIN_LIMIT, DAY_MS, 'scan-domain'),
+  domain: new RateLimiter(memoryStore(), SCAN_DOMAIN_LIMIT, SCAN_DOMAIN_WINDOW_MS, 'scan-domain'),
   global: new RateLimiter(memoryStore(), SCAN_GLOBAL_LIMIT, DAY_MS, 'scan-global'),
 };
 
@@ -280,7 +286,7 @@ function scanLimitsOf(c: Context<AppEnv>, overrides: AppOverrides): ScanRateLimi
     const store = kvStore(c.env.KV);
     return {
       ip: new RateLimiter(store, SCAN_IP_LIMIT, DAY_MS, 'scan-ip'),
-      domain: new RateLimiter(store, SCAN_DOMAIN_LIMIT, DAY_MS, 'scan-domain'),
+      domain: new RateLimiter(store, SCAN_DOMAIN_LIMIT, SCAN_DOMAIN_WINDOW_MS, 'scan-domain'),
       global: new RateLimiter(store, SCAN_GLOBAL_LIMIT, DAY_MS, 'scan-global'),
     };
   }
@@ -390,16 +396,16 @@ async function dispatchScanQueue(
 export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
 
-  // CORS open for the whole API surface (spec §6.2: all JSON endpoints, open CORS).
+  // CORS open for the whole API surface (all JSON endpoints, open CORS).
   // The /badge/* route is an <img> asset and does not need CORS.
   app.use('/api/v1/*', cors({ origin: '*' }));
 
   // -------------------------------------------------------------------------
-  // Directory (spec §6.2)
+  // Directory
   // -------------------------------------------------------------------------
 
   // GET /api/v1/sites?category=&grade=&q=&sort=&page=&per_page=
-  // sort: score (default, AFR score DESC — product invariant, spec §7) | rank | new
+  // sort: score (default, AFR score DESC — product invariant) | rank | new
   // per_page: optional page size for incremental list loads, clamped 1..100
   // (invalid or absent → the default, 20); echoed back in the response.
   app.get('/api/v1/sites', async (c) => {
@@ -590,7 +596,7 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
   });
 
   // GET /api/v1/leaderboard?category= — top N by pure AFR score DESC.
-  // Natural ranking must never mix in ads (spec §7: any commercial factor may
+  // Natural ranking must never mix in ads (any commercial factor may
   // not change the ordering); paid placements live only in /api/v1/ads.
   app.get('/api/v1/leaderboard', async (c) => {
     const db = dbOf(c, overrides);
@@ -599,7 +605,7 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     const limit = Number.isFinite(requested) && requested > 0 ? Math.min(requested, 50) : LEADERBOARD_SIZE;
 
     // Natural ranking: pure AFR score DESC over RATABLE sites only (Pending
-    // carries no comparable score) — ads never mix in (spec §7 / §11.2).
+    // carries no comparable score) — ads never mix in.
     const where: string[] = ["s.status = 'active'", "s.grade != 'Pending'", 's.score_total IS NOT NULL'];
     const params: SqlParam[] = [];
     if (category) {
@@ -694,7 +700,7 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
   );
 
   // -------------------------------------------------------------------------
-  // Badge (spec §8.4)
+  // Badge
   // -------------------------------------------------------------------------
 
   // GET /badge/:domain.svg — ring + grade letter + score + label; 1h HTTP cache.
@@ -730,7 +736,7 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
   });
 
   // -------------------------------------------------------------------------
-  // Submissions (spec §6.2: POST /api/v1/submissions {domain, note?}, 5/IP/day)
+  // Submissions (POST /api/v1/submissions {domain, note?}, 5/IP/day)
   // -------------------------------------------------------------------------
 
   app.post('/api/v1/submissions', async (c) => {
@@ -912,7 +918,7 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
   });
 
   // -------------------------------------------------------------------------
-  // Ads (spec v1.2 §6.2)
+  // Ads
   // -------------------------------------------------------------------------
 
   // GET /api/v1/ads?slot=&key= — currently active ads for a slot.
@@ -999,8 +1005,15 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     return c.json({
       status: 'queued',
       etaSeconds: SCAN_ETA_SECONDS,
-      nextAllowedAt: new Date(Date.now() + DAY_MS).toISOString(),
+      nextAllowedAt: new Date(Date.now() + SCAN_DOMAIN_WINDOW_MS).toISOString(),
     });
+  });
+
+  // Diagnostic error shield: an uncaught handler error must surface its message
+  // while we root-cause the rescan 500s (tightened to a generic body afterwards).
+  app.onError((err, c) => {
+    console.error('unhandled route error:', err);
+    return c.json({ error: 'internal', message: err instanceof Error ? err.message : String(err) }, 500);
   });
 
   // POST /api/v1/verify/start {domain} — mint an opaque verification token.

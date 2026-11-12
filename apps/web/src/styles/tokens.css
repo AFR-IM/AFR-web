@@ -144,9 +144,9 @@
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
-/* @afr/web design tokens — spec §10.2, the ONE and ONLY style source.
-   Do not introduce a second palette anywhere (red line §15.5).
-   Grade colors are AQI-semantic and never change between themes (spec §15.4-③). */
+/* @afr/web design tokens — the ONE and ONLY style source.
+   Do not introduce a second palette anywhere.
+   Grade colors are AQI-semantic and never change between themes. */
 
 :root {
   /* surfaces */
@@ -188,13 +188,13 @@
   --r-4: 20px;
   --radius: 10px;
 
-  /* motion tiers (spec §10.8) */
+  /* motion tiers */
   --t-micro: 120ms; /* hover / stroke */
   --t-standard: 200ms; /* expand / card */
   --t-area: 320ms; /* drawer / skeleton swap */
   --ease: cubic-bezier(0.2, 0, 0, 1);
 
-  /* layout (spec §10.7) */
+  /* layout */
   --page-max: 1200px;
   --gutter: 24px;
   --nav-h: 64px;

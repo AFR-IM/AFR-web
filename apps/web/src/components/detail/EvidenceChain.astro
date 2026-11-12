@@ -1,5 +1,5 @@
 ---
-// EvidenceChain — spec §10.3 P3 center column: the full evidence chain, richer
+// EvidenceChain — detail-page center column: the full evidence chain, richer
 // terminal-style rendering of EVERY check grouped by layer (mono, expandable).
 // On mobile this column is the "Evidence" tab content.
 // Principle (spec §3 P2): no evidence, no points — every awarded point links to
@@ -21,7 +21,7 @@ const isZh = locale === 'zh-CN';
 const T = (en: string, zh: string) => (isZh ? zh : en);
 const gc = gradeVar(site.grade);
 const totalChecks = site.layers.reduce((n, l) => n + l.checks.length, 0);
-const principle = T(
+const principle = L.ui.evidencePrinciple ?? T(
   'No evidence, no points: every awarded point above links to its raw source.',
   '无证据不给分：上方每个得分点都可展开查看原始证据。',
 );
@@ -30,7 +30,7 @@ const principle = T(
 <section class="chain" aria-label={L.ui.evidenceTitle}>
   <header class="term-head mono">
     <span class="prompt">$</span> evidence --domain {site.domain} --engine {site.engineVersion}
-    <span class="hint">{totalChecks} {T('checks', '项检查')}</span>
+    <span class="hint">{totalChecks} {L.ui.checksLabel ?? T('checks', '项检查')}</span>
   </header>
 
   <div class="term-body">

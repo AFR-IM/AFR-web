@@ -1,6 +1,6 @@
 ---
-// DomainCard — spec §10.4: 240×110 card = GradeRing(48) + mono domain + title +
-// two chips (category / strategy). Interaction matrix §10.6: default
+// DomainCard — 240×110 card = GradeRing(48) + mono domain + title +
+// two chips (category / strategy). Interaction: default
 // --bg-surface, hover lifts 2px with the border taking the site's grade color
 // (150ms ease-out), focus-visible = same + 2px --brand outer outline, plus a
 // `skeleton` loading variant (breathing brightness, 1.6s).
@@ -17,7 +17,7 @@ import { gradeVar } from '../../utils/grade.ts';
 interface Props {
   site: SiteCard;
   locale: Locale;
-  index?: number; // drives the 30ms stagger on re-sort (§10.6)
+  index?: number; // drives the 30ms stagger on re-sort
   skeleton?: boolean;
 }
 
@@ -71,7 +71,7 @@ const searchBlob = [site.domain, site.title ?? '', ...(site.tags ?? [])]
     display: flex;
     align-items: center;
     gap: 12px;
-    min-height: 110px; /* spec §10.4 */
+    min-height: 110px; /* fixed card height */
     padding: 14px;
     background: var(--bg-surface);
     border: 1px solid var(--line);
@@ -80,7 +80,7 @@ const searchBlob = [site.domain, site.title ?? '', ...(site.tags ?? [])]
   }
   .card:hover {
     transform: translateY(-2px);
-    border-color: var(--g); /* grade color lights the border (§10.6) */
+    border-color: var(--g); /* grade color lights the border */
   }
   .card:focus-visible {
     transform: translateY(-2px);
@@ -124,7 +124,7 @@ const searchBlob = [site.domain, site.title ?? '', ...(site.tags ?? [])]
     display: none;
   }
 
-  /* sorter switch → fade-in, 30ms stagger per index (§10.6); `backwards` keeps
+  /* sorter switch → fade-in, 30ms stagger per index; `backwards` keeps
      the hover transform usable once the animation is done */
   .card.card-enter {
     animation: card-in var(--t-standard) var(--ease) backwards;
@@ -146,7 +146,7 @@ const searchBlob = [site.domain, site.title ?? '', ...(site.tags ?? [])]
     }
   }
 
-  /* loading skeleton — breathing brightness 1.6s (§10.6 / §10.8) */
+  /* loading skeleton — breathing brightness 1.6s */
   .card-skeleton {
     background: var(--bg-elevated);
     animation: sk-breathe 1.6s ease-in-out infinite;

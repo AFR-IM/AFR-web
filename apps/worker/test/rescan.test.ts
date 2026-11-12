@@ -11,6 +11,7 @@ import {
   type WorkerEnv,
 } from '../src/index.ts';
 import { RateLimiter, DAY_MS, memoryStore } from '../src/rate-limit.ts';
+import { SCAN_DOMAIN_WINDOW_MS } from '../src/index.ts';
 import { openSeededDb } from './helpers.ts';
 
 // ---------------------------------------------------------------------------
@@ -20,7 +21,7 @@ import { openSeededDb } from './helpers.ts';
 function freshScanLimits(): ScanRateLimits {
   return {
     ip: new RateLimiter(memoryStore(), 10, DAY_MS, 'scan-ip'),
-    domain: new RateLimiter(memoryStore(), 1, DAY_MS, 'scan-domain'),
+    domain: new RateLimiter(memoryStore(), 1, SCAN_DOMAIN_WINDOW_MS, 'scan-domain'),
     global: new RateLimiter(memoryStore(), 50, DAY_MS, 'scan-global'),
   };
 }
@@ -111,8 +112,8 @@ describe('POST /api/v1/rescan', () => {
     assert.equal(body.etaSeconds, SCAN_ETA_SECONDS);
     const next = Date.parse(body.nextAllowedAt);
     assert.ok(
-      Math.abs(next - (Date.now() + 24 * 60 * 60 * 1000)) < 5000,
-      'nextAllowedAt ≈ now + 24h',
+      Math.abs(next - (Date.now() + 30 * 60 * 1000)) < 5000,
+      'nextAllowedAt ≈ now + 30min',
     );
 
     const row = raw

@@ -1,5 +1,5 @@
 ---
-// Logo — AFR brand lockup (spec §15.3, §15.4-④).
+// Logo — AFR brand lockup.
 // The mark is the hand-written flat SVG (SVG is the ONLY source of truth):
 // fixed mint-on-navy fills, no currentColor, so it reads on dark AND light
 // themes — the deep-navy disc travels with the mark everywhere.
@@ -10,7 +10,7 @@ interface Props {
 }
 
 const { size = 28, wordmark = false } = Astro.props;
-const gap = size * 0.35; // spec §15.3: gap = mark diameter × 0.35
+const gap = size * 0.35; // gap = mark diameter × 0.35
 ---
 
 <span class="logo" style={`--logo-size:${size}px;--logo-gap:${gap}px;`}>
@@ -71,7 +71,7 @@ const gap = size * 0.35; // spec §15.3: gap = mark diameter × 0.35
     color: var(--text-1);
   }
 
-  /* spec §15.3: suffix is same size but softened — one word, two weights */
+  /* suffix is same size but softened — one word, two weights */
   .word-tld {
     color: var(--text-2);
   }

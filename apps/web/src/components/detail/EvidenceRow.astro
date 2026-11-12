@@ -1,6 +1,6 @@
 ---
-// EvidenceRow — spec §10.4 "状态点 + 检查名 + 分数(mono) + chevron" row with an
-// expandable evidence body (§10.6: hover → --bg-elevated, open → chevron rotates
+// EvidenceRow — "status dot + check name + score (mono) + chevron" row with an
+// expandable evidence body (hover → --bg-elevated, open → chevron rotates
 // 90° in 200ms, body = mono text at line-height 1.6).
 // Used twice: compact inside the left report card, terminal tone inside the
 // center evidence chain.
@@ -24,7 +24,7 @@ const label = L.checks[check.id] ?? check.name;
 const hasEvidence = !!check.evidence;
 const evidenceSource = check.evidence?.source ?? '';
 const evidenceDetail = check.evidence?.detail ?? '';
-const noneText = T('No evidence recorded for this row.', '本行暂无证据记录。');
+const noneText = L.ui.evidenceNone ?? T('No evidence recorded for this row.', '本行暂无证据记录。');
 ---
 
 <details class:list={['row', tone]} data-status={check.status}>
@@ -40,14 +40,14 @@ const noneText = T('No evidence recorded for this row.', '本行暂无证据记�
     {
       hasEvidence ? (
         <p class="src mono">
-          <span class="src-key">{T('source', '来源')}</span> {evidenceSource}
+          <span class="src-key">{L.ui.sourceLabel ?? T('source', '来源')}</span> {evidenceSource}
         </p>
       ) : (
         <p class="src none">{noneText}</p>
       )
     }
     {hasEvidence && <pre class="mono">{evidenceDetail}</pre>}
-    <p class="raw mono"><span class="src-key">{T('check id', '检查项 id')}</span> {check.id}</p>
+    <p class="raw mono"><span class="src-key">{L.ui.checkIdLabel ?? T('check id', '检查项 id')}</span> {check.id}</p>
   </div>
 </details>
 

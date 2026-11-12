@@ -1,5 +1,5 @@
 // test/method.test.ts — GET /api/v1/method machine-readable AFR schema
-// (spec v1.0 §14-D shape, checks per §3, weights/thresholds from packages/shared).
+// (spec §14-D shape, checks per §3, weights/thresholds from packages/shared).
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';

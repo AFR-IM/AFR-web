@@ -16,6 +16,7 @@ import worker, {
   type WorkerEnv,
 } from '../src/index.ts';
 import { RateLimiter, DAY_MS, memoryStore } from '../src/rate-limit.ts';
+import { SCAN_DOMAIN_WINDOW_MS } from '../src/index.ts';
 import { latestSnapshotDate, runDailySync } from '../src/cron.ts';
 import { DATA_REPO_RAW, DATA_REPO_API } from '../src/d1-sync.ts';
 import { createSqliteDb } from '../src/db.ts';
@@ -28,7 +29,7 @@ import { openSeededDb, SCHEMA_SQL } from './helpers.ts';
 function freshScanLimits(): ScanRateLimits {
   return {
     ip: new RateLimiter(memoryStore(), SCAN_IP_LIMIT, DAY_MS, 'scan-ip'),
-    domain: new RateLimiter(memoryStore(), 1, DAY_MS, 'scan-domain'),
+    domain: new RateLimiter(memoryStore(), 1, SCAN_DOMAIN_WINDOW_MS, 'scan-domain'),
     global: new RateLimiter(memoryStore(), SCAN_GLOBAL_LIMIT, DAY_MS, 'scan-global'),
   };
 }

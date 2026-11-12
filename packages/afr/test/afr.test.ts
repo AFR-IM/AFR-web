@@ -1,4 +1,4 @@
-// AFR engine tests (spec M0 DoD: all unit tests green and scores recomputable)
+// AFR engine tests (all unit tests green and scores recomputable)
 // Run: node --test packages/afr/test/*.test.ts
 
 import assert from 'node:assert/strict';

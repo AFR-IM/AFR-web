@@ -91,6 +91,25 @@ describe('catalog parity', () => {
       'filterGrade', 'filterLang', 'filterTag', 'score', 'grade', 'strategy', 'evidence',
       'rescan', 'rescanQueued', 'badgeEmbed', 'copy', 'copied', 'sponsored', 'notFound',
       'submitCta', 'searchEmpty', 'searchSubmitHint',
+      // Migrated from apps/web inline fallbacks (fallbacks.ts COPY + page/component T())
+      'explainerTitle', 'explainerScoreTitle', 'explainerFriendlyTitle', 'explore', 'docsLabel',
+      'dataUpdated', 'loadMoreDone', 'loadMoreProgress', 'loadMoreError',
+      'scanHeading', 'scanDesc', 'scanBtn', 'scanBusy', 'scanQueued', 'scanPolling', 'scanStill',
+      'scanTimeout', 'scanRate', 'scanError', 'scanNet', 'scanResultOpen',
+      'rescanQueuedEta', 'rescanPolling', 'rescanUpdated', 'rescanTimeout', 'rescanThrottle',
+      'rescanUnknown', 'rescanError', 'viewsLabel',
+      'verifyTitle', 'verifyDesc', 'verifyCta', 'verifyBusy', 'verifyMethods', 'verifyFileTab',
+      'verifyMetaTab', 'verifyDnsTab', 'verifyFileUrl', 'verifyFileContent', 'verifyMetaTag',
+      'verifyDnsName', 'verifyDnsValue', 'verifyDnsType', 'verifyPlace', 'verifyRunCheck',
+      'verifyChecking', 'verifyOk', 'verifyOkNote', 'verifyFailTitle', 'verifyRetryNote',
+      'verifyRate', 'verifyError', 'verifyMethodFile', 'verifyMethodMeta', 'verifyMethodDns',
+      'claimFormTitle', 'claimLabel', 'claimPlaceholder', 'claimSubmit', 'claimBusy', 'claimDone',
+      'claimNotVerified', 'claimInvalid', 'claimError', 'claimHint',
+      'evidencePrinciple', 'checksLabel', 'evidenceNone', 'sourceLabel', 'checkIdLabel',
+      'historyEmpty', 'outOf100',
+      'submitNoteLabel', 'submitNotePlaceholder', 'submitBusy', 'submitQueued',
+      'submitRateLimited', 'submitError', 'badgeEmbedNote',
+      'backToDirectory', 'lastSync', 'cachedSites',
     ];
     for (const locale of LOCALES) {
       for (const key of required) {

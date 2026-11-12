@@ -3,7 +3,7 @@
 // Run from apps/web:  node scripts/make-icons.mjs
 //
 // Sources of truth:
-//   src/components/brand/mark.svg — master geometry (spec §15.4: SVG only)
+//   src/components/brand/mark.svg — master geometry (hand-written, SVG only)
 //   FAVICON_SVG below             — chunky simplification of the same
 //                                    identity, tuned to survive 16–32px
 //
@@ -36,7 +36,7 @@ function markInner(svg) {
  * Full-bleed navy square icon embedding the mark.
  * The mark's own navy disc blends into the square background, so only the
  * mint geometry shows. `scale` grows it: non-maskable icons may reach ~81%
- * of the canvas, maskable stays at 77% (< 80% safe zone, spec §15.4-⑤).
+ * of the canvas, maskable stays at 77% (< 80% safe zone).
  */
 function squareIcon(inner, size, scale) {
   return [

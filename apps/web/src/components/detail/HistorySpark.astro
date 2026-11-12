@@ -1,5 +1,5 @@
 ---
-// HistorySpark — spec §10.3 P3 right column: score history as an inline SVG
+// HistorySpark — detail-page right column: score history as an inline SVG
 // polyline with dots and mono axis labels (no chart library, no raster asset).
 
 import type { SiteDetail } from '../../data/types.ts';
@@ -45,7 +45,7 @@ const deltaText = `${delta > 0 ? '+' : ''}${delta}`;
 
   {
     n === 0 ? (
-      <p class="empty">{T('No scans yet.', '暂无扫描记录。')}</p>
+      <p class="empty">{L.ui.historyEmpty ?? T('No scans yet.', '暂无扫描记录。')}</p>
     ) : (
       <svg class="spark" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${L.ui.historyTitle}: ${firstDate} → ${lastDate}`}>
         <line x1={padX} y1={padTop + plotH} x2={W - padX} y2={padTop + plotH} class="axis" />

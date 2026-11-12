@@ -1,11 +1,12 @@
 ---
-// RescanButton — spec §10.3 P3 right column + §10.6 state matrix, wired to the
-// real API: POST /api/v1/rescan {domain} (one re-scan per domain per 24h).
+// RescanButton — detail-page right column re-scan control with its own state
+// machine, wired to the
+// real API: POST /api/v1/rescan {domain} (one re-scan per domain per 30 minutes).
 //   queued  → disabled + spinner + "queued · ~N min", then a 15s poll of
 //             GET /api/v1/sites/:domain (max 6 min) until scannedAt/score
 //             change → header timestamp refresh + "updated ✓" + one reload
 //   429     → disabled with an HH:MM countdown to nextAllowedAt (recomputed
-//             every second) + the one-per-24h budget explanation
+//             every second) + the one-per-30min budget explanation
 //   404/5xx → friendly error, button re-enabled
 // The status line is an aria-live region; no alert/toast anywhere.
 

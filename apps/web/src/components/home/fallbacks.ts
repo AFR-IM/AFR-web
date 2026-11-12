@@ -1,7 +1,7 @@
-// Inline EN/ZH fallbacks for UI keys the i18n catalog does not define yet.
-// packages/i18n is owned by another writer — never edit it from here; every key
-// in COPY below is reported as "missing from catalog" in the delivery notes.
-// If the catalog gains a key, uiText() prefers the catalog automatically.
+// Belt-and-braces EN/ZH fallbacks for UI keys. Every key in COPY below is
+// also defined in the packages/i18n catalog (the source of truth); uiText()
+// prefers the catalog automatically and only falls back to COPY if a key is
+// ever missing there. Values must stay byte-identical to the catalog.
 
 import type { Locale } from '../../i18n/loader.ts';
 
@@ -11,7 +11,7 @@ export interface Copy {
 }
 
 export const COPY = {
-  // counts (safety net — the catalog defines siteCount today)
+  // counts (catalog source of truth; COPY kept as fallback)
   siteCount: { en: '{n} sites', zh: '{n} 个站点' },
   // homepage hero stats
   avgScore: { en: 'avg score', zh: '平均分' },
@@ -19,7 +19,8 @@ export const COPY = {
   searchTitle: { en: 'Search', zh: '搜索' },
   // category page
   sortBy: { en: 'Sort by', zh: '排序' },
-  // sponsored slot (spec §10.5)
+  // sponsored slot
+  sponsored: { en: 'Sponsored', zh: '赞助' },
   visit: { en: 'Visit', zh: '访问' },
   // submit page (P4)
   submitFlow: { en: 'How it works', zh: '流程说明' },
@@ -189,7 +190,7 @@ export const COPY = {
 
 export type CopyKey = keyof typeof COPY;
 
-/** Catalog-first text lookup with a bilingual inline fallback (never edit packages/i18n). */
+/** Catalog-first text lookup with a bilingual fallback from COPY. */
 export function uiText(ui: Record<string, string>, key: CopyKey, locale: Locale): string {
   const fromCatalog = ui[key];
   if (fromCatalog !== undefined && fromCatalog !== '') return fromCatalog;

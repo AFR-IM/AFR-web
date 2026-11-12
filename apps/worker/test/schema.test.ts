@@ -20,7 +20,7 @@ function indexNames(db: DatabaseSync): string[] {
 }
 
 describe('schema.sql', () => {
-  it('creates every table from spec v1.0 §6.1 plus ads (v1.2 §6.1)', () => {
+  it('creates every core table plus ads', () => {
     const db = new DatabaseSync(':memory:');
     db.exec(SCHEMA_SQL);
     const tables = tableNames(db);

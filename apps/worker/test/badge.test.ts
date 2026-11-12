@@ -1,4 +1,4 @@
-// test/badge.test.ts — SVG badge rendering (spec §8.4).
+// test/badge.test.ts — SVG badge rendering.
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';

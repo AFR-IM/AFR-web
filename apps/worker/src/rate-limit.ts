@@ -1,5 +1,5 @@
-// src/rate-limit.ts — KV-backed sliding-window counters (spec §6.2: KV
-// counters, IP + endpoint sliding window). Fixed UTC-day buckets are used for the
+// src/rate-limit.ts — KV-backed sliding-window counters (IP + endpoint sliding
+// window). Fixed UTC-day buckets are used for the
 // 5 submissions/IP/day limit; the store is injectable so tests run offline and
 // the app degrades to an in-memory counter when KV is not bound.
 
@@ -40,7 +40,7 @@ export interface KvLike {
 }
 
 /** KV counter store. Read-modify-write is racy across isolates, but the limit is
- * a UX guard rather than a security boundary (spec §6.2 rate-limit intent). */
+ * a UX guard rather than a security boundary. */
 export function kvStore(kv: KvLike): CounterStore {
   return {
     async incr(key: string, windowMs: number): Promise<number> {

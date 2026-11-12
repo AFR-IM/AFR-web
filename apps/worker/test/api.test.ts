@@ -1,5 +1,5 @@
 // test/api.test.ts — directory endpoints against a seeded node:sqlite database
-// (spec v1.0 §6.2: sites / detail / history / stats / categories / leaderboard).
+// (sites / detail / history / stats / categories / leaderboard).
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
@@ -11,7 +11,7 @@ function app() {
 }
 
 describe('GET /api/v1/sites', () => {
-  it('defaults to AFR score desc (product invariant, spec §7)', async () => {
+  it('defaults to AFR score desc (product invariant)', async () => {
     const res = await app().request('/api/v1/sites');
     assert.equal(res.status, 200);
     const body = await res.json();
@@ -186,7 +186,7 @@ describe('GET /api/v1/leaderboard', () => {
     );
     assert.equal(body.items[0].rank, 1);
     assert.equal(body.items[0].score, 92);
-    // strictly descending scores — ads never influence this ordering (spec §7)
+    // strictly descending scores — ads never influence this ordering
     const scores = body.items.map((i: { score: number }) => i.score);
     assert.deepEqual(scores, [...scores].sort((a, b) => b - a));
   });

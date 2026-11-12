@@ -1,4 +1,4 @@
-// src/grade-colors.ts — grade → brand color mapping (spec v1.0 §14-D example
+// src/grade-colors.ts — grade → brand color mapping (spec §14-D example
 // and §3.5 grade legend; shared by GET /api/v1/method and the SVG badge).
 
 import type { Grade } from '../../../packages/shared/src/index.ts';

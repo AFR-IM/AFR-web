@@ -1,5 +1,5 @@
 ---
-// P1 homepage (spec §10.3 / §10.5 / §15.5): the hero IS real data — the
+// P1 homepage: the hero IS real data — the
 // A–F distribution bar renders actual scan shares, big slogan + local search
 // underneath. Then: 14 category tiles → grade filter bar → latest scan stream
 // → Top leaderboard (natural AFR ranking). English at /, zh-CN at /zh-CN/.
@@ -33,8 +33,8 @@ const generated = Number.isNaN(parsed.getTime())
       timeZone: 'UTC',
     }).format(parsed);
 
-/* ── "How we rate" explainer (product copy, inline EN/ZH — new keys are not
-      added to packages/i18n, so this follows the pages' inline-fallback pattern) ── */
+/* ── "How we rate" explainer: short labels are catalog keys (L.ui.*), the
+      body paragraphs below stay inline EN/ZH as page content ── */
 const COPY = {
   en: {
     heading: 'How we rate',
@@ -82,7 +82,7 @@ const COPY = {
 ---
 
 <Base description={L.ui.heroSub}>
-  <!-- Hero: slogan + real distribution data + search (§15.5 — no decorative art) -->
+  <!-- Hero: slogan + real distribution data + search (no decorative art) -->
   <section class="hero container">
     <p class="hero-kicker mono">AFR.IM · AFR</p>
     <h1 class="hero-slogan">{L.ui.heroSlogan}</h1>
@@ -103,7 +103,7 @@ const COPY = {
     </div>
   </section>
 
-  <!-- 14 category tiles (§7.1) -->
+  <!-- 14 category tiles -->
   <section class="section container">
     <div class="sec-head">
       <h2>{L.ui.categoriesTitle}</h2>
@@ -166,28 +166,28 @@ const COPY = {
        makes a site AI-friendly (also the homepage's deep content section) -->
   <section class="section container explainer" aria-labelledby="explainer-h">
     <div class="sec-head">
-      <h2 id="explainer-h">{COPY.heading}</h2>
+      <h2 id="explainer-h">{L.ui.explainerTitle ?? COPY.heading}</h2>
       <a class="sec-more" href={href('/method')}>{L.ui.navMethod} →</a>
     </div>
     <div class="ex-grid">
       <article class="ex-card">
-        <h3>{COPY.subA}</h3>
+        <h3>{L.ui.explainerScoreTitle ?? COPY.subA}</h3>
         <p>{COPY.a1}</p>
         <p>{COPY.a2}</p>
         <p>{COPY.a3}</p>
       </article>
       <article class="ex-card">
-        <h3>{COPY.subB}</h3>
+        <h3>{L.ui.explainerFriendlyTitle ?? COPY.subB}</h3>
         <p>{COPY.b1}</p>
         <p>{COPY.b2}</p>
         <p>{COPY.b3}</p>
       </article>
     </div>
     <p class="ex-links">
-      <span class="ex-label mono">{COPY.explore}:</span>
+      <span class="ex-label mono">{L.ui.explore ?? COPY.explore}:</span>
       <a href={href('/method')}>{L.ui.navMethod}</a>
       <span aria-hidden="true">·</span>
-      <a href={href('/docs')}>{COPY.docsLabel}</a>
+      <a href={href('/docs')}>{L.ui.docsLabel ?? COPY.docsLabel}</a>
       <span aria-hidden="true">·</span>
       <a href="/llms.txt">llms.txt</a>
       <span aria-hidden="true">·</span>
@@ -195,14 +195,14 @@ const COPY = {
       <span aria-hidden="true">·</span>
       <a href="/openapi.json">OpenAPI</a>
       <span aria-hidden="true">·</span>
-      <a href={href('/about')}>{COPY.aboutLabel}</a>
+      <a href={href('/about')}>{L.ui.navAbout ?? COPY.aboutLabel}</a>
     </p>
     <p class="ex-updated mono">
-      {COPY.updated} <time datetime={home.generatedAt}>{generated}</time>
+      {L.ui.dataUpdated ?? COPY.updated} <time datetime={home.generatedAt}>{generated}</time>
     </p>
   </section>
 
-  <!-- Grade filter: distribution segments + chips share one URL-synced state (§10.6) -->
+  <!-- Grade filter: distribution segments + chips share one URL-synced state -->
   <script is:inline>
     (function () {
       var VALID = ['A', 'B', 'C', 'D', 'F'];
@@ -335,7 +335,7 @@ const COPY = {
     flex: none;
   }
 
-  /* card grids: §10.7 auto-fill minmax, no media query */
+  /* card grids: auto-fill minmax, no media query */
   .grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));

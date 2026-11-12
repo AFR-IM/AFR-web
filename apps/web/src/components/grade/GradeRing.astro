@@ -1,5 +1,5 @@
 ---
-// GradeRing — the product's signature component (spec §10.4 / §10.8).
+// GradeRing — the product's signature component.
 // conic-gradient ring from 0°, ring width 8px (48px thumb: 5px), centered
 // mono grade letter + score. Entrance: score counts 0→value while the ring
 // sweeps to the score ratio (both 600ms); prefers-reduced-motion → final state.
@@ -9,7 +9,7 @@ import type { Grade } from '../../data/types.ts';
 interface Props {
   score: number;
   grade: Grade;
-  size?: number; // 96 detail / 48 card (spec §10.4)
+  size?: number; // 96 detail / 48 card
   animate?: boolean;
   class?: string;
 }
@@ -104,7 +104,7 @@ const scoreSize = Math.round(size * 0.16);
     to { --sweep: var(--pct); }
   }
 
-  /* re-scan state (§10.6): ring spins, score blinks */
+  /* re-scan state: ring spins, score blinks */
   .ring[data-rescanning] .ring-fill {
     animation: ring-spin 1.2s linear infinite;
   }
@@ -114,7 +114,7 @@ const scoreSize = Math.round(size * 0.16);
 </style>
 
 <script>
-  // Score counter 0→value, 600ms mono count-up (spec §10.8 "分数长出来").
+  // Score counter 0→value, 600ms mono count-up (the score "grows into place").
   // Runs once per page; honors prefers-reduced-motion by skipping to the end.
   const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (!reduce) {

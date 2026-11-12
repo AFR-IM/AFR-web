@@ -1,9 +1,9 @@
 -- afr.im D1 schema (SQLite dialect)
--- Source: spec v1.0 §6.1 (sites/scans/evidence/owners/submissions/claims/
--- categories/api_keys) + spec v1.2 §6.1 (ads table + idx_ads_slot).
+-- Source: core tables (sites/scans/evidence/owners/submissions/claims/
+-- categories/api_keys) + ads table + idx_ads_slot.
 -- Apply: wrangler d1 execute aiapp --file schema.sql --remote
 
--- Categories (spec §7: 14 top-level categories + free-form second-level tags)
+-- Categories (14 top-level categories + free-form second-level tags)
 CREATE TABLE IF NOT EXISTS categories (
   id INTEGER PRIMARY KEY,
   slug TEXT UNIQUE,
@@ -103,7 +103,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
   revoked_at TEXT
 );
 
--- Ad slots (spec v1.2 §6.1)
+-- Ad slots
 CREATE TABLE IF NOT EXISTS ads (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   domain TEXT REFERENCES sites(domain),  -- must already be listed

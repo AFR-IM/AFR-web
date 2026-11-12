@@ -38,7 +38,7 @@ export function extractLinks(html: string, pattern: RegExp): string[] {
   return [...out];
 }
 
-/** In-site AI feature heuristics (tunable after M1 distribution calibration) */
+/** In-site AI feature heuristics (tunable after distribution calibration) */
 export function detectAiFeatures(html: string): AiFeatures {
   const chat =
     /intercom|crisp(-frame|_container)?|tidio|drift\.js|zendesk|hubspot.*chat|chatbot|chat-widget|chatscope|botpress|typebot|voiceflow|landbot|tawk\.to|purechat|watson|dialogflow|sendbird|userlike|olark|jivochat|gobot|chatra|livechat|whatsapp\.com\/wa|customerchat|fb-customerchat|<script[^>]+["'][^"']*\/chat[^"']*["']/i.test(html);
@@ -62,7 +62,7 @@ export async function scanSite(domain: string, opts: ScanOptions = {}): Promise<
   const host = normalizeDomain(domain);
   const gap = opts.gapMs ?? 150;
   const counter = new RequestCounter();
-  // All slots: 1 retry on network error (spec §5.6 failure recovery); the hard budget is still enforced by the counter
+  // All slots: 1 retry on network error; the hard budget is still enforced by the counter
   const base = { counter, fetchImpl: opts.fetchImpl, maxBytes: opts.maxBytes, retryOnNetworkError: true };
 
   // 1) robots.txt — also fetches crawl-delay and Sitemap declarations

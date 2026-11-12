@@ -1,6 +1,6 @@
 ---
 // SearchBox — mono input with instant LOCAL autocomplete over the indexed
-// domains (spec §10.4 / §10.6): ≤8 suggestions, keyboard ↑/↓/Enter/Escape,
+// domains: ≤8 suggestions, keyboard ↑/↓/Enter/Escape,
 // empty result → searchEmpty + "submit it" CTA. Enter posts to /search?q=
 // (progressive enhancement: the form works without JS). The dropdown never
 // fires a scan request by itself — scanning is triggered only by the explicit
@@ -161,7 +161,7 @@ const items = sites.map((s) => ({
 </style>
 
 <script>
-  // Instant local autocomplete — vanilla JS, no service, no network (§10.4).
+  // Instant local autocomplete — vanilla JS, no service, no network.
   import { gradeVar } from '../../utils/grade.ts';
   import type { Grade } from '../../data/types.ts';
 
@@ -216,11 +216,11 @@ const items = sites.map((s) => ({
             it.domain.toLowerCase().includes(needle) ||
             it.title.toLowerCase().includes(needle),
         )
-        .slice(0, 8); // §10.6: dropdown ≤8 entries
+        .slice(0, 8); // dropdown ≤8 entries
       list.replaceChildren();
 
       if (hits.length === 0) {
-        // empty result → the catalog's "submit it" hint linking to /submit (§10.6)
+        // empty result → the catalog's "submit it" hint linking to /submit
         const wrap = document.createElement('div');
         wrap.className = 'sb-empty';
         const msg = document.createElement('p');

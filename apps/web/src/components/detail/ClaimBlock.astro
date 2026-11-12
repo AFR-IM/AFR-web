@@ -1,5 +1,5 @@
 ---
-// ClaimBlock — spec §10.3 P3 right column / §8.2: verified owners may publish a
+// ClaimBlock — detail-page right column: verified owners may publish a
 // ≤200-character statement that answers their score. Shown beside the report so
 // both sides speak with equal weight; empty state uses the catalog key.
 
@@ -14,7 +14,7 @@ const { claim, locale } = Astro.props;
 const L = getCatalog(locale);
 const isZh = locale === 'zh-CN';
 const T = (en: string, zh: string) => (isZh ? zh : en);
-const hint = T(
+const hint = L.ui.claimHint ?? T(
   'Verified owners can publish up to 200 characters here.',
   '已验证站方可在此发布 200 字以内的声明。',
 );

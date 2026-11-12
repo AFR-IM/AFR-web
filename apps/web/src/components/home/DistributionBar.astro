@@ -1,9 +1,9 @@
 ---
-// DistributionBar — the homepage's real-data hero visual (spec §10.4 / §10.6).
+// DistributionBar — the homepage's real-data hero visual.
 // Five grade segments sized by share of all scanned sites; hover scales the
 // segment 1.05 and pops a count tooltip, click sets the grade filter and syncs
 // the URL (?grade=B) — the anchors keep working as plain links without JS.
-// Below 480px the bar becomes five vertically stacked rows (spec §10.7).
+// Below 480px the bar becomes five vertically stacked rows.
 
 import { getCatalog, pathFor, type Locale } from '../../i18n/loader.ts';
 import type { Distribution, Grade } from '../../data/types.ts';
@@ -109,7 +109,7 @@ const countOf = (g: Grade): number => distribution[g] ?? 0;
     transform: translate(-50%, 0);
   }
 
-  /* <480px: five vertically stacked rows (spec §10.7) */
+  /* <480px: five vertically stacked rows */
   @media (max-width: 479px) {
     .bar {
       flex-direction: column;

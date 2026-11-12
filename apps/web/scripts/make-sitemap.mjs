@@ -20,7 +20,7 @@ const SITE = 'https://afr.im';
 const LASTMOD = new Date().toISOString().slice(0, 10); // the day this file is generated
 const TOP = ['/', '/method', '/categories', '/search', '/submit', '/about', '/bot', '/badge', '/docs'];
 
-// 14 first-level categories (spec §7.1) — same set the catalog ships.
+// 14 first-level categories — same set the catalog ships.
 const CATS = [
   'dev-tools', 'ai-tools', 'news', 'ecommerce', 'education', 'finance', 'social',
   'entertainment', 'health', 'travel', 'government', 'reference', 'docs', 'other',

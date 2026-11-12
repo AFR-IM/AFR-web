@@ -1,5 +1,5 @@
 /* Global base layer: reset + typography + shared primitives.
-   All values reference tokens.css (§10.2) — no raw hex here except currentColor. */
+   All values reference tokens.css — no raw hex here except currentColor. */
 
 *,
 *::before,
@@ -60,27 +60,27 @@ select {
   color: var(--text-1);
 }
 
-/* mono is mandatory for domains / scores / evidence (visual DoD §10.5) */
+/* mono is mandatory for domains / scores / evidence */
 code,
 .mono {
   font-family: var(--font-mono);
 }
 
-/* page shell: 1200px 12-col grid context (§10.7) */
+/* page shell: 1200px 12-col grid context */
 .container {
   max-width: var(--page-max);
   margin: 0 auto;
   padding-inline: var(--page-pad);
 }
 
-/* focus-visible baseline (§10.6) */
+/* focus-visible baseline */
 :focus-visible {
   outline: 2px solid var(--brand);
   outline-offset: 2px;
   border-radius: 2px;
 }
 
-/* motion: everything collapses to final state (§10.8) */
+/* motion: everything collapses to final state */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

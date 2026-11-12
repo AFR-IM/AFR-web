@@ -1,5 +1,5 @@
 ---
-// SponsoredCard — spec §10.5 ad slot (positions 1 category-top / 2 search-top).
+// SponsoredCard — ad slot (positions 1 category-top / 2 search-top).
 // Discipline: standalone block, never mixed into the natural list; permanent
 // "Sponsored" badge in --text-2 small text; the site's REAL GradeRing; Visit
 // carries ?ref=afr-sponsor for click counting; background --bg-elevated with
@@ -61,7 +61,7 @@ const body = locale === 'zh-CN' ? (ad.bodyZh ?? ad.body) : ad.body;
 
 <style>
   .sponsor-zone {
-    padding-bottom: 24px; /* 24px whitespace before the dashed rule (§10.5) */
+    padding-bottom: 24px; /* 24px whitespace before the dashed rule */
     border-bottom: 1px dashed var(--line);
     margin-bottom: 16px;
   }
@@ -86,7 +86,7 @@ const body = locale === 'zh-CN' ? (ad.bodyZh ?? ad.body) : ad.body;
   .sponsor-badge {
     font-size: 11px;
     line-height: 1;
-    color: var(--text-2); /* permanent, non-removable badge (§10.5) */
+    color: var(--text-2); /* permanent, non-removable badge */
     letter-spacing: 0.08em;
     text-transform: uppercase;
   }
@@ -118,7 +118,7 @@ const body = locale === 'zh-CN' ? (ad.bodyZh ?? ad.body) : ad.body;
     flex: none;
   }
 
-  /* position 2 (search top): same block, narrower row (§10.5) */
+  /* position 2 (search top): same block, narrower row */
   .sponsor-zone.search {
     padding-bottom: 16px;
     margin-bottom: 16px;

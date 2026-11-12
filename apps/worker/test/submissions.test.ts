@@ -1,4 +1,4 @@
-// test/submissions.test.ts — validation + 5/IP/day rate limit (spec §6.2).
+// test/submissions.test.ts — validation + 5/IP/day rate limit.
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';

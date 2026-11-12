@@ -1,6 +1,6 @@
 ---
-// P3 detail page — /site/:domain (spec §10.3 "product's soul page").
-// Layout per §10.7: 340px report card │ 1fr evidence chain │ 320px
+// P3 detail page — /site/:domain.
+// Layout: 340px report card │ 1fr evidence chain │ 320px
 // statement/badge/history, left+right sticky at top 80px; 768–1279 → 2+1;
 // ≤767 → three tabs (Report / Evidence / Statement).
 
@@ -383,7 +383,7 @@ const description = notFound
     border-bottom-color: var(--brand);
   }
 
-  /* ── three columns (§10.7) ──────────────────────────── */
+  /* ── three columns ──────────────────────────── */
   .grid {
     display: grid;
     grid-template-columns: 340px minmax(0, 1fr) 320px;
@@ -401,7 +401,7 @@ const description = notFound
     gap: 16px;
   }
 
-  /* tablet: 2 + 1, right column flows below (§10.7) */
+  /* tablet: 2 + 1, right column flows below */
   @media (max-width: 1279px) {
     .grid {
       grid-template-columns: 340px minmax(0, 1fr);

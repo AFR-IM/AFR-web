@@ -1,5 +1,5 @@
 ---
-// P7 offline fallback — /offline (spec §9: the service worker's offline route
+// P7 offline fallback — /offline (the service worker's offline route
 // shows a friendly message plus the last sync time and a link home).
 
 import Base from '../../layouts/Base.astro';
@@ -27,7 +27,7 @@ const body = T(
   'No connection right now — your last synced copy of the directory is still here, and ratings do not change while you are away. Reconnect and refresh to pull the latest scans.',
   '当前没有网络——上次同步的目录副本仍可离线浏览，你离开期间评级不会变化。恢复网络后刷新即可拉取最新扫描结果。',
 );
-const cta = T('Back to the directory', '返回目录');
+const cta = L.ui.backToDirectory ?? T('Back to the directory', '返回目录');
 ---
 
 <Base title={title} description={hint}>
@@ -38,10 +38,10 @@ const cta = T('Back to the directory', '返回目录');
       <p class="hint">{hint}</p>
       <p class="body">{body}</p>
       <p class="sync mono">
-        {T('Last sync', '上次同步')} <time datetime={home.generatedAt}>{synced}</time>
+        {L.ui.lastSync ?? T('Last sync', '上次同步')} <time datetime={home.generatedAt}>{synced}</time>
         <span class="local">({syncedLocal})</span>
       </p>
-      <p class="total mono">{T('Cached sites', '已缓存站点')} {home.total}</p>
+      <p class="total mono">{L.ui.cachedSites ?? T('Cached sites', '已缓存站点')} {home.total}</p>
       <a class="btn" href={href('/')} data-reload>
         {cta} →
       </a>

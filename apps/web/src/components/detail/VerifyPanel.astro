@@ -1,5 +1,5 @@
 ---
-// VerifyPanel — spec §8.2 three-method domain verification, right column below
+// VerifyPanel — three-method domain verification, right column below
 // the badge embed. Not verified → "Are you the owner?" + "Verify this site" →
 // POST /api/v1/verify/start → three method tabs (File recommended / Meta / DNS)
 // with exact copyable values (BadgeEmbed's "Copy" → "Copied ✓" 1.5s pattern —
@@ -272,7 +272,7 @@ const mDns = uiText(L.ui, 'verifyMethodDns', loc);
     color: var(--text-3);
   }
 
-  /* tabs (micro motion, §10.8) */
+  /* tabs (micro motion) */
   .tabs {
     display: flex;
     gap: 6px;

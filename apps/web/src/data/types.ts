@@ -1,5 +1,5 @@
-// @afr/web data layer types — derived from AFR-data scan snapshots (spec §5.1:
-// data repo JSON is the SSOT; Pages bakes /data/*.json at build time).
+// @afr/web data layer types — derived from AFR-data scan snapshots
+// (the data repo's JSON is the SSOT; Pages bakes /data/*.json at build time).
 
 import type { Grade, GradeState, StrategyTag } from '../../../../packages/shared/src/index.ts';
 
@@ -13,8 +13,8 @@ export interface SiteCard {
   /** 'Pending' = unratable (no readable homepage/robots) — excluded from natural ranking */
   grade: GradeState;
   strategyTag: StrategyTag;
-  category?: string; // category slug (§7.1)
-  tags?: string[]; // secondary tags (§7.2)
+  category?: string; // category slug
+  tags?: string[]; // secondary tags
   lang?: string;
   rankSource?: number; // Tranco rank
   verified?: boolean;
@@ -85,5 +85,5 @@ export interface SiteDetail extends SiteCard {
   breakdown: Record<string, number>;
   /** one entry per rescan so far; 'Pending' grade allowed for unratable scans */
   history: { date: string; score: number; grade: GradeState }[];
-  claim?: string; // published owner statement (§8.2)
+  claim?: string; // published owner statement
 }

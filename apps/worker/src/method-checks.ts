@@ -1,5 +1,5 @@
-// src/method-checks.ts — per-check enumeration of the AFR standard v1.0
-// (spec §3 of the v1.0 spec document). Pure data: consumed by
+// src/method-checks.ts — per-check enumeration of the AFR standard
+// (spec §3). Pure data: consumed by
 // GET /api/v1/method (spec §14-D machine-readable schema). Layer weights come
 // from LAYER_MAX in packages/shared (imported by src/index.ts), so the checks
 // listed here must sum to their layer weight — test/method.test.ts asserts it.

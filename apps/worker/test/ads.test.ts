@@ -1,4 +1,4 @@
-// test/ads.test.ts — GET /api/v1/ads active-ad serving (spec v1.2 §6.1/§6.2).
+// test/ads.test.ts — GET /api/v1/ads active-ad serving.
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';

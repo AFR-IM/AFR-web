@@ -1,5 +1,5 @@
 ---
-// P2 category page /c/:slug (spec §10.3 / §10.5 / §10.6 / §10.7):
+// P2 category page /c/:slug:
 // header (name + count) → Sponsored slot (position 1, above the natural list,
 // separated by 24px + 1px dashed --line) → grade/tag/language filter row →
 // sorter (score | rank | newest) → card grid (auto-fill minmax, no media
@@ -200,7 +200,7 @@ const loadMoreErrorText = uiText(L.ui, 'loadMoreError', locale);
     )}
   </div>
 
-  <!-- Client-side filter + sort over pre-rendered cards (§10.6 / §10.7) -->
+  <!-- Client-side filter + sort over pre-rendered cards -->
   <script is:inline>
     (function () {
       var grid = document.querySelector('[data-grid]');
@@ -610,7 +610,7 @@ const loadMoreErrorText = uiText(L.ui, 'loadMoreError', locale);
     color: var(--text-3);
   }
 
-  /* §10.7: card flow grid — auto-fill minmax, deliberately no media query */
+  /* card flow grid — auto-fill minmax, deliberately no media query */
   .grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));

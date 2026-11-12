@@ -1,4 +1,4 @@
-// Calibration analysis for the first Tranco Top1000 scan (M1 DoD, spec §3.5).
+// Calibration analysis for the first Tranco Top1000 scan (spec §3.5).
 // Reads AFR-data/scans/YYYY/MM/DD/*.json and prints a markdown report:
 // histogram, grade/strategy distribution, per-check hit rates, scan health,
 // anomaly lists, and sample evidence chains for spot checks.

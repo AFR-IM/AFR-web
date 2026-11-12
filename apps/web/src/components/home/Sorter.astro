@@ -1,5 +1,5 @@
 ---
-// Sorter — score | rank | newest (spec §10.3 P2 / §10.6): the active option
+// Sorter — score | rank | newest: the active option
 // underlines in --brand, secondary options brighten on hover. Purely
 // presentational; the page script owns sorting and the 30ms stagger fade-in.
 
@@ -37,7 +37,7 @@ const { options, active, label = 'Sort' } = Astro.props;
     transition: color var(--t-micro) var(--ease), border-color var(--t-micro) var(--ease);
   }
   .sort-item:hover {
-    color: var(--text-1); /* secondary options light up (§10.6) */
+    color: var(--text-1); /* secondary options light up */
   }
   .sort-item.active {
     color: var(--text-1);

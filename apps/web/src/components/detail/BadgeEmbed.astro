@@ -1,7 +1,7 @@
 ---
-// BadgeEmbed — spec §10.3 P3 right column / P6 embed snippets (§8.4):
+// BadgeEmbed — detail-page right column / badge-page embed snippets:
 // HTML <a><img></a> and Markdown forms in readonly mono fields, each with a
-// Copy button following §10.6: "Copy" → "Copied ✓" → reverts after 1.5s,
+// Copy button: "Copy" → "Copied ✓" → reverts after 1.5s,
 // never alert/toast.
 
 import { getCatalog } from '../../i18n/loader.ts';
@@ -28,7 +28,7 @@ const mdSnippet = `[![AI-Friendly Rating](${badgeUrl})](${siteUrl})`;
 const copyLabel = L.ui.copy ?? 'Copy';
 const copiedLabel = `${L.ui.copied ?? 'Copied'} ✓`;
 const title = L.ui.badgeEmbed ?? T('Embed badge', '嵌入徽章');
-const note = T(
+const note = L.ui.badgeEmbedNote ?? T(
   'Official badges are only served from AFR.IM — clicking one opens this site’s report.',
   '官方徽章只从 AFR.IM 提供——点击徽章即可回到本站报告页验真。',
 );
@@ -154,7 +154,7 @@ const note = T(
 </style>
 
 <script>
-  // §10.6 copy row: "Copy" → "Copied ✓" → reverts after 1.5s (no alert/toast).
+  // Copy row: "Copy" → "Copied ✓" → reverts after 1.5s (no alert/toast).
   const timers = new WeakMap<Element, ReturnType<typeof setTimeout>>();
   for (const btn of document.querySelectorAll<HTMLButtonElement>('[data-copy]')) {
     btn.addEventListener('click', async () => {

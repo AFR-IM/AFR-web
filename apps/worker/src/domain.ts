@@ -1,6 +1,6 @@
 // src/domain.ts — domain validation shared by the HTTP API (src/index.ts) and
-// the MCP tools (src/mcp.ts). Bare lowercase domains only (spec §6.1
-// sites.domain): scheme, path, port and IP literals are rejected so every
+// the MCP tools (src/mcp.ts). Bare lowercase domains only: scheme, path, port
+// and IP literals are rejected so every
 // lookup and insert uses the same canonical key.
 
 const LABEL_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;

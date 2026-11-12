@@ -1,7 +1,8 @@
 ---
-// Base layout — spec §10.7 navigation (desktop bar / mobile drawer), 64px
+// Base layout — navigation (desktop bar / mobile drawer), 64px
 // sticky header with blur + 1px --line on scroll, theme toggle, locale switch.
-// Footer carries the neutrality pledge (spec §11.2 / X9-③).
+// Footer carries the neutrality pledge (paid placements never alter grades or
+// natural ranking).
 
 import { alternatePath, getCatalog, pathFor, toLocale, type Locale } from '../i18n/loader.ts';
 import { AFR_METHOD } from '../../../../packages/i18n/src/method.ts';
@@ -32,7 +33,7 @@ const navItems = [
 const pageTitle = title ? `${title} · AFR.IM` : (L.ui.siteName as string);
 const pageDesc = description ?? (L.ui.tagline as string);
 
-/* ── canonical / Open Graph / Twitter / JSON-LD (spec §10.1 + AFR B3 og-tags) ── */
+/* ── canonical / Open Graph / Twitter / JSON-LD (AFR B3 og-tags) ── */
 const SITE_URL = 'https://afr.im';
 const canonical = new URL(path, SITE_URL).href;
 const stripZh = (p: string) => p.replace(/^\/zh-CN(?=\/|$)/, '') || '/';
@@ -209,7 +210,7 @@ const ldJson = (obj: unknown) => JSON.stringify(obj).replace(/</g, '\\u003c');
         localStorage.setItem('afr-theme', next);
       });
 
-      // mobile drawer (§10.7)
+      // mobile drawer
       const burger = document.getElementById('nav-burger');
       const drawer = document.getElementById('nav-drawer');
       burger?.addEventListener('click', () => {
@@ -219,7 +220,7 @@ const ldJson = (obj: unknown) => JSON.stringify(obj).replace(/</g, '\\u003c');
         burger.setAttribute('aria-expanded', String(open));
       });
 
-      // scrolled state: backdrop blur + 1px --line (§10.7)
+      // scrolled state: backdrop blur + 1px --line
       const nav = document.getElementById('nav');
       const onScroll = () => nav?.classList.toggle('scrolled', scrollY > 4);
       onScroll();
@@ -377,7 +378,7 @@ const ldJson = (obj: unknown) => JSON.stringify(obj).replace(/</g, '\\u003c');
       }
     </style>
     <script>
-      // PWA service worker registration (spec §9): secure contexts only,
+      // PWA service worker registration: secure contexts only,
       // no duplicate registration, register after load so it never blocks rendering.
       const registerSw = () => {
         if (!('serviceWorker' in navigator)) return;

@@ -2,7 +2,7 @@
 // no re-scan needed; spec §3.6/§4.4 versioned recomputation).
 // Usage: node scripts/recalc.mjs <scans-dir> [--write]
 // Prints a before/after calibration summary; --write updates the JSON files
-// (idempotent same-day overwrite per spec §5.6).
+// (idempotent same-day overwrite).
 import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { scoreAfr } from '../packages/afr/src/index.ts';

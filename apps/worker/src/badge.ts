@@ -1,4 +1,4 @@
-// src/badge.ts — pure SVG string builder for GET /badge/:domain.svg (spec §8.4).
+// src/badge.ts — pure SVG string builder for GET /badge/:domain.svg.
 // No I/O, no DB: given a domain + grade + score it returns the badge markup,
 // so it stays trivially unit-testable (test/badge.test.ts).
 
@@ -32,8 +32,8 @@ function isGrade(value: string | null | undefined): value is Grade {
 /**
  * Build the badge SVG.
  * Known domain: colored ring (grade color) + big grade letter + score + label.
- * Unknown domain: neutral gray ring with a "—" placeholder (spec §8.4:
- * official badges are only served from this domain — click-through verifies).
+ * Unknown domain: neutral gray ring with a "—" placeholder (official badges
+ * are only served from this domain — click-through verifies).
  */
 export function badgeSvg(input: BadgeInput): string {
   const known = isGrade(input.grade) && typeof input.score === 'number';
