@@ -1,6 +1,6 @@
-# aiapp-web
+# AFR-web
 
-**AiApp.im** is an AI-friendliness rating directory: it measures how open a website is to AI
+**AFR.IM** is an AI-friendliness rating directory: it measures how open a website is to AI
 agents and crawlers — robots.txt policy, machine-readable content, agent-facing interfaces —
 and publishes a reproducible grade from A to F with a full evidence chain behind every point.
 
@@ -65,14 +65,14 @@ Notes:
 
 ## Data
 
-Published scan snapshots live in [imAiAPP/aiapp-data](https://github.com/imAiAPP/aiapp-data)
+Published scan snapshots live in [AFR-IM/AFR-data](https://github.com/AFR-IM/AFR-data)
 (JSON SSOT — the frontend and the D1 database are both rebuildable from it).
 
 ---
 
 ## 中文说明
 
-**AiApp.im** 是 AI 友好度评级导航站：测量网站对 AI 智能体与爬虫的开放程度
+**AFR.IM** 是 AI 友好度评级导航站：测量网站对 AI 智能体与爬虫的开放程度
 （robots.txt 策略、机器可读内容、面向智能体的接口），发布可复现的 A–F 等级，
 每个得分点都附带公开证据链。
 

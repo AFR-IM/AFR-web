@@ -131,7 +131,7 @@ describe('challenge fallback (browser-UA recovery)', () => {
       const headers = init.headers as Record<string, string>;
       const ua = String(headers['user-agent'] ?? '');
       if (path === '/') {
-        if (ua.startsWith('aiappScanner')) {
+        if (ua.startsWith('afrScanner')) {
           return new Response('blocked', { status: 403 }) as unknown as Response;
         }
         return new Response('<html lang="en"><body><main><h1>hi</h1></main></body></html>', {
@@ -140,7 +140,7 @@ describe('challenge fallback (browser-UA recovery)', () => {
       }
       // Other slots: transparent 403 / browser 404 → both "non-challenge after fallback" or "challenge preserved"
       const fb = path === '/llms.txt' || path === '/llms-full.txt';
-      const status = ua.startsWith('aiappScanner') ? 403 : fb ? 404 : 403;
+      const status = ua.startsWith('afrScanner') ? 403 : fb ? 404 : 403;
       return new Response('', { status }) as unknown as Response;
     };
     const signals = await scanSite('example.com', { fetchImpl: impl, gapMs: 0 });

@@ -1,4 +1,4 @@
-// @aiapp/i18n — machine-readable AFR standard.
+// @afr/i18n — machine-readable AFR standard.
 // Faithful transcription of spec v1.0 §3 (lines 116-224); the bilingual /method
 // page and this structure share the same vocabulary as the `checks` catalog in
 // ./index.ts (engine-level ids like 'l2.sitemap' live there; standard-level

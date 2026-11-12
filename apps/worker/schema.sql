@@ -1,4 +1,4 @@
--- aiapp.im D1 schema (SQLite dialect)
+-- afr.im D1 schema (SQLite dialect)
 -- Source: spec v1.0 §6.1 (sites/scans/evidence/owners/submissions/claims/
 -- categories/api_keys) + spec v1.2 §6.1 (ads table + idx_ads_slot).
 -- Apply: wrangler d1 execute aiapp --file schema.sql --remote

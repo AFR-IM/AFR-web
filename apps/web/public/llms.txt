@@ -1,36 +1,36 @@
-# AiApp.im — AI-Friendliness Rating
+# AFR.IM — AI-Friendliness Rating
 
-> AiApp.im publishes objective AI-friendliness ratings for websites: an open, reproducible 0–100 AFR score and an A–F grade showing how open each site is to AI crawlers and agents. Every point traces back to public evidence anyone can fetch again — robots.txt policy, llms.txt, sitemap, structured data, semantic HTML, public APIs, and agent instructions. English at https://aiapp.im/ and Chinese at https://aiapp.im/zh-CN/.
+> AFR.IM publishes objective AI-friendliness ratings for websites: an open, reproducible 0–100 AFR score and an A–F grade showing how open each site is to AI crawlers and agents. Every point traces back to public evidence anyone can fetch again — robots.txt policy, llms.txt, sitemap, structured data, semantic HTML, public APIs, and agent instructions. English at https://afr.im/ and Chinese at https://afr.im/zh-CN/.
 
 ## Pages
 
-- [Home](https://aiapp.im/): directory homepage — grade distribution, latest scans, and the natural leaderboard sorted by pure AFR score.
-- [Method](https://aiapp.im/method): the full AFR standard — three layers, every sub-check and its points, grade thresholds, and the neutrality pledge.
-- [Categories](https://aiapp.im/categories): browse rated sites by category.
-- [Submit](https://aiapp.im/submit): request a scan of a site you care about.
-- [About](https://aiapp.im/about): who runs AiApp.im and how to get in touch.
-- [For bots](https://aiapp.im/bot): what our own scanner fetches and how a score is produced.
-- [Badge](https://aiapp.im/badge): embeddable rating badge for your site.
-- [Search](https://aiapp.im/search): search the directory.
-- [Offline fallback](https://aiapp.im/offline): cached directory view shown when the network is unavailable.
+- [Home](https://afr.im/): directory homepage — grade distribution, latest scans, and the natural leaderboard sorted by pure AFR score.
+- [Method](https://afr.im/method): the full AFR standard — three layers, every sub-check and its points, grade thresholds, and the neutrality pledge.
+- [Categories](https://afr.im/categories): browse rated sites by category.
+- [Submit](https://afr.im/submit): request a scan of a site you care about.
+- [About](https://afr.im/about): who runs AFR.IM and how to get in touch.
+- [For bots](https://afr.im/bot): what our own scanner fetches and how a score is produced.
+- [Badge](https://afr.im/badge): embeddable rating badge for your site.
+- [Search](https://afr.im/search): search the directory.
+- [Offline fallback](https://afr.im/offline): cached directory view shown when the network is unavailable.
 
 ## API — human-readable documentation
 
-- [API documentation](https://aiapp.im/docs): every public endpoint, parameters, error shapes, and example JSON responses.
-- [Machine-readable AFR standard](https://aiapp.im/api/v1/method): layers, per-check points, and grade thresholds as JSON.
-- [OpenAPI specification](https://aiapp.im/openapi.json): OpenAPI 3.1 description of the API (mirror at /.well-known/openapi.yaml).
+- [API documentation](https://afr.im/docs): every public endpoint, parameters, error shapes, and example JSON responses.
+- [Machine-readable AFR standard](https://afr.im/api/v1/method): layers, per-check points, and grade thresholds as JSON.
+- [OpenAPI specification](https://afr.im/openapi.json): OpenAPI 3.1 description of the API (mirror at /.well-known/openapi.yaml).
 
 ## API endpoints
 
-- [GET /api/v1/sites](https://aiapp.im/api/v1/sites): paginated directory listing with category, grade, search, and sort filters.
-- [GET /api/v1/stats](https://aiapp.im/api/v1/stats): totals, grade distribution, and average score.
-- [GET /api/v1/categories](https://aiapp.im/api/v1/categories): category tree with per-category site counts.
-- [GET /api/v1/leaderboard](https://aiapp.im/api/v1/leaderboard): top sites by AFR score descending (never mixes in sponsored placements).
-- [GET /badge/:domain.svg](https://aiapp.im/badge/example.com.svg): rating badge image for a domain.
+- [GET /api/v1/sites](https://afr.im/api/v1/sites): paginated directory listing with category, grade, search, and sort filters.
+- [GET /api/v1/stats](https://afr.im/api/v1/stats): totals, grade distribution, and average score.
+- [GET /api/v1/categories](https://afr.im/api/v1/categories): category tree with per-category site counts.
+- [GET /api/v1/leaderboard](https://afr.im/api/v1/leaderboard): top sites by AFR score descending (never mixes in sponsored placements).
+- [GET /badge/:domain.svg](https://afr.im/badge/example.com.svg): rating badge image for a domain.
 
 ## Optional: agent usage policy
 
-- [Agent instructions](https://aiapp.im/agents.md): how to identify yourself, fetch budget, what content may be reused, and how to cite a rating.
-- [AI crawler policy](https://aiapp.im/ai.txt): short machine-readable summary of what AiApp.im allows and why.
-- [robots.txt](https://aiapp.im/robots.txt): explicit Allow rules for the 14 AI user-agent families plus the Sitemap declaration.
-- Ratings, grades, and check names may be reused with attribution to AiApp.im; the AFR standard text is CC BY 4.0. See [About](https://aiapp.im/about) for contact and correction channels.
+- [Agent instructions](https://afr.im/agents.md): how to identify yourself, fetch budget, what content may be reused, and how to cite a rating.
+- [AI crawler policy](https://afr.im/ai.txt): short machine-readable summary of what AFR.IM allows and why.
+- [robots.txt](https://afr.im/robots.txt): explicit Allow rules for the 14 AI user-agent families plus the Sitemap declaration.
+- Ratings, grades, and check names may be reused with attribution to AFR.IM; the AFR standard text is CC BY 4.0. See [About](https://afr.im/about) for contact and correction channels.

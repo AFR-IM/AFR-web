@@ -140,7 +140,7 @@ const PROSE = {
     dataHeading: 'Data sources',
     dataItems: [
       ['Seed set', 'Tranco daily Top 1M (tranco-list.eu, free for academic use with attribution).'],
-      ['Scan evidence', 'Public snapshots committed to github.com/imAiAPP/aiapp-data — git versioning is the audit trail.'],
+      ['Scan evidence', 'Public snapshots committed to github.com/AFR-IM/AFR-data — git versioning is the audit trail.'],
       ['Corrections', 'Pull requests to the data repository (corrections/) trigger a re-scan; verified owners may publish a statement.'],
     ],
     schemaHeading: 'Machine-readable standard',
@@ -254,7 +254,7 @@ const PROSE = {
     dataHeading: '数据来源',
     dataItems: [
       ['种子集', 'Tranco 每日 Top 1M（tranco-list.eu，学术用途免费署名）。'],
-      ['扫描证据', '公开快照提交至 github.com/imAiAPP/aiapp-data——git 版本化即审计轨迹。'],
+      ['扫描证据', '公开快照提交至 github.com/AFR-IM/AFR-data——git 版本化即审计轨迹。'],
       ['纠错通道', '向数据仓提 PR（corrections/）即触发重扫复核；已验证站方可发布声明。'],
     ],
     schemaHeading: '机读标准',
@@ -296,8 +296,8 @@ const descOf = (id: string, ua?: string, family?: string) => {
 
 const rangeOf = (min: number, prevMin?: number) => `${min}–${prevMin !== undefined ? prevMin - 1 : 100}`;
 
-const cloneSnippet = `git clone https://github.com/imAiAPP/aiapp-web
-cd aiapp-web
+const cloneSnippet = `git clone https://github.com/AFR-IM/AFR-web
+cd AFR-web
 npm test   # = node --test packages/*/test/*.test.ts`;
 
 const runSnippet = `import { scoreAfr } from './packages/afr/src/index.ts';

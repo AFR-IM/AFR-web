@@ -29,11 +29,11 @@ const navItems = [
   { href: href('/submit'), label: L.ui.navSubmit },
 ];;
 
-const pageTitle = title ? `${title} · AiApp.im` : (L.ui.siteName as string);
+const pageTitle = title ? `${title} · AFR.IM` : (L.ui.siteName as string);
 const pageDesc = description ?? (L.ui.tagline as string);
 
 /* ── canonical / Open Graph / Twitter / JSON-LD (spec §10.1 + AFR B3 og-tags) ── */
-const SITE_URL = 'https://aiapp.im';
+const SITE_URL = 'https://afr.im';
 const canonical = new URL(path, SITE_URL).href;
 const stripZh = (p: string) => p.replace(/^\/zh-CN(?=\/|$)/, '') || '/';
 const enUrl = new URL(stripZh(path), SITE_URL).href;
@@ -42,17 +42,17 @@ const zhUrl = new URL(pathFor('zh-CN', stripZh(path)), SITE_URL).href;
 const websiteJsonLd = {
   '@context': 'https://schema.org',
   '@type': 'WebSite',
-  name: 'AiApp.im',
+  name: 'AFR.IM',
   alternateName: 'AI-Friendliness Rating',
-  url: 'https://aiapp.im/',
+  url: 'https://afr.im/',
   description:
     'Objective AI-friendliness ratings for every website — open, reproducible A–F grades for how open a site is to AI crawlers and agents.',
   inLanguage: ['en', 'zh-CN'],
   publisher: {
     '@type': 'Organization',
-    name: 'AiApp',
-    url: 'https://aiapp.im/',
-    logo: { '@type': 'ImageObject', url: 'https://aiapp.im/icons/icon-512.png', width: 512, height: 512 },
+    name: 'AFR',
+    url: 'https://afr.im/',
+    logo: { '@type': 'ImageObject', url: 'https://afr.im/icons/icon-512.png', width: 512, height: 512 },
   },
 };
 
@@ -76,7 +76,7 @@ const breadcrumbJsonLd =
         '@context': 'https://schema.org',
         '@type': 'BreadcrumbList',
         itemListElement: [
-          { '@type': 'ListItem', position: 1, name: 'AiApp.im', item: isZh ? 'https://aiapp.im/zh-CN/' : 'https://aiapp.im/' },
+          { '@type': 'ListItem', position: 1, name: 'AFR.IM', item: isZh ? 'https://afr.im/zh-CN/' : 'https://afr.im/' },
           ...pathSegments.map((seg, i) => ({
             '@type': 'ListItem',
             position: i + 2,
@@ -108,7 +108,7 @@ const ldJson = (obj: unknown) => JSON.stringify(obj).replace(/</g, '\\u003c');
     <meta property="og:description" content={pageDesc} />
     <meta property="og:type" content="website" />
     <meta property="og:url" content={canonical} />
-    <meta property="og:site_name" content="AiApp.im" />
+    <meta property="og:site_name" content="AFR.IM" />
     <meta property="og:locale" content={isZh ? 'zh_CN' : 'en_US'} />
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content={pageTitle} />
@@ -123,7 +123,7 @@ const ldJson = (obj: unknown) => JSON.stringify(obj).replace(/</g, '\\u003c');
   <body>
     <header class="nav" id="nav">
       <div class="container nav-inner">
-        <a class="brand" href={href('/')} aria-label="AiApp.im home">
+        <a class="brand" href={href('/')} aria-label="AFR.IM home">
           <Logo size={30} wordmark />
         </a>
 
@@ -174,15 +174,15 @@ const ldJson = (obj: unknown) => JSON.stringify(obj).replace(/</g, '\\u003c');
           <Logo size={24} wordmark />
           <p class="footer-pledge">{L.ui.footerPledge as string}</p>
           {/* We wear our own badge — the rating engine grades us too (dogfood). */}
-          <a class="footer-badge" href={href('/site/aiapp.im')} aria-label="AiApp.im AFR rating">
-            <img src="/badge/aiapp.im.svg" alt="AiApp.im AFR rating" height="28" loading="lazy" />
+          <a class="footer-badge" href={href('/site/afr.im')} aria-label="AFR.IM AFR rating">
+            <img src="/badge/afr.im.svg" alt="AFR.IM AFR rating" height="28" loading="lazy" />
           </a>
         </div>
         <nav class="footer-links" aria-label="footer">
           <a href={href('/method')}>{L.ui.navMethod}</a>
           <a href={href('/bot')}>{L.ui.navBot}</a>
           <a href={href('/about')}>{L.ui.navAbout}</a>
-          <a href="https://github.com/imAiAPP/aiapp-web" rel="noopener">GitHub</a>
+          <a href="https://github.com/AFR-IM/AFR-web" rel="noopener">GitHub</a>
         </nav>
         <p class="footer-meta mono">AFR {AFR_METHOD.version} · {L.ui.footerRights as string}</p>
       </div>
@@ -191,14 +191,14 @@ const ldJson = (obj: unknown) => JSON.stringify(obj).replace(/</g, '\\u003c');
     <script>
       // theme toggle (persisted; default follows prefers-color-scheme via tokens.css)
       const root = document.documentElement;
-      const saved = localStorage.getItem('aiapp-theme');
+      const saved = localStorage.getItem('afr-theme');
       if (saved === 'light' || saved === 'dark') root.dataset.theme = saved;
       document.getElementById('theme-toggle')?.addEventListener('click', () => {
         const systemDark = matchMedia('(prefers-color-scheme: dark)').matches;
         const current = root.dataset.theme ?? (systemDark ? 'dark' : 'light');
         const next = current === 'dark' ? 'light' : 'dark';
         root.dataset.theme = next;
-        localStorage.setItem('aiapp-theme', next);
+        localStorage.setItem('afr-theme', next);
       });
 
       // mobile drawer (§10.7)

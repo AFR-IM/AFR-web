@@ -1,4 +1,4 @@
-name = "aiapp-api"
+name = "afr-api"
 main = "src/index.ts"
 compatibility_date = "2026-11-10"
 workers_dev = true
@@ -31,14 +31,14 @@ database_id = "9c00a786-d95a-462d-9727-6654c2c38135"
 binding = "KV"
 id = "ef9bd080547240b3a2cf7b274c35b745"
 
-# Same-origin API + badges on aiapp.im (zone active in this account).
+# Same-origin API + badges on afr.im (zone active in this account).
 [[routes]]
-pattern = "aiapp.im/api/*"
-zone_name = "aiapp.im"
+pattern = "afr.im/api/*"
+zone_name = "afr.im"
 [[routes]]
-pattern = "aiapp.im/badge/*"
-zone_name = "aiapp.im"
+pattern = "afr.im/badge/*"
+zone_name = "afr.im"
 # MCP endpoint — stateless JSON-RPC 2.0 over HTTP (POST /mcp)
 [[routes]]
-pattern = "aiapp.im/mcp*"
-zone_name = "aiapp.im"
+pattern = "afr.im/mcp*"
+zone_name = "afr.im"

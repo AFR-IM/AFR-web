@@ -1,6 +1,6 @@
 ---
 // API documentation page — /docs (English) and /zh-CN/docs (Chinese).
-// Documents the real AiApp.im Worker API (apps/worker): GET endpoints are
+// Documents the real AFR.IM Worker API (apps/worker): GET endpoints are
 // open and key-free, POST /api/v1/submissions is rate-limited. Every example
 // below mirrors the actual response shapes the Worker returns.
 // Machine-readable companion: /openapi.json (mirror /.well-known/openapi.yaml).
@@ -21,8 +21,8 @@ const PROSE = {
   en: {
     title: 'API documentation',
     description:
-      'The public AiApp.im API: rated sites, stats, categories, leaderboard, the machine-readable AFR standard, rating badges, and scan submissions — open, key-free, with example JSON responses.',
-    lede: 'Every read endpoint on AiApp.im is public: no API key, no authentication, and Access-Control-Allow-Origin: * so browsers can call it from any origin. Responses are JSON snapshots of the same data this site renders; ratings are computed from public, reproducible evidence — see the AFR standard.',
+      'The public AFR.IM API: rated sites, stats, categories, leaderboard, the machine-readable AFR standard, rating badges, and scan submissions — open, key-free, with example JSON responses.',
+    lede: 'Every read endpoint on AFR.IM is public: no API key, no authentication, and Access-Control-Allow-Origin: * so browsers can call it from any origin. Responses are JSON snapshots of the same data this site renders; ratings are computed from public, reproducible evidence — see the AFR standard.',
     baseTitle: 'Base URL',
     endpointsTitle: 'Endpoints',
     errorsTitle: 'Errors',
@@ -44,8 +44,8 @@ const PROSE = {
   'zh-CN': {
     title: 'API 文档',
     description:
-      'AiApp.im 公开 API：站点评级、统计、分类、排行榜、机读 AFR 标准、评级徽章与扫描提交——开放、无需密钥，附示例 JSON 响应。',
-    lede: 'AiApp.im 的所有读取端点均公开：无需 API key、无需认证，并发送 Access-Control-Allow-Origin: *，任何来源的浏览器都可调用。响应是 JSON 快照，与本站渲染的数据同源；评级来自公开、可复现的证据——参见 AFR 标准。',
+      'AFR.IM 公开 API：站点评级、统计、分类、排行榜、机读 AFR 标准、评级徽章与扫描提交——开放、无需密钥，附示例 JSON 响应。',
+    lede: 'AFR.IM 的所有读取端点均公开：无需 API key、无需认证，并发送 Access-Control-Allow-Origin: *，任何来源的浏览器都可调用。响应是 JSON 快照，与本站渲染的数据同源；评级来自公开、可复现的证据——参见 AFR 标准。',
     baseTitle: 'Base URL',
     endpointsTitle: '端点',
     errorsTitle: '错误',
@@ -183,14 +183,14 @@ const endpoints: Endpoint[] = [
 <Base title={P.title} description={P.description}>
   <div class="container docs">
     <header class="hero">
-      <p class="eyebrow mono">AiApp.im · API v1</p>
+      <p class="eyebrow mono">AFR.IM · API v1</p>
       <h1>{P.title}</h1>
       <p class="lede">{P.lede}</p>
     </header>
 
     <section class="sec">
       <h2>{P.baseTitle}</h2>
-      <pre class="mono"><code>https://aiapp.im</code></pre>
+      <pre class="mono"><code>https://afr.im</code></pre>
     </section>
 
     <section class="sec">

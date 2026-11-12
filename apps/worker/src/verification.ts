@@ -13,7 +13,7 @@ export const PROBE_TIMEOUT_MS = 8000;
 /** Cloudflare DoH endpoint (JSON API), used for the TXT lookup */
 const DOH_URL = 'https://cloudflare-dns.com/dns-query';
 
-const WELL_KNOWN_PATH = '/.well-known/aiapp-verify.txt';
+const WELL_KNOWN_PATH = '/.well-known/afr-verify.txt';
 
 /** Probe methods exposed by GET /api/v1/verify/check */
 export type VerifyMethod = 'file' | 'dns' | 'meta';
@@ -80,7 +80,7 @@ async function probeDns(domain: string, token: string, fetchImpl: FetchLike): Pr
     if (payload.Status !== undefined && payload.Status !== 0) {
       return { method: 'dns', ok: false, detail: clip(`dns: DoH status ${payload.Status}`) };
     }
-    const needle = `aiapp-verify=${token}`;
+    const needle = `afr-verify=${token}`;
     const ok = (payload.Answer ?? []).some(
       (answer) => answer.type === 16 && (answer.data ?? '').includes(needle),
     );
@@ -94,11 +94,11 @@ async function probeDns(domain: string, token: string, fetchImpl: FetchLike): Pr
   }
 }
 
-/** Case-insensitive match of <meta name="aiapp-verification" content="<token>">
+/** Case-insensitive match of <meta name="afr-verification" content="<token>">
  * (either attribute order) */
 export function hasVerificationMeta(html: string, token: string): boolean {
   for (const tag of html.match(/<meta\b[^>]*>/gi) ?? []) {
-    if (!/\bname\s*=\s*["']aiapp-verification["']/i.test(tag)) continue;
+    if (!/\bname\s*=\s*["']afr-verification["']/i.test(tag)) continue;
     const content = /\bcontent\s*=\s*["']([^"']*)["']/i.exec(tag);
     if (content?.[1] === token) return true;
   }

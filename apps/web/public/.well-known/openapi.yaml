@@ -1,15 +1,15 @@
 openapi: 3.1.0
 info:
-  title: AiApp.im API
+  title: AFR.IM API
   version: 1.0.0
   description: >-
-    Public, key-free read API for the AiApp.im AI-Friendliness Rating (AFR)
+    Public, key-free read API for the AFR.IM AI-Friendliness Rating (AFR)
     directory. All JSON endpoints send Access-Control-Allow-Origin: *.
     Ratings are snapshots computed from public, reproducible evidence —
     see GET /api/v1/method for the machine-readable standard.
-    This file mirrors https://aiapp.im/openapi.json.
+    This file mirrors https://afr.im/openapi.json.
 servers:
-  - url: https://aiapp.im
+  - url: https://afr.im
     description: Production
 paths:
   /api/v1/sites:

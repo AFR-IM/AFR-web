@@ -1,4 +1,4 @@
-// @aiapp/web i18n loader — resolves locale catalogs for pages/components.
+// @afr/web i18n loader — resolves locale catalogs for pages/components.
 // Catalog CONTENT lives in packages/i18n (en default / zh-CN, keyed by check id per spec);
 // this module only wires Astro routing to it.
 

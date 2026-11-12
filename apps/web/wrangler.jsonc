@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "aiapp-web",
+  "name": "AFR-web",
   "main": "dist/_worker.js/index.js",
   "compatibility_date": "2026-11-10",
   "compatibility_flags": [
@@ -14,7 +14,7 @@
     "directory": "dist"
   },
   "routes": [
-    { "pattern": "aiapp.im/*", "zone_name": "aiapp.im" },
-    { "pattern": "www.aiapp.im/*", "zone_name": "aiapp.im" }
+    { "pattern": "afr.im/*", "zone_name": "afr.im" },
+    { "pattern": "www.afr.im/*", "zone_name": "afr.im" }
   ]
 }

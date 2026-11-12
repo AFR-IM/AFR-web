@@ -2,7 +2,7 @@
 // SponsoredCard — spec §10.5 ad slot (positions 1 category-top / 2 search-top).
 // Discipline: standalone block, never mixed into the natural list; permanent
 // "Sponsored" badge in --text-2 small text; the site's REAL GradeRing; Visit
-// carries ?ref=aiapp-sponsor for click counting; background --bg-elevated with
+// carries ?ref=afr-sponsor for click counting; background --bg-elevated with
 // the same radius as natural cards. The wrapper owns the 24px gap + 1px dashed
 // --line that separates the slot from the natural ranking area.
 // Renders nothing when the ad's domain is missing from the site list (a real
@@ -49,7 +49,7 @@ const body = locale === 'zh-CN' ? (ad.bodyZh ?? ad.body) : ad.body;
       </div>
       <a
         class="btn sponsor-visit"
-        href={`https://${site.domain}?ref=aiapp-sponsor`}
+        href={`https://${site.domain}?ref=afr-sponsor`}
         target="_blank"
         rel="noopener noreferrer sponsored"
       >

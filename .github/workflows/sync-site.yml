@@ -3,10 +3,10 @@
 # or run manually via workflow_dispatch.
 #
 # Flow: data checkout -> fetch-data -> sitemap -> npm ci -> astro build
-#       -> wrangler deploy (static assets + routes for aiapp.im).
+#       -> wrangler deploy (static assets + routes for afr.im).
 #
 # Required repository secrets (Settings -> Secrets and variables -> Actions):
-#   DATA_REPO_TOKEN  PAT with read access to imAiAPP/aiapp-data.
+#   DATA_REPO_TOKEN  PAT with read access to AFR-IM/AFR-data.
 #   CF_API_TOKEN     Cloudflare API token used by wrangler deploy.
 #   CF_ACCOUNT_ID    Cloudflare account id used by wrangler deploy.
 name: sync-site
@@ -36,7 +36,7 @@ jobs:
       - name: Checkout data repo
         uses: actions/checkout@v4
         with:
-          repository: imAiAPP/aiapp-data
+          repository: AFR-IM/AFR-data
           token: ${{ secrets.DATA_REPO_TOKEN }}
           path: data
 

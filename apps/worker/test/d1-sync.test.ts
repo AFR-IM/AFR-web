@@ -7,10 +7,10 @@ import { DATA_REPO_RAW, type Snapshot, syncDate } from '../src/d1-sync.ts';
 import { openSeededDb } from './helpers.ts';
 
 const DATE = '2026/11/10';
-const LISTING_URL = `https://api.github.com/repos/imAiAPP/aiapp-data/contents/scans/${DATE}`;
+const LISTING_URL = `https://api.github.com/repos/AFR-IM/AFR-data/contents/scans/${DATE}`;
 const SNAPSHOT_PATH = `scans/${DATE}/acme.dev.json`;
 
-/** Fixture shaped like a real aiapp-data snapshot ({ signals, afr }) */
+/** Fixture shaped like a real AFR-data snapshot ({ signals, afr }) */
 function makeSnapshot(score: number, grade: Grade): Snapshot {
   return {
     signals: {

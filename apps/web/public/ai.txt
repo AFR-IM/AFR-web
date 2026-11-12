@@ -1,10 +1,10 @@
-# AiApp.im — AI crawler policy
+# AFR.IM — AI crawler policy
 
-> AiApp.im is a public directory of AI-friendliness ratings. Every page and every read-only API endpoint is open to AI crawlers; nothing is behind authentication, and there is no JavaScript challenge for identified crawlers.
+> AFR.IM is a public directory of AI-friendliness ratings. Every page and every read-only API endpoint is open to AI crawlers; nothing is behind authentication, and there is no JavaScript challenge for identified crawlers.
 
-- **Allowed AI crawlers:** OAI-SearchBot, Claude-SearchBot, PerplexityBot, Googlebot, ChatGPT-User, Claude-User, Perplexity-User, Google-Extended, GPTBot, ClaudeBot, CCBot, Bytespider, Amazonbot, Applebot-Extended — each explicitly allowed in [robots.txt](https://aiapp.im/robots.txt), alongside a wildcard allow for all other crawlers.
-- **Machine-readable map:** [llms.txt](https://aiapp.im/llms.txt) (summary) and [llms-full.txt](https://aiapp.im/llms-full.txt) (complete page inventory).
-- **Agent instructions:** [agents.md](https://aiapp.im/agents.md) — identification, fetch budget, reuse terms, and how to cite a rating.
-- **Public API:** human docs at [AiApp.im/docs](https://aiapp.im/docs), OpenAPI at [AiApp.im/openapi.json](https://aiapp.im/openapi.json), machine-readable standard at [AiApp.im/api/v1/method](https://aiapp.im/api/v1/method).
-- **Reuse:** ratings, grades, and check names may be reused with attribution to AiApp.im; the AFR standard text is CC BY 4.0. Cite a rating with its domain, score, grade, engine version, and scan timestamp, linking to the site's page on AiApp.im.
-- **Contact:** see [AiApp.im/about](https://aiapp.im/about) for corrections and questions.
+- **Allowed AI crawlers:** OAI-SearchBot, Claude-SearchBot, PerplexityBot, Googlebot, ChatGPT-User, Claude-User, Perplexity-User, Google-Extended, GPTBot, ClaudeBot, CCBot, Bytespider, Amazonbot, Applebot-Extended — each explicitly allowed in [robots.txt](https://afr.im/robots.txt), alongside a wildcard allow for all other crawlers.
+- **Machine-readable map:** [llms.txt](https://afr.im/llms.txt) (summary) and [llms-full.txt](https://afr.im/llms-full.txt) (complete page inventory).
+- **Agent instructions:** [agents.md](https://afr.im/agents.md) — identification, fetch budget, reuse terms, and how to cite a rating.
+- **Public API:** human docs at [AFR.IM/docs](https://afr.im/docs), OpenAPI at [AFR.IM/openapi.json](https://afr.im/openapi.json), machine-readable standard at [AFR.IM/api/v1/method](https://afr.im/api/v1/method).
+- **Reuse:** ratings, grades, and check names may be reused with attribution to AFR.IM; the AFR standard text is CC BY 4.0. Cite a rating with its domain, score, grade, engine version, and scan timestamp, linking to the site's page on AFR.IM.
+- **Contact:** see [AFR.IM/about](https://afr.im/about) for corrections and questions.

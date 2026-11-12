@@ -1,4 +1,4 @@
-// @aiapp/web — category heuristics: maps a scanned domain (+ page title) to one
+// @afr/web — category heuristics: maps a scanned domain (+ page title) to one
 // of the 14 product category slugs.
 //
 // Matching order for one site:

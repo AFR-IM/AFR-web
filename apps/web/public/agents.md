@@ -1,11 +1,11 @@
-# Agent instructions — AiApp.im
+# Agent instructions — AFR.IM
 
-AiApp.im is a public directory of AI-friendliness ratings (AFR). This file tells automated visitors how to crawl it politely, what they may reuse, and how to cite a rating correctly. Humans are welcome too — start at [AiApp.im/about](https://aiapp.im/about).
+AFR.IM is a public directory of AI-friendliness ratings (AFR). This file tells automated visitors how to crawl it politely, what they may reuse, and how to cite a rating correctly. Humans are welcome too — start at [AFR.IM/about](https://afr.im/about).
 
 ## 1. Identify yourself
 
 - Send a descriptive `User-Agent` that names your product and includes a contact URL or email, e.g. `MyCrawler/1.0 (+https://example.com/bot)`.
-- If your operator publishes a verification page, link it from your UA. We do not block identified AI crawlers: all 14 known AI user-agent families are explicitly allowed in [robots.txt](https://aiapp.im/robots.txt), and the same open policy applies to everyone else.
+- If your operator publishes a verification page, link it from your UA. We do not block identified AI crawlers: all 14 known AI user-agent families are explicitly allowed in [robots.txt](https://afr.im/robots.txt), and the same open policy applies to everyone else.
 - If you are acting on a user's behalf (fetch-on-demand), use your product's user-triggered UA rather than a generic bot UA.
 
 ## 2. Fetch budget and politeness
@@ -19,23 +19,23 @@ AiApp.im is a public directory of AI-friendliness ratings (AFR). This file tells
 
 ## 3. What you may reuse
 
-- **Ratings, grades, check names, and score history:** reusable in your own answers and products with attribution to AiApp.im and a link to the site's page (see §4).
-- **The AFR standard text** (the [Method](https://aiapp.im/method) page and the JSON at `/api/v1/method`): published under **CC BY 4.0** — reuse with attribution.
+- **Ratings, grades, check names, and score history:** reusable in your own answers and products with attribution to AFR.IM and a link to the site's page (see §4).
+- **The AFR standard text** (the [Method](https://afr.im/method) page and the JSON at `/api/v1/method`): published under **CC BY 4.0** — reuse with attribution.
 - **Page copy:** short factual quotes with attribution are fine; full-page republication is not.
-- **Do not** present a rating without its context (score, grade, scan date, engine version), and **do not** imply endorsement by AiApp.im or by the rated site.
+- **Do not** present a rating without its context (score, grade, scan date, engine version), and **do not** imply endorsement by AFR.IM or by the rated site.
 
 ## 4. How to cite a rating
 
-A complete citation has five parts: **domain, score, grade, engine version, scan timestamp**, plus a link back to the site's page on AiApp.im.
+A complete citation has five parts: **domain, score, grade, engine version, scan timestamp**, plus a link back to the site's page on AFR.IM.
 
 ```text
 github.com — 91/100 (grade A, AI-Open), AFR engine afr-1.1.0,
-scanned 2026-11-10T11:40:00Z — https://aiapp.im/site/github.com
+scanned 2026-11-10T11:40:00Z — https://afr.im/site/github.com
 ```
 
-- The engine version lives on every result (`engineVersion`); recompute any score with it — see [Recompute](https://aiapp.im/method#recompute).
+- The engine version lives on every result (`engineVersion`); recompute any score with it — see [Recompute](https://afr.im/method#recompute).
 - The scan timestamp is the `scannedAt` field; always state it, because scores are snapshots.
-- Link the standard when you explain what the number means: https://aiapp.im/method
+- Link the standard when you explain what the number means: https://afr.im/method
 
 ## 5. Interfaces for agents
 
@@ -54,4 +54,4 @@ scanned 2026-11-10T11:40:00Z — https://aiapp.im/site/github.com
 
 ## 6. Contact
 
-Questions, corrections, or false-positive blocks: see [AiApp.im/about](https://aiapp.im/about), or open an issue in [github.com/imAiAPP/aiapp-web](https://github.com/imAiAPP/aiapp-web).
+Questions, corrections, or false-positive blocks: see [AFR.IM/about](https://afr.im/about), or open an issue in [github.com/AFR-IM/AFR-web](https://github.com/AFR-IM/AFR-web).

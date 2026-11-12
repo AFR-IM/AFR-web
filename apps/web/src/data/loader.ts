@@ -1,6 +1,6 @@
-// @aiapp/web data loader — build-time reads of the generated scan payloads.
+// @afr/web data loader — build-time reads of the generated scan payloads.
 //
-// Data flow: scripts/fetch-data.mjs turns aiapp-data snapshots into
+// Data flow: scripts/fetch-data.mjs turns AFR-data snapshots into
 // src/data/generated/{index,home,categories}.json + details/*.json. This
 // module serves them through static imports guarded by the manifest: when the
 // generated directory is absent (fresh clone / pre-fetch build), every loader

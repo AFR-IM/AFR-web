@@ -20,7 +20,7 @@ describe('GET /badge/:domain.svg', () => {
     const svg = await res.text();
     assert.ok(svg.includes('>A<'), 'grade letter A missing');
     assert.ok(svg.includes('92'), 'score missing');
-    assert.ok(svg.includes('AI-Friendly Rating · AiApp.im'), 'label missing');
+    assert.ok(svg.includes('AI-Friendly Rating · AFR.IM'), 'label missing');
     assert.ok(svg.includes('#3ECFAD'), 'grade A color missing');
     assert.ok(svg.startsWith('<svg'), 'not an SVG document');
   });

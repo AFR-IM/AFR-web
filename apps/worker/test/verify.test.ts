@@ -40,7 +40,7 @@ function probeFetch(routes: ProbeRoutes): typeof fetch {
     if (url.includes('cloudflare-dns.com')) {
       return routes.doh ? await routes.doh() : Response.json({ Status: 0, Answer: [] });
     }
-    if (url.includes('/.well-known/aiapp-verify.txt')) {
+    if (url.includes('/.well-known/afr-verify.txt')) {
       return routes.file ? await routes.file() : new Response('nope', { status: 404 });
     }
     return routes.home ? await routes.home() : new Response('not found', { status: 404 });
@@ -100,16 +100,16 @@ describe('POST /api/v1/verify/start', () => {
     assert.ok(expires <= Date.now() + VERIFY_TOKEN_TTL_MS + 5000);
     assert.equal(body.checkUrl, '/api/v1/verify/check?domain=example.com');
     assert.deepEqual(body.methods.file, {
-      url: 'https://example.com/.well-known/aiapp-verify.txt',
+      url: 'https://example.com/.well-known/afr-verify.txt',
       content: body.token,
     });
     assert.deepEqual(body.methods.dns, {
       type: 'TXT',
       name: 'example.com',
-      value: `aiapp-verify=${body.token}`,
+      value: `afr-verify=${body.token}`,
     });
     assert.deepEqual(body.methods.meta, {
-      name: 'aiapp-verification',
+      name: 'afr-verification',
       content: body.token,
     });
 
@@ -264,7 +264,7 @@ describe('GET /api/v1/verify/check', () => {
       doh: () =>
         Response.json({
           Status: 0,
-          Answer: [{ name: 'fresh.example', type: 16, data: `"aiapp-verify=${token}"` }],
+          Answer: [{ name: 'fresh.example', type: 16, data: `"afr-verify=${token}"` }],
         }),
     });
     const { app, raw } = freshApp(impl);
@@ -292,7 +292,7 @@ describe('GET /api/v1/verify/check', () => {
     const impl = probeFetch({
       home: () =>
         new Response(
-          `<html><head><META NAME="aiapp-verification" CONTENT="${token}"></head></html>`,
+          `<html><head><META NAME="afr-verification" CONTENT="${token}"></head></html>`,
           { status: 200 },
         ),
     });

@@ -1,4 +1,4 @@
-// @aiapp/i18n tests — catalog parity, engine check-id coverage, AFR_METHOD math.
+// @afr/i18n tests — catalog parity, engine check-id coverage, AFR_METHOD math.
 // Run: npm test (node --test test/*.test.ts) inside packages/i18n.
 
 import assert from 'node:assert/strict';

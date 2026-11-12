@@ -1,4 +1,4 @@
-// src/mcp.ts — Model Context Protocol (MCP) server endpoint for aiapp.im.
+// src/mcp.ts — Model Context Protocol (MCP) server endpoint for afr.im.
 //
 // Transport: plain stateless JSON-RPC 2.0 over HTTP — one request body in, one
 // JSON-RPC response out. There are no SSE streams and no session state; that
@@ -25,7 +25,7 @@ export const MCP_SUPPORTED_PROTOCOL_VERSIONS: readonly string[] = [
 ];
 
 /** serverInfo name/version advertised on initialize. */
-export const MCP_SERVER_INFO = { name: 'aiapp', version: '1.0.0' } as const;
+export const MCP_SERVER_INFO = { name: 'afr', version: '1.0.0' } as const;
 
 /** POST /mcp budget: requests per IP per minute. */
 export const MCP_RATE_LIMIT = 60;
@@ -46,7 +46,7 @@ export const JSONRPC_INVALID_PARAMS = -32602;
 
 /** Initialize `instructions`: the declared, discoverable surface of the server. */
 export const MCP_INSTRUCTIONS =
-  'aiapp.im is a public directory of AI-friendliness ratings for websites; every rating comes ' +
+  'afr.im is a public directory of AI-friendliness ratings for websites; every rating comes ' +
   'from public, reproducible scans (the AFR standard) and is served read-only here. Transport: ' +
   'stateless JSON-RPC 2.0 over HTTP at POST /mcp — no SSE streams and no session state. Tools: ' +
   'site_rating returns the grade, score, strategy tag, last scan time and view count for one ' +
@@ -69,7 +69,7 @@ export const MCP_TOOLS: readonly McpTool[] = [
   {
     name: 'site_rating',
     description:
-      'Look up the aiapp.im AI-friendliness rating for a single domain: grade, AFR score, ' +
+      'Look up the afr.im AI-friendliness rating for a single domain: grade, AFR score, ' +
       'strategy tag, last scan time and page views. The values are public, reproducible scan ' +
       'results; an unknown domain is reported as a tool error, not a protocol error.',
     inputSchema: {
@@ -87,7 +87,7 @@ export const MCP_TOOLS: readonly McpTool[] = [
   {
     name: 'search_sites',
     description:
-      'Search the aiapp.im directory of AI-friendliness ratings and get graded sites (A–F) ' +
+      'Search the afr.im directory of AI-friendliness ratings and get graded sites (A–F) ' +
       'ranked by score descending. Only public, reproducible scan results are returned — ' +
       'pending (unscanned) sites are excluded.',
     inputSchema: {
@@ -116,7 +116,7 @@ export const MCP_TOOLS: readonly McpTool[] = [
   {
     name: 'grade_distribution',
     description:
-      'Get directory-wide totals for aiapp.im: overall site count, verified count, pending ' +
+      'Get directory-wide totals for afr.im: overall site count, verified count, pending ' +
       '(unscanned) count, average score and per-grade counts A–F. Derived from the same public, ' +
       'reproducible scan results as every published rating.',
     inputSchema: {

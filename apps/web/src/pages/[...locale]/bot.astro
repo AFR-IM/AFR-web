@@ -18,13 +18,13 @@ const T = (en: string, zh: string) => (isZh ? zh : en);
 const href = (p: string) => pathFor(locale, p);
 
 /** Documented identity — the constant below is what is actually sent. */
-const SPEC_UA = 'aiapp-im-bot/1.0 (+https://aiapp.im/bot)';
+const SPEC_UA = 'afr-im-bot/1.0 (+https://afr.im/bot)';
 
 const PROSE = {
   en: {
     title: 'Crawler politeness',
     description:
-      'How the AiApp scanner behaves on your site: identity, request budget, frequency, crawl-delay, the declined mechanism, and what we store.',
+      'How the AFR scanner behaves on your site: identity, request budget, frequency, crawl-delay, the declined mechanism, and what we store.',
     lede: 'This page is our full politeness and boundary policy. It is published so you can audit it, block us, or get in touch — transparency is the whole point.',
     idTitle: 'Identity',
     idSpec: 'Documented identity:',
@@ -68,12 +68,12 @@ const PROSE = {
     ],
     contactTitle: 'Opt out or say hello',
     contactBody:
-      'Blocking: add our user-agent to robots.txt — it takes effect on the next scan. Questions, false positives or removal requests: open an issue on aiapp-web, or send a correction PR to aiapp-data.',
+      'Blocking: add our user-agent to robots.txt — it takes effect on the next scan. Questions, false positives or removal requests: open an issue on AFR-web, or send a correction PR to AFR-data.',
     methodLink: 'See the scoring method →',
   },
   'zh-CN': {
     title: '爬虫礼仪',
-    description: 'AiApp 扫描器在你站点上的行为规范：身份、请求预算、频次、crawl-delay、婉拒机制与我们保存什么。',
+    description: 'AFR 扫描器在你站点上的行为规范：身份、请求预算、频次、crawl-delay、婉拒机制与我们保存什么。',
     lede: '本页是完整的礼貌与边界政策全文公开——供你审计、屏蔽我们或与我们联系：透明就是全部意义。',
     idTitle: '身份标识',
     idSpec: '爬虫身份：',
@@ -116,7 +116,7 @@ const PROSE = {
     ],
     contactTitle: '屏蔽或联系我们',
     contactBody:
-      '屏蔽：把我们的 user-agent 写进 robots.txt，下次扫描即生效。疑问、误判或下架请求：在 aiapp-web 开 issue，或向 aiapp-data 提纠错 PR。',
+      '屏蔽：把我们的 user-agent 写进 robots.txt，下次扫描即生效。疑问、误判或下架请求：在 AFR-web 开 issue，或向 AFR-data 提纠错 PR。',
     methodLink: '查看评分方法 →',
   },
 } as const;
@@ -195,9 +195,9 @@ const P = PROSE[locale === 'zh-CN' ? 'zh-CN' : 'en'];
       <h2>{P.contactTitle}</h2>
       <p class="lead">{P.contactBody}</p>
       <p class="links">
-        <a href="https://github.com/imAiAPP/aiapp-web/issues" rel="noopener">GitHub Issues</a>
+        <a href="https://github.com/AFR-IM/AFR-web/issues" rel="noopener">GitHub Issues</a>
         <span class="sep">·</span>
-        <a href="https://github.com/imAiAPP/aiapp-data" rel="noopener">aiapp-data</a>
+        <a href="https://github.com/AFR-IM/AFR-data" rel="noopener">AFR-data</a>
         <span class="sep">·</span>
         <a href={href('/method')}>{P.methodLink}</a>
       </p>

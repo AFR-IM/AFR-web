@@ -1,7 +1,7 @@
-// src/d1-sync.ts — pull daily scan snapshots from the aiapp-data repository and
+// src/d1-sync.ts — pull daily scan snapshots from the AFR-data repository and
 // upsert them into D1 (sites / scans / evidence).
 //
-// SSOT layout: https://raw.githubusercontent.com/imAiAPP/aiapp-data/main/scans/YYYY/MM/DD/<domain>.json
+// SSOT layout: https://raw.githubusercontent.com/AFR-IM/AFR-data/main/scans/YYYY/MM/DD/<domain>.json
 // Each snapshot is `{ signals, afr }` (packages/scanner output + packages/afr result).
 // Both `fetch` and `db` are injected so the logic is fully testable offline
 // (test/d1-sync.test.ts fakes the GitHub contents listing + raw file fetches).
@@ -9,8 +9,8 @@
 import type { AfrResult, CheckResult, ScanSignals } from '../../../packages/shared/src/index.ts';
 import type { Db } from './db.ts';
 
-export const DATA_REPO_API = 'https://api.github.com/repos/imAiAPP/aiapp-data/contents';
-export const DATA_REPO_RAW = 'https://raw.githubusercontent.com/imAiAPP/aiapp-data/main';
+export const DATA_REPO_API = 'https://api.github.com/repos/AFR-IM/AFR-data/contents';
+export const DATA_REPO_RAW = 'https://raw.githubusercontent.com/AFR-IM/AFR-data/main';
 
 export interface Snapshot {
   signals: ScanSignals;

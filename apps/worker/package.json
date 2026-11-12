@@ -1,5 +1,5 @@
 {
-  "name": "@aiapp/worker",
+  "name": "@afr/worker",
   "private": true,
   "type": "module",
   "version": "0.0.1",

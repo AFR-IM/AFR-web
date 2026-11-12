@@ -1,11 +1,11 @@
-// @aiapp/web — Astro 5 config (spec §5.2: SSG + islands, static output)
+// @afr/web — Astro 5 config (spec §5.2: SSG + islands, static output)
 import { defineConfig } from 'astro/config';
 import react from '@astrojs/react';
 
 import cloudflare from "@astrojs/cloudflare";
 
 export default defineConfig({
-  site: 'https://aiapp.im',
+  site: 'https://afr.im',
   output: 'static',
   integrations: [react()],
 

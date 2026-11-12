@@ -53,7 +53,7 @@ describe('POST /mcp — initialize handshake', () => {
     assert.equal(body.id, 1);
     assert.equal(body.result.protocolVersion, '2025-03-26');
     assert.deepEqual(body.result.capabilities, { tools: { listChanged: false } });
-    assert.equal(body.result.serverInfo.name, 'aiapp');
+    assert.equal(body.result.serverInfo.name, 'afr');
     assert.equal(body.result.serverInfo.version, '1.0.0');
 
     // The instructions are the declared, discoverable surface: transport note,
@@ -183,7 +183,7 @@ describe('POST /mcp — tools/list', () => {
       ['site_rating', 'search_sites', 'grade_distribution'],
     );
     for (const tool of tools) {
-      assert.ok(tool.description.includes('aiapp.im'));
+      assert.ok(tool.description.includes('afr.im'));
       assert.ok(tool.description.includes('scan'));
       assert.equal(tool.inputSchema.type, 'object');
     }

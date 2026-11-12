@@ -16,7 +16,7 @@ const webDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const detailsDir = join(webDir, 'src/data/generated/details');
 const out = join(webDir, 'public/sitemap.xml');
 
-const SITE = 'https://aiapp.im';
+const SITE = 'https://afr.im';
 const LASTMOD = new Date().toISOString().slice(0, 10); // the day this file is generated
 const TOP = ['/', '/method', '/categories', '/search', '/submit', '/about', '/bot', '/badge', '/docs'];
 

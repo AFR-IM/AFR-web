@@ -18,10 +18,10 @@ const href = (p: string) => pathFor(locale, p);
 
 const PROSE = {
   en: {
-    title: 'About AiApp',
+    title: 'About AFR',
     description:
-      'AiApp.im rates how friendly every website is to AI — automated, reproducible, evidence-backed, and neutral about the answer.',
-    lede: 'See how friendly every website is to AI. AiApp.im is an open directory that rates sites A–F on their openness to AI crawlers and agents, with the evidence chain published next to every score.',
+      'AFR.IM rates how friendly every website is to AI — automated, reproducible, evidence-backed, and neutral about the answer.',
+    lede: 'See how friendly every website is to AI. AFR.IM is an open directory that rates sites A–F on their openness to AI crawlers and agents, with the evidence chain published next to every score.',
     whatTitle: 'What we do',
     whatItems: [
       'Scan public signals only — robots.txt, llms.txt, sitemap, structured data, APIs — with a transparent crawler anyone can identify and block.',
@@ -45,21 +45,21 @@ const PROSE = {
     notLead: 'Neutrality is the product. A rating that can be bought, argued into, or nudged is worth nothing.',
     ossTitle: 'Open source',
     ossItems: [
-      ['aiapp-web', 'The whole site, the scanner and the AFR scoring engine.', 'https://github.com/imAiAPP/aiapp-web'],
-      ['aiapp-data', 'Public scan snapshots — one JSON per site, git-versioned as the audit trail.', 'https://github.com/imAiAPP/aiapp-data'],
+      ['AFR-web', 'The whole site, the scanner and the AFR scoring engine.', 'https://github.com/AFR-IM/AFR-web'],
+      ['AFR-data', 'Public scan snapshots — one JSON per site, git-versioned as the audit trail.', 'https://github.com/AFR-IM/AFR-data'],
     ],
     contactTitle: 'Contact',
     contactBody:
-      'Corrections: open a PR against the data repository (corrections/) — it triggers a re-scan. Bugs and feature requests: issues on aiapp-web. Owner verification and statements start from a site’s report page.',
+      'Corrections: open a PR against the data repository (corrections/) — it triggers a re-scan. Bugs and feature requests: issues on AFR-web. Owner verification and statements start from a site’s report page.',
     contactLinks: [
       ['Method & neutrality pledge', '/method'],
       ['Crawler politeness spec', '/bot'],
     ],
   },
   'zh-CN': {
-    title: '关于 AiApp',
-    description: 'AiApp.im 为每个网站的 AI 友好度打分——自动、可复现、有证据，且对结果保持中立。',
-    lede: '看看每个网站，对 AI 有多友好。AiApp.im 是一个开放目录，按 A–F 给网站的 AI 开放度评级，每个分数旁都附带完整证据链。',
+    title: '关于 AFR',
+    description: 'AFR.IM 为每个网站的 AI 友好度打分——自动、可复现、有证据，且对结果保持中立。',
+    lede: '看看每个网站，对 AI 有多友好。AFR.IM 是一个开放目录，按 A–F 给网站的 AI 开放度评级，每个分数旁都附带完整证据链。',
     whatTitle: '我们做什么',
     whatItems: [
       '只扫描公开信号——robots.txt、llms.txt、sitemap、结构化数据、API——爬虫身份透明，任何人都能识别并随时屏蔽我们。',
@@ -83,12 +83,12 @@ const PROSE = {
     notLead: '中立就是产品本身。能被买到、被说动、被微调的评级一文不值。',
     ossTitle: '开源',
     ossItems: [
-      ['aiapp-web', '整站、扫描器与 AFR 评分引擎。', 'https://github.com/imAiAPP/aiapp-web'],
-      ['aiapp-data', '公开扫描快照——每站一份 JSON，git 版本化即审计轨迹。', 'https://github.com/imAiAPP/aiapp-data'],
+      ['AFR-web', '整站、扫描器与 AFR 评分引擎。', 'https://github.com/AFR-IM/AFR-web'],
+      ['AFR-data', '公开扫描快照——每站一份 JSON，git 版本化即审计轨迹。', 'https://github.com/AFR-IM/AFR-data'],
     ],
     contactTitle: '联系我们',
     contactBody:
-      '纠错：向数据仓提 PR（corrections/），会自动触发重扫复核。缺陷与需求：aiapp-web 的 issues。站长验证与站方声明从站点报告页发起。',
+      '纠错：向数据仓提 PR（corrections/），会自动触发重扫复核。缺陷与需求：AFR-web 的 issues。站长验证与站方声明从站点报告页发起。',
     contactLinks: [
       ['方法页与中立性承诺', '/method'],
       ['爬虫礼仪规范', '/bot'],
@@ -102,7 +102,7 @@ const P = PROSE[locale === 'zh-CN' ? 'zh-CN' : 'en'];
 <Base title={P.title} description={P.description}>
   <div class="container about">
     <header class="hero">
-      <p class="eyebrow mono">AiApp.im</p>
+      <p class="eyebrow mono">AFR.IM</p>
       <h1>{P.title}</h1>
       <p class="lede">{P.lede}</p>
       <div class="hero-cta">
@@ -167,7 +167,7 @@ const P = PROSE[locale === 'zh-CN' ? 'zh-CN' : 'en'];
           </>
         ))}
         <span class="sep">·</span>
-        <a href="https://github.com/imAiAPP/aiapp-web/issues" rel="noopener">GitHub Issues</a>
+        <a href="https://github.com/AFR-IM/AFR-web/issues" rel="noopener">GitHub Issues</a>
       </p>
     </section>
   </div>

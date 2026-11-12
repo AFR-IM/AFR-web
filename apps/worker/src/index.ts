@@ -1,4 +1,4 @@
-// src/index.ts — AiApp.im Worker API (Hono on Cloudflare Workers).
+// src/index.ts — AFR.IM Worker API (Hono on Cloudflare Workers).
 // Endpoints per spec v1.0 §6.2 + v1.2 §6.2; the AFR method schema per §14-D;
 // the SVG badge per §8.4. D1 is wrapped by src/db.ts so tests can inject a
 // node:sqlite database through createApp({ db }).
@@ -73,7 +73,7 @@ export const CLAIMS_DOMAIN_LIMIT = 5; // claims per domain per UTC day
 export const PV_DAILY_WRITE_CAP = 70_000;
 
 const SCAN_DISPATCH_URL =
-  'https://api.github.com/repos/imAiAPP/aiapp-web/actions/workflows/scan.yml/dispatches';
+  'https://api.github.com/repos/AFR-IM/AFR-web/actions/workflows/scan.yml/dispatches';
 
 const PER_PAGE = 20;
 const LEADERBOARD_SIZE = 10;
@@ -1059,9 +1059,9 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
       expiresAt,
       checkUrl: `/api/v1/verify/check?domain=${encodeURIComponent(domain)}`,
       methods: {
-        file: { url: `https://${domain}/.well-known/aiapp-verify.txt`, content: token },
-        dns: { type: 'TXT', name: domain, value: `aiapp-verify=${token}` },
-        meta: { name: 'aiapp-verification', content: token },
+        file: { url: `https://${domain}/.well-known/afr-verify.txt`, content: token },
+        dns: { type: 'TXT', name: domain, value: `afr-verify=${token}` },
+        meta: { name: 'afr-verification', content: token },
       },
     });
   });

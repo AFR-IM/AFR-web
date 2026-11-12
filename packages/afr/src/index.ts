@@ -1,4 +1,4 @@
-// @aiapp/afr — AFR scoring engine entry point (pure functions, spec §3)
+// @afr/afr — AFR scoring engine entry point (pure functions, spec §3)
 // Input: ScanSignals (produced by the scanner); output: AfrResult.
 // No IO, no clock — third parties can recompute every score.
 // Implementation is the standard: this package's code plus the bilingual /method page

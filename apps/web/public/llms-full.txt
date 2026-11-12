@@ -1,87 +1,87 @@
-# AiApp.im — AI-Friendliness Rating (full)
+# AFR.IM — AI-Friendliness Rating (full)
 
-> AiApp.im publishes objective AI-friendliness ratings for websites: an open, reproducible 0–100 AFR score and an A–F grade showing how open each site is to AI crawlers and agents. This file is the complete variant of [llms.txt](https://aiapp.im/llms.txt): it lists every published page in both languages, the public API with example responses, and the agent usage policy. Every score is computed from public, reproducible evidence — see the [Method](https://aiapp.im/method) page for the standard.
+> AFR.IM publishes objective AI-friendliness ratings for websites: an open, reproducible 0–100 AFR score and an A–F grade showing how open each site is to AI crawlers and agents. This file is the complete variant of [llms.txt](https://afr.im/llms.txt): it lists every published page in both languages, the public API with example responses, and the agent usage policy. Every score is computed from public, reproducible evidence — see the [Method](https://afr.im/method) page for the standard.
 
 ## Core pages (English)
 
-- [Home](https://aiapp.im/): grade distribution, latest scans, natural leaderboard, and category tiles.
-- [Method](https://aiapp.im/method): the AFR standard in full — three layers (Reachability 35, Legibility 40, Actionability 25), every sub-check with its points, grade thresholds, engine versions, recompute guide, neutrality pledge, and data sources.
-- [Categories](https://aiapp.im/categories): all 14 categories with site counts.
-- [Search](https://aiapp.im/search): keyword search across the directory.
-- [Submit](https://aiapp.im/submit): request a scan of a site.
-- [About](https://aiapp.im/about): who runs the directory, corrections, and contact.
-- [For bots](https://aiapp.im/bot): the endpoints our own scanner fetches and how points are awarded.
-- [Badge](https://aiapp.im/badge): how to embed the rating badge on your site.
-- [API documentation](https://aiapp.im/docs): public API reference with parameters and example JSON responses.
-- [Offline fallback](https://aiapp.im/offline): cached directory view shown when the network is unavailable.
+- [Home](https://afr.im/): grade distribution, latest scans, natural leaderboard, and category tiles.
+- [Method](https://afr.im/method): the AFR standard in full — three layers (Reachability 35, Legibility 40, Actionability 25), every sub-check with its points, grade thresholds, engine versions, recompute guide, neutrality pledge, and data sources.
+- [Categories](https://afr.im/categories): all 14 categories with site counts.
+- [Search](https://afr.im/search): keyword search across the directory.
+- [Submit](https://afr.im/submit): request a scan of a site.
+- [About](https://afr.im/about): who runs the directory, corrections, and contact.
+- [For bots](https://afr.im/bot): the endpoints our own scanner fetches and how points are awarded.
+- [Badge](https://afr.im/badge): how to embed the rating badge on your site.
+- [API documentation](https://afr.im/docs): public API reference with parameters and example JSON responses.
+- [Offline fallback](https://afr.im/offline): cached directory view shown when the network is unavailable.
 
 ## Core pages (Chinese / zh-CN)
 
-- [中文首页](https://aiapp.im/zh-CN/): 等级分布、最新扫描与自然排行榜。
-- [评级方法](https://aiapp.im/zh-CN/method): AFR 标准全文——三层模型、全部子项与分值、等级阈值、复算指南与中立性承诺。
-- [分类](https://aiapp.im/zh-CN/categories): 全部 14 个分类及站点数量。
-- [搜索](https://aiapp.im/zh-CN/search): 目录关键词搜索。
-- [提交站点](https://aiapp.im/zh-CN/submit): 申请扫描一个网站。
-- [关于](https://aiapp.im/zh-CN/about): 运营方、纠错通道与联系方式。
-- [机器人专用页](https://aiapp.im/zh-CN/bot): 我们的扫描器抓取哪些端点、分值如何产生。
-- [徽章](https://aiapp.im/zh-CN/badge): 在你的网站上嵌入评级徽章。
-- [API 文档](https://aiapp.im/zh-CN/docs): 公开 API 参考、参数与示例 JSON 响应。
-- [离线回退页](https://aiapp.im/zh-CN/offline): 断网时显示的缓存目录视图。
+- [中文首页](https://afr.im/zh-CN/): 等级分布、最新扫描与自然排行榜。
+- [评级方法](https://afr.im/zh-CN/method): AFR 标准全文——三层模型、全部子项与分值、等级阈值、复算指南与中立性承诺。
+- [分类](https://afr.im/zh-CN/categories): 全部 14 个分类及站点数量。
+- [搜索](https://afr.im/zh-CN/search): 目录关键词搜索。
+- [提交站点](https://afr.im/zh-CN/submit): 申请扫描一个网站。
+- [关于](https://afr.im/zh-CN/about): 运营方、纠错通道与联系方式。
+- [机器人专用页](https://afr.im/zh-CN/bot): 我们的扫描器抓取哪些端点、分值如何产生。
+- [徽章](https://afr.im/zh-CN/badge): 在你的网站上嵌入评级徽章。
+- [API 文档](https://afr.im/zh-CN/docs): 公开 API 参考、参数与示例 JSON 响应。
+- [离线回退页](https://afr.im/zh-CN/offline): 断网时显示的缓存目录视图。
 
 ## Categories (14, English)
 
-- [Developer Tools](https://aiapp.im/c/dev-tools): SDKs, CLIs, and platforms for builders.
-- [AI Applications & Assistants](https://aiapp.im/c/ai-tools): assistants, agents, and generative apps.
-- [News & Media](https://aiapp.im/c/news): reporting and headlines from around the world.
-- [E-commerce](https://aiapp.im/c/ecommerce): online stores and marketplaces.
-- [Education](https://aiapp.im/c/education): courses, schools, and learning resources.
-- [Finance](https://aiapp.im/c/finance): banking, markets, and financial data.
-- [Social](https://aiapp.im/c/social): networks, communities, and messaging.
-- [Entertainment](https://aiapp.im/c/entertainment): streaming, games, and culture.
-- [Health](https://aiapp.im/c/health): health information and services.
-- [Travel](https://aiapp.im/c/travel): booking, guides, and transport.
-- [Government](https://aiapp.im/c/government): public sector and civic services.
-- [Reference](https://aiapp.im/c/reference): encyclopedias, docs, and knowledge bases.
-- [Developer documentation](https://aiapp.im/c/docs): documentation portals and API references.
-- [Other](https://aiapp.im/c/other): everything outside the named categories.
+- [Developer Tools](https://afr.im/c/dev-tools): SDKs, CLIs, and platforms for builders.
+- [AI Applications & Assistants](https://afr.im/c/ai-tools): assistants, agents, and generative apps.
+- [News & Media](https://afr.im/c/news): reporting and headlines from around the world.
+- [E-commerce](https://afr.im/c/ecommerce): online stores and marketplaces.
+- [Education](https://afr.im/c/education): courses, schools, and learning resources.
+- [Finance](https://afr.im/c/finance): banking, markets, and financial data.
+- [Social](https://afr.im/c/social): networks, communities, and messaging.
+- [Entertainment](https://afr.im/c/entertainment): streaming, games, and culture.
+- [Health](https://afr.im/c/health): health information and services.
+- [Travel](https://afr.im/c/travel): booking, guides, and transport.
+- [Government](https://afr.im/c/government): public sector and civic services.
+- [Reference](https://afr.im/c/reference): encyclopedias, docs, and knowledge bases.
+- [Developer documentation](https://afr.im/c/docs): documentation portals and API references.
+- [Other](https://afr.im/c/other): everything outside the named categories.
 
-Category pages also exist under the /zh-CN/ prefix, e.g. [中文 · Developer Tools](https://aiapp.im/zh-CN/c/dev-tools).
+Category pages also exist under the /zh-CN/ prefix, e.g. [中文 · Developer Tools](https://afr.im/zh-CN/c/dev-tools).
 
 ## Rated sites (sample directory entries)
 
-- [github.com](https://aiapp.im/site/github.com): rated profile with full evidence chain and score history.
-- [wikipedia.org](https://aiapp.im/site/wikipedia.org): rated profile with full evidence chain and score history.
-- [stackoverflow.com](https://aiapp.im/site/stackoverflow.com): rated profile with full evidence chain and score history.
-- [reuters.com](https://aiapp.im/site/reuters.com): rated profile with full evidence chain and score history.
-- [openai.com](https://aiapp.im/site/openai.com): rated profile with full evidence chain and score history.
-- [nytimes.com](https://aiapp.im/site/nytimes.com): rated profile with full evidence chain and score history.
-- [linkedin.com](https://aiapp.im/site/linkedin.com): rated profile with full evidence chain and score history.
-- [example.com](https://aiapp.im/site/example.com): rated profile with full evidence chain and score history.
+- [github.com](https://afr.im/site/github.com): rated profile with full evidence chain and score history.
+- [wikipedia.org](https://afr.im/site/wikipedia.org): rated profile with full evidence chain and score history.
+- [stackoverflow.com](https://afr.im/site/stackoverflow.com): rated profile with full evidence chain and score history.
+- [reuters.com](https://afr.im/site/reuters.com): rated profile with full evidence chain and score history.
+- [openai.com](https://afr.im/site/openai.com): rated profile with full evidence chain and score history.
+- [nytimes.com](https://afr.im/site/nytimes.com): rated profile with full evidence chain and score history.
+- [linkedin.com](https://afr.im/site/linkedin.com): rated profile with full evidence chain and score history.
+- [example.com](https://afr.im/site/example.com): rated profile with full evidence chain and score history.
 
-The same site pages exist under the /zh-CN/ prefix, e.g. [中文 · github.com](https://aiapp.im/zh-CN/site/github.com).
+The same site pages exist under the /zh-CN/ prefix, e.g. [中文 · github.com](https://afr.im/zh-CN/site/github.com).
 
 ## API — human-readable documentation
 
-- [API documentation](https://aiapp.im/docs): every public endpoint, parameters, error shapes, and example JSON responses.
-- [OpenAPI specification](https://aiapp.im/openapi.json): OpenAPI 3.1 description of the API (mirror at /.well-known/openapi.yaml).
-- [Machine-readable AFR standard](https://aiapp.im/api/v1/method): `{ "standard": "AFR", "version": "...", "layers": [...], "grades": [...] }`.
+- [API documentation](https://afr.im/docs): every public endpoint, parameters, error shapes, and example JSON responses.
+- [OpenAPI specification](https://afr.im/openapi.json): OpenAPI 3.1 description of the API (mirror at /.well-known/openapi.yaml).
+- [Machine-readable AFR standard](https://afr.im/api/v1/method): `{ "standard": "AFR", "version": "...", "layers": [...], "grades": [...] }`.
 
 ## API endpoints
 
-- [GET /api/v1/sites](https://aiapp.im/api/v1/sites): paginated listing; query params `category`, `grade`, `q`, `sort` (`score` | `rank` | `new`), `page`. Response: `{ "items": [...], "page": 1, "per_page": 24, "total": 8, "sort": "score" }`.
-- [GET /api/v1/sites/:domain](https://aiapp.im/api/v1/sites/github.com): one site with its latest scan and evidence rows. Response: `{ "site": {...}, "scan": {...}, "evidence": [...] }`.
-- [GET /api/v1/sites/:domain/history](https://aiapp.im/api/v1/sites/github.com/history): all scans for a domain, newest first.
-- [GET /api/v1/stats](https://aiapp.im/api/v1/stats): totals and distribution. Response: `{ "total": 8, "verified": 4, "pending": 0, "avg_score": 58, "grades": { "A": 1, "B": 2, "C": 2, "D": 2, "F": 1 } }`.
-- [GET /api/v1/categories](https://aiapp.im/api/v1/categories): category tree with counts. Response: `{ "categories": [ { "slug": "dev-tools", "name_en": "Developer Tools", "name_zh": "开发者工具", "count": 3, "children": [] } ] }`.
-- [GET /api/v1/leaderboard](https://aiapp.im/api/v1/leaderboard): top sites by pure AFR score descending; optional `category` and `limit` (≤50). Response: `{ "category": null, "items": [ { "rank": 1, "domain": "github.com", "grade": "A", "score": 91, "category": "dev-tools", "strategy_tag": "AI-Open" } ] }`.
-- [GET /badge/:domain.svg](https://aiapp.im/badge/example.com.svg): rating badge image (`image/svg+xml`, cached 1 hour).
-- [POST /api/v1/submissions](https://aiapp.im/api/v1/submissions): `{ "domain": "example.com", "note": "optional" }` → `201 { "ok": true, "id": 1, "domain": "example.com", "status": "queued" }`; limited to 5 per IP per day.
+- [GET /api/v1/sites](https://afr.im/api/v1/sites): paginated listing; query params `category`, `grade`, `q`, `sort` (`score` | `rank` | `new`), `page`. Response: `{ "items": [...], "page": 1, "per_page": 24, "total": 8, "sort": "score" }`.
+- [GET /api/v1/sites/:domain](https://afr.im/api/v1/sites/github.com): one site with its latest scan and evidence rows. Response: `{ "site": {...}, "scan": {...}, "evidence": [...] }`.
+- [GET /api/v1/sites/:domain/history](https://afr.im/api/v1/sites/github.com/history): all scans for a domain, newest first.
+- [GET /api/v1/stats](https://afr.im/api/v1/stats): totals and distribution. Response: `{ "total": 8, "verified": 4, "pending": 0, "avg_score": 58, "grades": { "A": 1, "B": 2, "C": 2, "D": 2, "F": 1 } }`.
+- [GET /api/v1/categories](https://afr.im/api/v1/categories): category tree with counts. Response: `{ "categories": [ { "slug": "dev-tools", "name_en": "Developer Tools", "name_zh": "开发者工具", "count": 3, "children": [] } ] }`.
+- [GET /api/v1/leaderboard](https://afr.im/api/v1/leaderboard): top sites by pure AFR score descending; optional `category` and `limit` (≤50). Response: `{ "category": null, "items": [ { "rank": 1, "domain": "github.com", "grade": "A", "score": 91, "category": "dev-tools", "strategy_tag": "AI-Open" } ] }`.
+- [GET /badge/:domain.svg](https://afr.im/badge/example.com.svg): rating badge image (`image/svg+xml`, cached 1 hour).
+- [POST /api/v1/submissions](https://afr.im/api/v1/submissions): `{ "domain": "example.com", "note": "optional" }` → `201 { "ok": true, "id": 1, "domain": "example.com", "status": "queued" }`; limited to 5 per IP per day.
 
 All JSON endpoints send `Access-Control-Allow-Origin: *`. Errors are JSON, e.g. `{ "error": "not_found" }` (404) or `{ "error": "rate_limited" }` (429).
 
 ## Optional: agent usage policy
 
-- [Agent instructions](https://aiapp.im/agents.md): identify yourself with a descriptive User-Agent, keep to about one request per second, honor robots.txt and any Crawl-delay, cache responses, and re-fetch only what changed.
-- [AI crawler policy](https://aiapp.im/ai.txt): short machine-readable summary of what AiApp.im allows.
-- [robots.txt](https://aiapp.im/robots.txt): explicit Allow rules for the 14 AI user-agent families (OAI-SearchBot, Claude-SearchBot, PerplexityBot, Googlebot, ChatGPT-User, Claude-User, Perplexity-User, Google-Extended, GPTBot, ClaudeBot, CCBot, Bytespider, Amazonbot, Applebot-Extended) plus the Sitemap declaration.
-- Reuse: ratings, grades, and check names may be reused with attribution to AiApp.im and the site page URL; the AFR standard text is CC BY 4.0. To cite a rating, include the domain, score, grade, engine version, and scan timestamp, and link back to the site's page on AiApp.im.
+- [Agent instructions](https://afr.im/agents.md): identify yourself with a descriptive User-Agent, keep to about one request per second, honor robots.txt and any Crawl-delay, cache responses, and re-fetch only what changed.
+- [AI crawler policy](https://afr.im/ai.txt): short machine-readable summary of what AFR.IM allows.
+- [robots.txt](https://afr.im/robots.txt): explicit Allow rules for the 14 AI user-agent families (OAI-SearchBot, Claude-SearchBot, PerplexityBot, Googlebot, ChatGPT-User, Claude-User, Perplexity-User, Google-Extended, GPTBot, ClaudeBot, CCBot, Bytespider, Amazonbot, Applebot-Extended) plus the Sitemap declaration.
+- Reuse: ratings, grades, and check names may be reused with attribution to AFR.IM and the site page URL; the AFR standard text is CC BY 4.0. To cite a rating, include the domain, score, grade, engine version, and scan timestamp, and link back to the site's page on AFR.IM.

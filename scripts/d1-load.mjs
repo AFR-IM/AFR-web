@@ -1,4 +1,4 @@
-// d1-load.mjs — one-shot loader: scan snapshots (aiapp-data SSOT) → Cloudflare D1.
+// d1-load.mjs — one-shot loader: scan snapshots (AFR-data SSOT) → Cloudflare D1.
 // Replaces the need for a first remote sync run; afterwards the daily pipeline
 // keeps D1 fresh via the worker's d1-sync. Usage:
 //   CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… \
@@ -87,7 +87,7 @@ function d1File(file) {
 
 const args = parseArgs(process.argv.slice(2));
 const scansRoot =
-  args.dataDir ?? join(repoRoot, '..', 'aiapp-data', 'scans');
+  args.dataDir ?? join(repoRoot, '..', 'AFR-data', 'scans');
 const date = args.date ?? latestDate(scansRoot);
 const dir = join(scansRoot, date);
 if (!existsSync(dir)) throw new Error(`missing ${dir}`);

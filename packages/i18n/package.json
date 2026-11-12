@@ -1,5 +1,5 @@
 {
-  "name": "@aiapp/i18n",
+  "name": "@afr/i18n",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"

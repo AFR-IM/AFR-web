@@ -1,4 +1,4 @@
-// @aiapp/web data layer types — derived from aiapp-data scan snapshots (spec §5.1:
+// @afr/web data layer types — derived from AFR-data scan snapshots (spec §5.1:
 // data repo JSON is the SSOT; Pages bakes /data/*.json at build time).
 
 import type { Grade, GradeState, StrategyTag } from '../../../../packages/shared/src/index.ts';

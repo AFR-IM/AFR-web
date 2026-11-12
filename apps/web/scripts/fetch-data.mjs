@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// @aiapp/web — fetch-data: turns aiapp-data scan snapshots into the build-time
+// @afr/web — fetch-data: turns AFR-data scan snapshots into the build-time
 // JSON payloads that src/data/loader.ts serves to pages.
 //
 // Usage (from anywhere inside the repo):
@@ -8,7 +8,7 @@
 //   --date      publish one date only (debug); default = merged view, newest wins
 //   --allow-shrink  bypass the >20% drop guard
 //               under the scans root
-//   --data-dir  explicit scans root (…/aiapp-data/scans); otherwise resolved
+//   --data-dir  explicit scans root (…/AFR-data/scans); otherwise resolved
 //               from a few well-known relative locations
 //
 // Outputs (generated artifacts — gitignored; the scan repo stays the SSOT):
@@ -84,17 +84,17 @@ async function resolveScansRoot(explicit) {
     return path.resolve(explicit);
   }
   const candidates = [
-    path.resolve(process.cwd(), '../../aiapp-data/scans'), // as documented (cwd-relative)
-    path.resolve(process.cwd(), '../aiapp-data/scans'), // repo root cwd → sibling repo
-    path.resolve(process.cwd(), 'aiapp-data/scans'), // parent-of-both cwd
-    path.resolve(SCRIPT_DIR, '../../../../aiapp-data/scans'), // script-relative, cwd-independent
+    path.resolve(process.cwd(), '../../AFR-data/scans'), // as documented (cwd-relative)
+    path.resolve(process.cwd(), '../AFR-data/scans'), // repo root cwd → sibling repo
+    path.resolve(process.cwd(), 'AFR-data/scans'), // parent-of-both cwd
+    path.resolve(SCRIPT_DIR, '../../../../AFR-data/scans'), // script-relative, cwd-independent
   ];
   for (const c of candidates) {
     if (await isDir(c)) return c;
   }
-  console.error('Could not locate the aiapp-data scans directory. Tried:');
+  console.error('Could not locate the AFR-data scans directory. Tried:');
   for (const c of candidates) console.error(`  ${c}`);
-  console.error('Pass --data-dir /path/to/aiapp-data/scans');
+  console.error('Pass --data-dir /path/to/AFR-data/scans');
   process.exit(1);
 }
 

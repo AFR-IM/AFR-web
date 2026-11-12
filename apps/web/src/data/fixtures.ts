@@ -1,5 +1,5 @@
 // Fixture data for development ONLY — shape mirrors what fetch-data.mjs will
-// generate from aiapp-data scans/. Scores/grades below are synthetic samples used
+// generate from AFR-data scans/. Scores/grades below are synthetic samples used
 // to exercise layout, never presented as real ratings in production.
 
 import type { HomeData, SiteDetail } from './types.ts';
@@ -36,7 +36,7 @@ export const FIXTURE_DETAILS: SiteDetail[] = [
   {
     ...FIXTURE_HOME.leaderboard[0]!,
     engineVersion: 'afr-1.0.0',
-    scannerVersion: 'aiapp-im-bot/1.0',
+    scannerVersion: 'afr-im-bot/1.0',
     history: [
       { date: '2026-11-03', score: 89, grade: 'A' },
       { date: '2026-11-10', score: 91, grade: 'A' },

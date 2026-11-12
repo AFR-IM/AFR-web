@@ -1,4 +1,4 @@
-# AiApp.im — AI-Friendliness Rating directory
+# AFR.IM — AI-Friendliness Rating directory
 #
 # The directory is fully public: every page, dataset snapshot, and read-only
 # API endpoint is reachable without login. All crawlers are welcome; the 14
@@ -53,4 +53,4 @@ Allow: /
 User-agent: *
 Allow: /
 
-Sitemap: https://aiapp.im/sitemap.xml
+Sitemap: https://afr.im/sitemap.xml

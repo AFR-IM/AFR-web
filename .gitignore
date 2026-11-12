@@ -8,7 +8,7 @@ dist/
 scans/
 .astro/
 dist-*/
-# generated data artifacts — built from the aiapp-data scan repo, never committed
+# generated data artifacts — built from the AFR-data scan repo, never committed
 apps/web/src/data/generated/
 apps/web/public/data/
 .d1-batches/

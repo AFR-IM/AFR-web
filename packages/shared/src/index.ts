@@ -1,4 +1,4 @@
-// @aiapp/shared — Type definitions (shared by scanner / afr / worker / web)
+// @afr/shared — Type definitions (shared by scanner / afr / worker / web)
 // Design spec §5.3 repository structure; this package contains only types and constants,
 // with zero runtime dependencies.
 

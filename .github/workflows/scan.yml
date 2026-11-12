@@ -8,7 +8,7 @@
 # (on-demand queue only — exits quickly when the queue is empty).
 #
 # Required repository secrets (Settings -> Secrets and variables -> Actions):
-#   DATA_REPO_TOKEN  PAT that can check out / push imAiAPP/aiapp-data and can
+#   DATA_REPO_TOKEN  PAT that can check out / push AFR-IM/AFR-data and can
 #                    open repository_dispatch on this repo (site rebuild).
 #   QUEUE_TOKEN      shared token for POST /api/v1/queue/<domain>/done;
 #                    must match the worker's QUEUE_TOKEN secret.
@@ -50,7 +50,7 @@ jobs:
       - name: Checkout data repo
         uses: actions/checkout@v4
         with:
-          repository: imAiAPP/aiapp-data
+          repository: AFR-IM/AFR-data
           token: ${{ secrets.DATA_REPO_TOKEN }}
           path: data
 
@@ -164,8 +164,8 @@ jobs:
           SEGMENT: ${{ steps.segment.outputs.start }}
         run: |
           cd data
-          git config user.name "aiapp-bot"
-          git config user.email "dev@aiapp.im"
+          git config user.name "afr-bot"
+          git config user.email "dev@afr.im"
           # Redact secret-looking examples that target sites publish in their own
           # pages (GitHub push protection blocks pushes containing them).
           REDACT='s/r8_[A-Za-z0-9_-]{16,}/r8_[redacted]/g; s/sk-[A-Za-z0-9_-]{16,}/sk-[redacted]/g; s/ghp_[A-Za-z0-9]{20,}/ghp_[redacted]/g; s/AKIA[0-9A-Z]{16}/[redacted-key]/g; s/xox[baprs]-[A-Za-z0-9-]{10,}/[redacted]/g; s/AIza[0-9A-Za-z_-]{30,}/[redacted]/g'
@@ -189,7 +189,7 @@ jobs:
         env:
           MODE: ${{ steps.mode.outputs.mode }}
         run: |
-          if curl -fsSL https://aiapp.im/api/v1/queue -o queue.json; then
+          if curl -fsSL https://afr.im/api/v1/queue -o queue.json; then
             jq -r '(if type == "array" then . elif type == "object" then (.items // []) else [] end)[]?
               | if type == "string" then . elif type == "object" then (.domain // empty) else empty end' \
               queue.json > queue-raw.txt
@@ -221,8 +221,8 @@ jobs:
         if: fromJSON(steps.queue.outputs.count || '0') > 0
         run: |
           cd data
-          git config user.name "aiapp-bot"
-          git config user.email "dev@aiapp.im"
+          git config user.name "afr-bot"
+          git config user.email "dev@afr.im"
           # Redact secret-looking examples that target sites publish in their own
           # pages (GitHub push protection blocks pushes containing them).
           REDACT='s/r8_[A-Za-z0-9_-]{16,}/r8_[redacted]/g; s/sk-[A-Za-z0-9_-]{16,}/sk-[redacted]/g; s/ghp_[A-Za-z0-9]{20,}/ghp_[redacted]/g; s/AKIA[0-9A-Z]{16}/[redacted-key]/g; s/xox[baprs]-[A-Za-z0-9-]{10,}/[redacted]/g; s/AIza[0-9A-Za-z_-]{30,}/[redacted]/g'
@@ -249,7 +249,7 @@ jobs:
           FAILURES=0
           while IFS= read -r domain; do
             [ -n "$domain" ] || continue
-            if curl -fsS -X POST "https://aiapp.im/api/v1/queue/${domain}/done" \
+            if curl -fsS -X POST "https://afr.im/api/v1/queue/${domain}/done" \
                 -H "X-Queue-Token: ${QUEUE_TOKEN}" -o /dev/null; then
               echo "reported done: ${domain}"
             else
@@ -288,7 +288,7 @@ jobs:
         env:
           DATA_REPO_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
         run: |
-          curl -fsS -X POST https://api.github.com/repos/imAiAPP/aiapp-web/dispatches \
+          curl -fsS -X POST https://api.github.com/repos/AFR-IM/AFR-web/dispatches \
             -H "Authorization: Bearer ${DATA_REPO_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             -d '{"event_type":"scan-done"}'

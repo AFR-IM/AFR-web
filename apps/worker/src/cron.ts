@@ -1,5 +1,5 @@
 // src/cron.ts — daily scheduled job: sync the newest scan snapshot from the
-// aiapp-data repository into D1 (sites / scans / evidence).
+// AFR-data repository into D1 (sites / scans / evidence).
 //
 // Scope note: the Worker never scans — scanners run in GitHub Actions
 // (scan.yml). This job only pulls snapshots the data repo already published,

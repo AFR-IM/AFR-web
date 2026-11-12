@@ -6,7 +6,7 @@
 export const SCANNER_VERSION = 'scanner-0.1.0';
 
 /** Transparent UA: identifies who we are + homepage (webmasters can block us anytime and get in touch) */
-export const USER_AGENT = 'aiappScanner/0.1 (+https://aiapp.im/bot; AI-friendliness research crawler)';
+export const USER_AGENT = 'afrScanner/0.1 (+https://afr.im/bot; AI-friendliness research crawler)';
 
 export const TIMEOUT_MS = 15_000;
 

@@ -1,4 +1,4 @@
-/* aiapp.im service worker (spec §9 — PWA offline behavior).
+/* afr.im service worker (spec §9 — PWA offline behavior).
  *
  * Version token: bump VERSION to invalidate every cache at once.
  *   - install  → precache the app shell (offline fallback page + chrome)
@@ -13,9 +13,9 @@
  * back to the locale copy when possible, then to the English one.
  */
 
-const VERSION = 'aiapp-sw-v1';
-const PRECACHE = `aiapp-precache-${VERSION}`;
-const RUNTIME = `aiapp-runtime-${VERSION}`;
+const VERSION = 'afr-sw-v1';
+const PRECACHE = `afr-precache-${VERSION}`;
+const RUNTIME = `afr-runtime-${VERSION}`;
 const OFFLINE_CANONICAL = '/offline';
 const OFFLINE_ZH = '/zh-CN/offline';
 
@@ -44,7 +44,7 @@ self.addEventListener('activate', (event) => {
       .then((keys) =>
         Promise.all(
           keys
-            .filter((key) => key.startsWith('aiapp-') && key !== PRECACHE && key !== RUNTIME)
+            .filter((key) => key.startsWith('afr-') && key !== PRECACHE && key !== RUNTIME)
             .map((key) => caches.delete(key)),
         ),
       )
@@ -110,7 +110,7 @@ async function networkFirstApi(request) {
       JSON.stringify({
         error: 'offline',
         message:
-          'The aiapp.im API is unreachable right now. Your connection may be offline — retry in a moment. Human-readable docs: https://aiapp.im/docs',
+          'The afr.im API is unreachable right now. Your connection may be offline — retry in a moment. Human-readable docs: https://afr.im/docs',
       }),
       { status: 503, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } },
     );

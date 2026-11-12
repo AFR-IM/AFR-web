@@ -50,7 +50,7 @@ function squareIcon(inner, size, scale) {
 // Chunky favicon variant: same identity (continuous outer ring, 3 mid-ring
 // segments, five-point spark) with thicker strokes and a slightly stouter
 // star so every gap still renders as ≥1px at 32px.
-const FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="aiapp">
+const FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="afr">
   <circle cx="32" cy="32" r="32" fill="${NAVY}"/>
   <circle cx="32" cy="32" r="22.5" fill="none" stroke="${MINT}" stroke-width="4.2"/>
   <g fill="none" stroke="${MINT}" stroke-width="4.4">
