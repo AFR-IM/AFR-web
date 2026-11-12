@@ -166,6 +166,12 @@ jobs:
           cd data
           git config user.name "aiapp-bot"
           git config user.email "dev@aiapp.im"
+          # Redact secret-looking examples that target sites publish in their own
+          # pages (GitHub push protection blocks pushes containing them).
+          REDACT='s/r8_[A-Za-z0-9_-]{16,}/r8_[redacted]/g; s/sk-[A-Za-z0-9_-]{16,}/sk-[redacted]/g; s/ghp_[A-Za-z0-9]{20,}/ghp_[redacted]/g; s/AKIA[0-9A-Z]{16}/[redacted-key]/g; s/xox[baprs]-[A-Za-z0-9-]{10,}/[redacted]/g; s/AIza[0-9A-Za-z_-]{30,}/[redacted]/g'
+          git status --porcelain | awk '{print $NF}' | grep '\.json$' | while read -r f; do
+            [ -f "$f" ] && sed -E -i "$REDACT" "$f" || true
+          done
           git add -A
           if git diff --cached --quiet; then
             echo "No changes to commit"
@@ -217,6 +223,12 @@ jobs:
           cd data
           git config user.name "aiapp-bot"
           git config user.email "dev@aiapp.im"
+          # Redact secret-looking examples that target sites publish in their own
+          # pages (GitHub push protection blocks pushes containing them).
+          REDACT='s/r8_[A-Za-z0-9_-]{16,}/r8_[redacted]/g; s/sk-[A-Za-z0-9_-]{16,}/sk-[redacted]/g; s/ghp_[A-Za-z0-9]{20,}/ghp_[redacted]/g; s/AKIA[0-9A-Z]{16}/[redacted-key]/g; s/xox[baprs]-[A-Za-z0-9-]{10,}/[redacted]/g; s/AIza[0-9A-Za-z_-]{30,}/[redacted]/g'
+          git status --porcelain | awk '{print $NF}' | grep '\.json$' | while read -r f; do
+            [ -f "$f" ] && sed -E -i "$REDACT" "$f" || true
+          done
           git add -A
           if git diff --cached --quiet; then
             echo "No changes to commit"
