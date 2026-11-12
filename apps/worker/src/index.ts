@@ -848,7 +848,14 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
         .run(domain));
     }
     if (changes === 0) {
-      return c.json({ error: 'not_queued', domain }, 404);
+      // Double-check by read-back: the update may have applied even when the
+      // driver reports 0 changes (D1 meta shape differences).
+      const row = await db
+        .prepare('SELECT status FROM submissions WHERE domain = ?')
+        .get<{ status: string }>(domain);
+      if (!row || row.status !== 'scanned') {
+        return c.json({ error: 'not_queued', domain }, 404);
+      }
     }
     return c.json({ ok: true, domain, status: 'scanned' });
   });

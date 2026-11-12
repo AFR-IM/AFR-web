@@ -66,8 +66,11 @@ export function createD1Db(d1: D1Like): Db {
         async run(...params: SqlParam[]): Promise<RunResult> {
           const res = await d1.prepare(sql).bind(...params).run();
           return {
-            changes: res.changes ?? 0,
-            lastInsertRowid: Number(res.meta?.last_row_id ?? 0),
+            // D1 reports changes under meta; older shapes and sqlite put it on
+            // the top level — accept both (a missing read here made every
+            // changes>0 check evaluate false in production).
+            changes: Number(res.meta?.changes ?? res.changes ?? 0),
+            lastInsertRowid: Number(res.meta?.last_row_id ?? res.lastInsertRowid ?? 0),
           };
         },
       };
