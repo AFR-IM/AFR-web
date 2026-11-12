@@ -103,7 +103,7 @@ export interface UpsertStats {
 
 /** Upsert one snapshot: site row (scores/grade/status) + its scan + evidence rows.
  * Re-syncing the same snapshot path updates in place (keyed on scans.snapshot_path)
- * and replaces that scan's evidence — no duplicate rows. */
+ * and diffs that scan's evidence — unchanged rows are never rewritten. */
 export async function upsertSnapshot(db: Db, snapshot: Snapshot, path: string): Promise<UpsertStats> {
   const afr = snapshot.afr;
   const signals = snapshot.signals;
@@ -194,28 +194,77 @@ export async function upsertSnapshot(db: Db, snapshot: Snapshot, path: string): 
     scanId = inserted.lastInsertRowid;
   }
 
-  // --- evidence: replace the scan's rows (fresh snapshot = fresh evidence chain)
-  await db.prepare('DELETE FROM evidence WHERE scan_id = ?').run(scanId);
+  // --- evidence: DIFF against what the scan already has. A full replace cost
+  // ~24 writes per site every sync (~25k/day) and blew the free-tier row-write
+  // budget; unchanged rows must cost zero writes. evidenceRows counts actual
+  // writes (inserts + updates + deletes) performed here.
+  const existingEvidence = await db
+    .prepare(
+      `SELECT check_id, status, points, max_points, evidence_type, evidence_ref
+       FROM evidence WHERE scan_id = ?`,
+    )
+    .all<{
+      check_id: string;
+      status: string | null;
+      points: number | null;
+      max_points: number | null;
+      evidence_type: string | null;
+      evidence_ref: string | null;
+    }>(scanId);
+  const currentByCheck = new Map(existingEvidence.map((r) => [r.check_id, r]));
+
+  interface WantedRow {
+    check_id: string;
+    status: string | null;
+    points: number | null;
+    max_points: number | null;
+    evidence_type: string | null;
+    evidence_ref: string | null;
+  }
+  const wanted: WantedRow[] = (afr.layers.flatMap((l) => l.checks) as CheckResult[]).map((c) => ({
+    check_id: c.id,
+    status: c.status ?? null,
+    points: c.awarded ?? null,
+    max_points: c.max ?? null,
+    evidence_type: c.evidence?.source ?? null,
+    // Snapshot-local excerpt (spec wants a snapshot path or excerpt hash;
+    // the detail text is the excerpt until hash referencing lands)
+    evidence_ref: c.evidence?.detail ?? null,
+  }));
+  const wantedIds = new Set(wanted.map((w) => w.check_id));
 
   let evidenceRows = 0;
-  for (const layer of afr.layers) {
-    for (const check of layer.checks as CheckResult[]) {
+  for (const row of existingEvidence) {
+    if (!wantedIds.has(row.check_id)) {
+      await db.prepare('DELETE FROM evidence WHERE scan_id = ? AND check_id = ?').run(scanId, row.check_id);
+      evidenceRows += 1;
+    }
+  }
+  for (const w of wanted) {
+    const cur = currentByCheck.get(w.check_id);
+    if (!cur) {
       await db
         .prepare(
           `INSERT INTO evidence (scan_id, check_id, status, points, max_points, evidence_type, evidence_ref)
            VALUES (?, ?, ?, ?, ?, ?, ?)`,
         )
-        .run(
-          scanId,
-          check.id,
-          check.status ?? null,
-          check.awarded ?? null,
-          check.max ?? null,
-          check.evidence?.source ?? null,
-          // Snapshot-local excerpt (spec wants a snapshot path or excerpt hash;
-          // the detail text is the excerpt until hash referencing lands)
-          check.evidence?.detail ?? null,
-        );
+        .run(scanId, w.check_id, w.status, w.points, w.max_points, w.evidence_type, w.evidence_ref);
+      evidenceRows += 1;
+      continue;
+    }
+    if (
+      cur.status !== w.status ||
+      cur.points !== w.points ||
+      cur.max_points !== w.max_points ||
+      cur.evidence_type !== w.evidence_type ||
+      cur.evidence_ref !== w.evidence_ref
+    ) {
+      await db
+        .prepare(
+          `UPDATE evidence SET status = ?, points = ?, max_points = ?, evidence_type = ?, evidence_ref = ?
+           WHERE scan_id = ? AND check_id = ?`,
+        )
+        .run(w.status, w.points, w.max_points, w.evidence_type, w.evidence_ref, scanId, w.check_id);
       evidenceRows += 1;
     }
   }

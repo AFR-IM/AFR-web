@@ -76,7 +76,7 @@ export const VERIFY_IP_LIMIT = 10; // verify/start + verify/check per IP per hou
 export const CLAIMS_DOMAIN_LIMIT = 5; // claims per domain per UTC day
 
 // PV pixel: daily D1 write budget, enforced inside the count upsert
-export const PV_DAILY_WRITE_CAP = 70_000;
+export const PV_DAILY_WRITE_CAP = 20_000; // leave headroom for scans + sync inside the 100k/day free tier
 
 const SCAN_DISPATCH_URL =
   'https://api.github.com/repos/AFR-IM/AFR-web/actions/workflows/scan.yml/dispatches';
@@ -1013,7 +1013,17 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
   // while we root-cause the rescan 500s (tightened to a generic body afterwards).
   app.onError((err, c) => {
     console.error('unhandled route error:', err);
-    return c.json({ error: 'internal', message: err instanceof Error ? err.message : String(err) }, 500);
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/daily row write limit/i.test(msg)) {
+      // Free-tier D1 write quota exhausted: a real, dated condition — surface
+      // it as service-unavailable with a localized-friendly English notice
+      // (the UI shows its own bilingual copy for this status).
+      return c.json(
+        { error: 'write_limit', message: 'Daily database write quota exhausted; it resets at 00:00 UTC.' },
+        503,
+      );
+    }
+    return c.json({ error: 'internal' }, 500);
   });
 
   // POST /api/v1/verify/start {domain} — mint an opaque verification token.

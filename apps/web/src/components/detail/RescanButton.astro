@@ -35,6 +35,7 @@ const timeoutText = uiText(L.ui, 'rescanTimeout', loc);
 const throttleTpl = uiText(L.ui, 'rescanThrottle', loc);
 const unknownText = uiText(L.ui, 'rescanUnknown', loc);
 const errorText = uiText(L.ui, 'rescanError', loc);
+const quotaText = uiText(L.ui, 'rescanQuota', loc);
 ---
 
 <div class="rescan-wrap">
@@ -53,6 +54,7 @@ const errorText = uiText(L.ui, 'rescanError', loc);
     data-tpl-throttle={throttleTpl}
     data-unknown={unknownText}
     data-error={errorText}
+    data-quota={quotaText}
   >
     <span class="spinner" aria-hidden="true"></span>
     <span class="txt">{label}</span>
@@ -289,6 +291,11 @@ const errorText = uiText(L.ui, 'rescanError', loc);
           }
           if (r.status === 404) {
             setIdle(attr('data-unknown'), 'error');
+            return;
+          }
+          if (r.status === 503) {
+            /* daily write quota exhausted — bilingual copy, no server text needed */
+            setIdle(attr('data-quota'), 'error');
             return;
           }
           setIdle(attr('data-error'), 'error');
