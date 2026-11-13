@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { describe, it } from 'node:test';
-import { SCHEMA_SQL } from './helpers.ts';
+import { openSeededDb, SCHEMA_SQL } from './helpers.ts';
 
 function tableNames(db: DatabaseSync): string[] {
   return db
@@ -44,7 +44,7 @@ describe('schema.sql', () => {
     const db = new DatabaseSync(':memory:');
     db.exec(SCHEMA_SQL);
     const indexes = indexNames(db);
-    for (const expected of ['idx_sites_category', 'idx_sites_grade', 'idx_scans_domain', 'idx_ads_slot']) {
+    for (const expected of ['idx_sites_category', 'idx_sites_grade', 'idx_scans_domain', 'idx_ads_slot', 'idx_scans_snapshot']) {
       assert.ok(indexes.includes(expected), `missing index: ${expected}`);
     }
     db.close();
@@ -86,6 +86,23 @@ describe('schema.sql', () => {
       'pass',
     );
     db.close();
+  });
+
+  it('dedupes scans by snapshot_path without touching distinct rows', () => {
+    const { raw } = openSeededDb();
+    const before = raw.prepare('SELECT COUNT(*) n FROM scans').get() as { n: number };
+    assert.equal(before.n, 2, 'fixture has two distinct snapshot paths');
+
+    // re-applying schema.sql runs the dedupe DELETEs: idempotent no-op here,
+    // but a duplicate snapshot_path row (legacy INSERT OR IGNORE) is dropped
+    assert.doesNotThrow(() => raw.exec(SCHEMA_SQL));
+    const after = raw.prepare('SELECT COUNT(*) n FROM scans').get() as { n: number };
+    assert.equal(after.n, 2, 'dedupe must keep one row per distinct snapshot_path');
+    const paths = raw
+      .prepare('SELECT COUNT(DISTINCT snapshot_path) n FROM scans')
+      .get() as { n: number };
+    assert.equal(paths.n, 2);
+    raw.close();
   });
 
   it('supports the directory schema shape (sites columns + FK-style references)', () => {

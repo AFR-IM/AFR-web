@@ -150,3 +150,30 @@ CREATE TABLE IF NOT EXISTS page_views (
 
 -- Idempotent evidence inserts: at most one row per (scan, check)
 CREATE UNIQUE INDEX IF NOT EXISTS idx_evidence_scan_check ON evidence(scan_id, check_id);
+
+-- One scan row per snapshot path: this is the conflict key the loaders upsert on
+-- (scripts/d1-load.mjs `ON CONFLICT(snapshot_path)`, worker d1-sync keyed on
+-- `SELECT id FROM scans WHERE snapshot_path = ?`).
+--
+-- Dedupe first. The legacy d1-load wrote `INSERT OR IGNORE INTO scans` with NO
+-- unique key on scans, so IGNORE never matched and every re-run inserted another
+-- row for the same snapshot_path (verified locally with node:sqlite: 3 legacy
+-- runs over one snapshot → 3 rows). Duplicates may therefore exist in this DB.
+-- Keep the most recent row (MAX(id)) per snapshot_path; its evidence survives,
+-- evidence attached to the dropped duplicates goes with them. Both DELETEs are
+-- idempotent (no-ops once deduped), so re-applying schema.sql is safe.
+DELETE FROM evidence
+WHERE scan_id IN (
+  SELECT id FROM scans
+  WHERE snapshot_path IS NOT NULL
+    AND id NOT IN (SELECT MAX(id) FROM scans
+                   WHERE snapshot_path IS NOT NULL
+                   GROUP BY snapshot_path)
+);
+DELETE FROM scans
+WHERE snapshot_path IS NOT NULL
+  AND id NOT IN (SELECT MAX(id) FROM scans
+                 WHERE snapshot_path IS NOT NULL
+                 GROUP BY snapshot_path);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_scans_snapshot ON scans(snapshot_path);

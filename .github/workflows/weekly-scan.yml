@@ -1,0 +1,177 @@
+# Weekly full head re-scan — refreshes the top N Tranco domains (default 1000)
+# regardless of the daily segment position, then publishes a distribution
+# snapshot to the Actions job summary for threshold review.
+#
+# Flow: Tranco top-1m download -> scan ranks 1..topN -> sanitize + push AFR-data
+#       -> distribution report (scripts/calibrate.mjs) in the job summary
+#       -> repository_dispatch "scan-done" (site rebuild via sync-site.yml).
+#
+# Shares the repo-wide `scan` concurrency group with other scan runs, so a
+# weekly run never runs concurrently with another grouped scan run
+# (cancel-in-progress: false queues the newer run instead of killing the
+# active one).
+#
+# Runs on GitHub-hosted runners (public repo = free unlimited).
+# Schedule: Mondays 03:30 UTC (after the daily 02:00 UTC run window).
+# Manual runs accept an optional topN input (default 1000).
+#
+# Required repository secrets (Settings -> Secrets and variables -> Actions):
+#   DATA_REPO_TOKEN  PAT that can check out / push AFR-IM/AFR-data and can
+#                    open repository_dispatch on this repo (site rebuild).
+name: weekly-scan
+
+on:
+  workflow_dispatch:
+    inputs:
+      topN:
+        description: "Number of Tranco top domains to re-scan (head refresh)"
+        required: false
+        default: "1000"
+  schedule:
+    - cron: "30 3 * * 1"
+
+# Repo-wide scan group: grouped scan runs queue instead of racing on the
+# AFR-data push (cancel-in-progress: false queues the newer run instead of
+# killing the active one).
+concurrency:
+  group: scan
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  weekly-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Checkout web repo
+        uses: actions/checkout@v4
+
+      - name: Checkout data repo
+        uses: actions/checkout@v4
+        with:
+          repository: AFR-IM/AFR-data
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: data
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # One shared date for every scan step in this run, so snapshots land in
+      # the same scans/YYYY/MM/DD directory even if the run crosses UTC
+      # midnight (the site publishes the latest date that has data).
+      - name: Resolve scan date
+        id: date
+        run: echo "date=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+
+      # Scheduled runs have no inputs at all -> empty topN falls back to 1000.
+      - name: Resolve top N
+        id: topn
+        env:
+          INPUT_TOPN: ${{ inputs.topN }}
+        run: |
+          TOPN="${INPUT_TOPN:-1000}"
+          if ! [[ "$TOPN" =~ ^[0-9]+$ ]] || [ "$TOPN" -lt 1 ] || [ "$TOPN" -gt 100000 ]; then
+            echo "::error::Invalid topN '$TOPN' (expected an integer 1..100000)"
+            exit 1
+          fi
+          echo "topn=$TOPN" >> "$GITHUB_OUTPUT"
+
+      # Weekly refresh scans ranks 1..topN straight from the Tranco list —
+      # no segment offset, so the head of the list is re-scanned every week
+      # no matter where the daily segment walk currently sits.
+      - name: Fetch Tranco top list
+        id: tranco
+        env:
+          TOPN: ${{ steps.topn.outputs.topn }}
+        run: |
+          curl -fsSL -o top-1m.csv.zip https://tranco-list.eu/top-1m.csv.zip
+          unzip -o -q top-1m.csv.zip
+          awk -F, -v n="$TOPN" 'NR <= n { print $2 }' top-1m.csv > targets.txt
+          COUNT="$(grep -c . targets.txt || true)"
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+          echo "Weekly head refresh: ${COUNT} domains (top ${TOPN})"
+
+      - name: Scan Tranco top list
+        if: fromJSON(steps.tranco.outputs.count || '0') > 0
+        shell: bash # adds pipefail: a scanner crash must fail the step
+        env:
+          SCAN_DATE: ${{ steps.date.outputs.date }}
+        run: |
+          DATE_DIR="data/scans/${SCAN_DATE//-//}"
+          mkdir -p "$DATE_DIR"
+          node packages/scanner/src/cli.ts --file targets.txt --out "$DATE_DIR" --concurrency 5 | tee scan-summary.txt
+
+      - name: Commit top list snapshots to data repo
+        id: commit
+        env:
+          TOPN: ${{ steps.topn.outputs.topn }}
+        run: |
+          cd data
+          git config user.name "afr-bot"
+          git config user.email "dev@afr.im"
+          # Redact secret-looking examples that target sites publish in their own
+          # pages (GitHub push protection blocks pushes containing them).
+          REDACT='s/r8_[A-Za-z0-9_-]{16,}/r8_[redacted]/g; s/sk-[A-Za-z0-9_-]{16,}/sk-[redacted]/g; s/ghp_[A-Za-z0-9]{20,}/ghp_[redacted]/g; s/AKIA[0-9A-Z]{16}/[redacted-key]/g; s/xox[baprs]-[A-Za-z0-9-]{10,}/[redacted]/g; s/AIza[0-9A-Za-z_-]{30,}/[redacted]/g'
+          git status --porcelain | awk '{print $NF}' | grep '\.json$' | while read -r f; do
+            [ -f "$f" ] && sed -E -i "$REDACT" "$f" || true
+          done
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+          else
+            git commit -m "scan $(date -u +%F) weekly-top${TOPN}"
+            git push
+            echo "pushed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Distribution snapshot for threshold review: calibrate.mjs reads the
+      # data checkout's scans/YYYY/MM/DD directory and prints markdown to the
+      # job summary only — the report is never committed anywhere.
+      - name: Generate distribution report
+        id: report
+        if: steps.commit.result == 'success'
+        env:
+          SCAN_DATE: ${{ steps.date.outputs.date }}
+          TOPN: ${{ steps.topn.outputs.topn }}
+        run: |
+          DATE_DIR="data/scans/${SCAN_DATE//-//}"
+          REPORT_FILE="${RUNNER_TEMP}/weekly-distribution.md"
+          FIRST_JSON="$(find "$DATE_DIR" -maxdepth 1 -type f -name '*.json' -print -quit 2>/dev/null || true)"
+          if [ -n "$FIRST_JSON" ]; then
+            STATUS=0
+            node scripts/calibrate.mjs "$DATE_DIR" > "$REPORT_FILE" 2>&1 || STATUS=$?
+          else
+            echo "::warning::No snapshots in ${DATE_DIR}; distribution report skipped"
+            echo "No snapshots in ${DATE_DIR}; distribution report skipped." > "$REPORT_FILE"
+            STATUS=0
+          fi
+          {
+            echo "## Weekly distribution snapshot — ${SCAN_DATE} (top ${TOPN})"
+            echo '```'
+            tail -n 8 scan-summary.txt 2>/dev/null || echo "scan output not available"
+            echo '```'
+            echo
+            cat "$REPORT_FILE"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit $STATUS
+
+      # Rebuild the static site (sync-site.yml) after a data push succeeded.
+      # Runs even if report generation failed (always() gate), because the
+      # pushed snapshots are what the rebuild needs.
+      - name: Trigger site rebuild
+        if: >-
+          always() && !cancelled() &&
+          steps.commit.result == 'success' &&
+          steps.commit.outputs.pushed == 'true'
+        env:
+          DATA_REPO_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+        run: |
+          curl -fsS -X POST https://api.github.com/repos/AFR-IM/AFR-web/dispatches \
+            -H "Authorization: Bearer ${DATA_REPO_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -d '{"event_type":"scan-done"}'
+          echo "repository_dispatch scan-done sent"

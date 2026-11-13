@@ -12,7 +12,7 @@ import { GRADE_THRESHOLDS, LAYER_MAX } from '../../../packages/shared/src/index.
 import { AFR_LAYERS, AFR_VERSION } from './method-checks.ts';
 import { GRADE_COLORS } from './grade-colors.ts';
 import { badgeSvg } from './badge.ts';
-import { runDailySync } from './cron.ts';
+import { githubAuthedFetch, runDailySync } from './cron.ts';
 import { createD1Db, type Db, type Row, type SqlParam } from './db.ts';
 import { normalizeDomain } from './domain.ts';
 import { handleMcpRequest, MCP_RATE_LIMIT, MCP_RATE_WINDOW_MS } from './mcp.ts';
@@ -935,6 +935,39 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
   // Ads
   // -------------------------------------------------------------------------
 
+  // POST /api/v1/_internal/sync — run the daily D1 sync immediately.
+  // Called by the site-rebuild workflow right after it publishes new static
+  // data, so the static build and D1 always carry the same snapshot set
+  // (the 04:30 UTC cron remains as a fallback).
+  app.post('/api/v1/_internal/sync', async (c) => {
+    const token = c.env?.QUEUE_TOKEN;
+    if (!token || c.req.header('x-queue-token') !== token) {
+      return c.json({ error: 'unauthorized' }, 401);
+    }
+    try {
+      const result = await runDailySync({
+        db: createD1Db(c.env.DB),
+        fetchImpl: githubAuthedFetch(c.env.GITHUB_DISPATCH_TOKEN, fetch),
+      });
+      return c.json({
+        ok: true,
+        date: result.date,
+        listed: result.listed,
+        sites: result.sitesUpserted,
+        scans: result.scansUpserted,
+        evidenceWrites: result.evidenceRows,
+        errors: result.errors.length,
+        firstError: result.errors[0] ?? null,
+      });
+    } catch (err) {
+      console.error('internal sync failed:', err);
+      return c.json(
+        { error: 'sync_failed', message: err instanceof Error ? err.message : String(err) },
+        500,
+      );
+    }
+  });
+
   // GET /api/v1/ads?slot=&key= — currently active ads for a slot.
   // SSOT note: ad delivery SSOT is the data repo /ads/active.json, pulled into
   // D1 by the d1-sync pipeline; this endpoint serves the synced D1 copy (the
@@ -1326,6 +1359,8 @@ export default {
    * from the data repo into D1. The Worker never scans — scanners run in
    * GitHub Actions (scan.yml), which reports back via /api/v1/queue/:domain/done. */
   async scheduled(_controller: ScheduledController, env: WorkerEnv, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(runDailySync({ db: createD1Db(env.DB), fetchImpl: fetch }));
+    ctx.waitUntil(
+      runDailySync({ db: createD1Db(env.DB), fetchImpl: githubAuthedFetch(env.GITHUB_DISPATCH_TOKEN, fetch) }),
+    );
   },
 };

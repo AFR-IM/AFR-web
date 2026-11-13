@@ -11,7 +11,7 @@
     "apps/*"
   ],
   "scripts": {
-    "test": "node --test packages/*/test/*.test.ts",
+    "test": "node --test packages/*/test/*.test.ts scripts/*.test.mjs",
     "test:afr": "node --test packages/afr/test/*.test.ts"
   }
 }

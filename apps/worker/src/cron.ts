@@ -22,6 +22,25 @@ interface ContentEntry {
   type: string;
 }
 
+/** Wrap a fetch so every api.github.com call carries the repo token.
+ * Anonymous calls from Worker IPs are rate-limited/unstable and made
+ * latestSnapshotDate() return null — which silently disabled the daily sync. */
+export function githubAuthedFetch(token: string | undefined, base: typeof fetch): typeof fetch {
+  if (!token) return base;
+  const wrapped = (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const url =
+      typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    if (url.startsWith('https://api.github.com/')) {
+      const headers = new Headers(init?.headers);
+      headers.set('authorization', `Bearer ${token}`);
+      headers.set('user-agent', 'afr-sync');
+      return base(input, { ...init, headers });
+    }
+    return base(input, init);
+  };
+  return wrapped as typeof fetch;
+}
+
 /** List one directory under the data repo's scans/ tree; null when absent/empty */
 async function listDir(fetchImpl: typeof fetch, path: string): Promise<string[] | null> {
   const res = await fetchImpl(`${DATA_REPO_API}/${path}`);
