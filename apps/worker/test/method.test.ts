@@ -18,7 +18,7 @@ describe('GET /api/v1/method', () => {
   it('declares standard AFR with a version', async () => {
     const body = await fetchMethod();
     assert.equal(body.standard, 'AFR');
-    assert.equal(body.version, '1.1.0');
+    assert.equal(body.version, '1.2.0');
     assert.equal(body.layers.length, 3);
     assert.equal(body.grades.length, 5);
   });
@@ -36,7 +36,7 @@ describe('GET /api/v1/method', () => {
     assert.equal(body.layers[0].name.en, 'Reachable');
     assert.equal(body.layers[0].name.zh, LAYER_NAMES.L1.zh);
     assert.equal(body.layers[1].name.en, 'Legible');
-    assert.equal(body.layers[2].name.en, 'Actionable');
+    assert.equal(body.layers[2].name.en, 'Actionability');
   });
 
   it('enumerates the L1 robots.txt checks per crawler family (spec §3.2)', async () => {

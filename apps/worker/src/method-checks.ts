@@ -25,12 +25,20 @@ export interface AfrLayerDef {
 }
 
 /** AFR standard version (spec §14-D shape) */
-export const AFR_VERSION = '1.1.0';
+export const AFR_VERSION = '1.2.0';
+// v1.2 (2026-11-13): engine aligned to this published composition —
+// C1 now scores 5/2/1 (was an unpublished 4/2/2 + homepage link) and C2 scores
+// agents.md 2 + llms.txt agent-policy 2 (engine-only ai.txt/homepage awards
+// removed). Published ids map to engine breakdown keys as:
+//   C1.api/C1.api-docs/C1.openapi -> l3.public-api (combined)
+//   C2.agents-md/C2.llms-policy   -> l3.agent-instructions (combined)
+//   C3.mcp                        -> l3.mcp
+//   C4.*                          -> l3.site-ai-features (heuristic split)
 
 export const LAYER_NAMES: Record<AfrLayerId, { en: string; zh: string }> = {
   L1: { en: 'Reachable', zh: '可达' },
   L2: { en: 'Legible', zh: '可懂' },
-  L3: { en: 'Actionable', zh: '可交互' },
+  L3: { en: 'Actionability', zh: '可交互' },
 };
 
 // L1 Reachable (35 = 25 + 5 + 5), spec §3.2
@@ -86,14 +94,14 @@ const L2_CHECKS: AfrCheckDef[] = [
   { id: 'B5.about', name: 'About/contact path reachable from the homepage', points: 2 },
 ];
 
-// L3 Actionable (25 = 8 + 4 + 6 + 7), spec §3.4
+// L3 Actionability (25 = 8 + 4 + 6 + 7), spec §3.4
 const L3_CHECKS: AfrCheckDef[] = [
   // C1 public API (8)
   { id: 'C1.api', name: 'Public API discoverable (llms.txt / common paths / dev subdomain)', points: 5 },
   { id: 'C1.api-docs', name: 'Human-readable API documentation', points: 2 },
   { id: 'C1.openapi', name: 'Machine-readable OpenAPI spec', points: 1 },
   // C2 agent instructions (4)
-  { id: 'C2.agents-md', name: '/agents.md exists', points: 2 },
+  { id: 'C2.agents-md', name: '/agents.md reachable (HTTP 2xx)', points: 2 },
   { id: 'C2.llms-policy', name: 'llms.txt contains an agent usage policy / instructions section', points: 2 },
   // C3 MCP interface (6)
   { id: 'C3.mcp', name: 'Publicly reachable MCP server declared by the site', points: 6 },

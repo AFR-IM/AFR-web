@@ -20,7 +20,7 @@ import { evaluateRobotsPolicy, parseRobots, type RobotsTxt } from './robots.ts';
 // v1.1.0 (2026-11-10 calibration): robots-absent → full credit (spec §3.2 protocol default);
 // no evaluable homepage evidence → state 'pending', grade 'Pending' (spec §3.5).
 // Score logic change = minor bump per spec §4.4.
-export const ENGINE_VERSION = 'afr-1.1.0';
+export const ENGINE_VERSION = 'afr-1.2.0';
 
 export function gradeFor(score: number): Grade {
   for (const t of GRADE_THRESHOLDS) {

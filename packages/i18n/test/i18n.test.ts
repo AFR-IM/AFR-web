@@ -198,7 +198,7 @@ describe('AFR_METHOD (spec §3 transcription)', () => {
       ['#3ECFAD', '#8BD450', '#F2C94C', '#F2994A', '#EB5757'],
     );
     assert.equal(AFR_METHOD.standard, 'AFR');
-    assert.equal(AFR_METHOD.version, '1.1');
+    assert.equal(AFR_METHOD.version, '1.2');
   });
 });
 

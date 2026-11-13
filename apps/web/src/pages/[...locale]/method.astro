@@ -33,7 +33,7 @@ const PROSE = {
   en: {
     title: 'The AFR standard',
     description:
-      'AFR v1.1 in full: three layers, every sub-check and its points, grade thresholds, engine versions, how to recompute any score, and the neutrality pledge.',
+      'AFR v1.2 in full: three layers, every sub-check and its points, grade thresholds, engine versions, how to recompute any score, and the neutrality pledge.',
     intro:
       'AFR (AI-Friendliness Rating) scores every website 0–100 on how open it is to AI crawlers and agents. It measures only public, reproducible facts: every sub-check is one HTTP GET or DNS lookup anyone can repeat, and every awarded point links to its raw evidence. Grades are coordinates on an openness scale — not a moral verdict.',
     toc: ['Three layers', 'Every check', 'Grades & strategies', 'Engine versions', 'Recompute', 'Neutrality', 'Data sources', 'Machine-readable'],
@@ -116,6 +116,8 @@ const PROSE = {
       'A second, independent axis derived from robots.txt alone. The tag sits next to the grade and never deducts points — it explains the policy behind the score.',
     engineHeading: 'Engine versions',
     engineIntro: 'Every scan records the engine version that produced it, so any score on this site can be reproduced bit-for-bit later.',
+    versionsNote:
+      'Standard versions: v1.2 (2026-11-13) — the engine now scores exactly this page\u2019s composition: C1 public API 5/2/1 and C2 = agents.md (HTTP 2xx) 2 + llms.txt agent policy 2; earlier engine builds used an internal split that also carried awards this page never listed, and every historical snapshot keeps the engine version it was scored with. v1.1 (2026-11-10) — first calibrated thresholds (A \u226575 / B \u226560 / C \u226542 / D \u226525).',
     rowStandard: 'Written standard',
     rowEngine: 'Scoring engine',
     rowScanner: 'Scanner',
@@ -147,12 +149,12 @@ const PROSE = {
     schemaBody:
       'The whole standard is served as JSON at /api/v1/method (layers, per-sub-check points, grade thresholds) so tools can consume it without scraping this page.',
     schemaLink: 'Open /api/v1/method',
-    license: 'AFR v1.1 is published under CC BY 4.0 — reuse it with attribution.',
+    license: 'AFR v1.2 is published under CC BY 4.0 — reuse it with attribution.',
   },
   'zh-CN': {
     title: 'AFR 标准全文',
     description:
-      'AFR v1.1 完整标准：三层模型、每个子项与分值、等级阈值、引擎版本、复算指南与中立性承诺。',
+      'AFR v1.2 完整标准：三层模型、每个子项与分值、等级阈值、引擎版本、复算指南与中立性承诺。',
     intro:
       'AFR（AI-Friendliness Rating，AI 友好度评级）给每个网站 0–100 分，衡量它对 AI 爬虫与智能体有多开放。只测公开可复现的事实：每个子项 = 一次人人可重复的 HTTP GET / DNS 查询，每个得分点都能链到原始证据。等级是开放度坐标，不是道德评判。',
     toc: ['三层模型', '全部子项', '等级与策略', '引擎版本', '复算指南', '中立性', '数据来源', '机读标准'],
@@ -233,6 +235,8 @@ const PROSE = {
     strategiesIntro: '仅由 robots.txt 得出的第二条独立坐标。标签与等级并列展示，不参与扣分——它解释分数背后的策略。',
     engineHeading: '引擎版本',
     engineIntro: '每次扫描都会记录产出它的引擎版本，本站任何分数都可被逐位复算。',
+    versionsNote:
+      '标准版本：v1.2（2026-11-13）——引擎现在严格按本页公布的方式计分：C1 公开 API 5/2/1，C2 = agents.md（HTTP 2xx）2 + llms.txt 智能体政策 2；更早的引擎版本采用过本页未列出的内部拆分与额外给分，每个历史快照都保留其计分时的引擎版本。v1.1（2026-11-10）——首次分布校准阈值（A ≥75 / B ≥60 / C ≥42 / D ≥25）。',
     rowStandard: '书面标准',
     rowEngine: '评分引擎',
     rowScanner: '扫描器',
@@ -260,7 +264,7 @@ const PROSE = {
     schemaHeading: '机读标准',
     schemaBody: '整套标准以 JSON 形式提供在 /api/v1/method（三层、每个子项分值、等级阈值），工具无需抓取本页即可消费。',
     schemaLink: '打开 /api/v1/method',
-    license: 'AFR v1.1 以 CC BY 4.0 发布——署名后可自由复用。',
+    license: 'AFR v1.2 以 CC BY 4.0 发布——署名后可自由复用。',
   },
 } as const;
 
@@ -534,6 +538,7 @@ const faqJsonLd = JSON.stringify({
     <section class="sec" id="engine">
       <h2>{P.engineHeading}</h2>
       <p>{P.engineIntro}</p>
+      <p class="vnote">{P.versionsNote}</p>
       <table class="tbl">
         <tbody>
           <tr>
@@ -915,4 +920,5 @@ const faqJsonLd = JSON.stringify({
       flex-wrap: wrap;
     }
   }
+      .vnote { color: var(--text-2); font-size: 13.5px; }
 </style>

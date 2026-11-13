@@ -23,7 +23,7 @@ function idealSignals(): ScanSignals {
       status: 200,
       body: `# AI friendly\n${aiAllowRules}\nUser-agent: *\nAllow: /\nSitemap: https://${DOMAIN}/sitemap.xml\n`,
     },
-    llms: { status: 200, body: `# ${DOMAIN}\n\n> A friendly site\n` },
+    llms: { status: 200, body: `# ${DOMAIN}\n\n> A friendly site\n\n## API\nREST API docs at /docs.\n\n## Optional: agent usage policy\nAgents may read and cite this site.\n` },
     llmsFull: { status: 200, body: '# Full docs' },
     homepage: {
       status: 200,

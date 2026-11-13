@@ -11,36 +11,47 @@ export function scoreL3(signals: ScanSignals): LayerScore {
   const homeOk = ok(signals.homepage);
   const doc = homeOk ? (signals.homepage.body ?? '') : undefined;
 
-  // 1) Public API 8 = OpenAPI 4 + API docs 2 + homepage docs link 2
+  // 1) Public API 8 = public-API evidence 5 + human-readable docs 2 + OpenAPI 1
+  //    (published split; engine previously used an unpublished 4/2/2 layout)
   let a = 0;
   let aUnknown = false;
   const aDetails: string[] = [];
-  if (signals.openapi === undefined || !signals.openapi.probed) {
+  const llmsProbed = signals.llms !== undefined;
+  const llmsBody = ok(signals.llms) ? (signals.llms.body ?? '') : '';
+  const llmsNamesApi = /\b(api|developers?|reference|rest)\b/i.test(llmsBody);
+  const anyProbed = llmsProbed || signals.apiDocs !== undefined || (signals.openapi?.probed ?? false);
+  if (!anyProbed) {
     aUnknown = true;
-    aDetails.push('OpenAPI not probed');
-  } else if (signals.openapi.found) {
-    a += 4;
-    aDetails.push(`OpenAPI found: ${(signals.openapi.urls ?? []).join(', ') || 'yes'}`);
+    aDetails.push('no API sources probed');
+  }
+  // 5 — the site exposes a public API: llms.txt names one, the homepage links
+  // docs/dev/api paths, or an OpenAPI document was discovered
+  if (llmsNamesApi || signals.apiDocs?.found || signals.openapi?.found) {
+    a += 5;
+    if (llmsNamesApi) aDetails.push('llms.txt references an API');
+    if (signals.apiDocs?.found) aDetails.push('homepage links API/docs paths');
+    if (signals.openapi?.found) aDetails.push('OpenAPI document discovered');
   } else {
+    aDetails.push('no public-API evidence');
+  }
+  // 2 — a human-readable documentation entry point exists
+  const docsEntry =
+    signals.apiDocs?.found === true ||
+    (llmsProbed && ok(signals.llms) && /docs\.|developer|documentation/i.test(llmsBody));
+  if (docsEntry) {
+    a += 2;
+    aDetails.push('API documentation entry point present');
+  } else {
+    aDetails.push('no API documentation entry point');
+  }
+  // 1 — machine-readable OpenAPI spec
+  if (signals.openapi?.found) {
+    a += 1;
+    aDetails.push(`OpenAPI: ${(signals.openapi.urls ?? []).join(', ') || 'yes'}`);
+  } else if (signals.openapi?.probed) {
     aDetails.push('OpenAPI not found');
-  }
-  if (signals.apiDocs === undefined) {
-    aUnknown = true;
-    aDetails.push('API docs not probed');
-  } else if (signals.apiDocs.found) {
-    a += 2;
-    aDetails.push('API docs present');
   } else {
-    aDetails.push('API docs not found');
-  }
-  if (doc === undefined) {
-    aUnknown = true;
-    aDetails.push('homepage unavailable');
-  } else if (/(href|action)\s*=\s*["'][^"']*\/(docs|developers?|api\/docs|reference)["']/i.test(doc)) {
-    a += 2;
-    aDetails.push('homepage links to docs/developer pages');
-  } else {
-    aDetails.push('homepage has no docs link');
+    aDetails.push('OpenAPI not probed');
   }
   checks.push({
     id: 'l3.public-api',
@@ -49,39 +60,39 @@ export function scoreL3(signals: ScanSignals): LayerScore {
     awarded: a,
     max: 8,
     status: a >= 8 ? 'pass' : a <= 0 ? (aUnknown ? 'unknown' : 'fail') : 'partial',
-    evidence: { source: 'openapi probe + homepage HTML', detail: aDetails.join('; ') },
+    evidence: { source: 'llms.txt + homepage HTML + OpenAPI probe', detail: aDetails.join('; ') },
   });
 
-  // 2) Agent instructions 4 = agents.md 2 + ai.txt 1 + homepage AI info link 1
+  // 2) Agent instructions 4 = agents.md reachable (HTTP 2xx) 2 + llms.txt
+  //    agent-policy section 2 (published composition; the previous engine-only
+  //    ai.txt and homepage-link awards are removed)
   let b = 0;
   let bUnknown = false;
   const bDetails: string[] = [];
   if (ok(signals.agentsMd)) {
     b += 2;
-    bDetails.push('agents.md fetchable');
+    bDetails.push('agents.md reachable (2xx)');
   } else if (signals.agentsMd?.error || !signals.agentsMd) {
     bUnknown = true;
     bDetails.push('agents.md not probed');
   } else {
     bDetails.push(`agents.md HTTP ${signals.agentsMd.status}`);
   }
-  if (ok(signals.aiTxt)) {
-    b += 1;
-    bDetails.push('ai.txt fetchable');
-  } else if (signals.aiTxt?.error || !signals.aiTxt) {
+  if (signals.llms === undefined) {
     bUnknown = true;
-    bDetails.push('ai.txt not probed');
+    bDetails.push('llms.txt not probed');
+  } else if (ok(signals.llms)) {
+    const policy = /(#+[^\n]*agent[^\n]*(policy|instruction|usage|guideline))|(agent\s*(usage|instruction|policy|guideline)\s*:)/i.test(
+      signals.llms.body ?? '',
+    );
+    if (policy) {
+      b += 2;
+      bDetails.push('llms.txt declares an agent policy section');
+    } else {
+      bDetails.push('llms.txt has no agent policy section');
+    }
   } else {
-    bDetails.push(`ai.txt HTTP ${signals.aiTxt.status}`);
-  }
-  if (doc === undefined) {
-    bUnknown = true;
-    bDetails.push('homepage unavailable');
-  } else if (/href\s*=\s*["'][^"']*\/(ai|agents?)[^"']*["']/i.test(doc)) {
-    b += 1;
-    bDetails.push('homepage links to AI/Agent info page');
-  } else {
-    bDetails.push('homepage has no AI info page link');
+    bDetails.push(`llms.txt HTTP ${signals.llms.status}`);
   }
   checks.push({
     id: 'l3.agent-instructions',
@@ -90,7 +101,7 @@ export function scoreL3(signals: ScanSignals): LayerScore {
     awarded: b,
     max: 4,
     status: b >= 4 ? 'pass' : b <= 0 ? (bUnknown ? 'unknown' : 'fail') : 'partial',
-    evidence: { source: 'GET /agents.md, /ai.txt + homepage HTML', detail: bDetails.join('; ') },
+    evidence: { source: 'GET /agents.md + /llms.txt', detail: bDetails.join('; ') },
   });
 
   // 3) MCP interface — 6 points
