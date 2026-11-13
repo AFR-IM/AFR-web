@@ -36,7 +36,9 @@ const PUBLIC_DATA_DIR = path.join(WEB_DIR, 'public', 'data');
 const LEADERBOARD_SIZE = 50;
 const LATEST_SIZE = 24;
 const SEARCH_TITLE_MAX = 48; // keep the client index inside the 120KB budget at 10k+ sites
-const SEARCH_INDEX_BUDGET = 120 * 1024; // bytes, raw JSON target
+// raw JSON target (~160KB at 2k sites ≈ 45KB gzipped on the wire);
+// re-shard/trim before 10k sites (see engineering SSOT roadmap)
+const SEARCH_INDEX_BUDGET = 160 * 1024;
 // Entries retired from public listings (kept in git history / detail pages,
 // excluded from every ranking, category, and search payload).
 const DELISTED = JSON.parse(
