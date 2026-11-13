@@ -1,4 +1,4 @@
-// Single-site scan (spec §4): fixed ≤8 slots of public GETs → ScanSignals (AFR engine input)
+// Single-site scan (spec §4): fixed ≤9 slots of public GETs → ScanSignals (AFR engine input)
 //
 // Slots:
 //   1 GET /robots.txt            (1 retry on network error)
@@ -9,7 +9,9 @@
 //   6 GET /agents.md             (404 → fall back to /AGENTS.md)
 //   7 GET /openapi.json          (prefer the homepage link when it links to swagger/openapi)
 //   8 GET /.well-known/mcp
-// Politeness: ≤12 actual requests per site (hard cap, incl. fallbacks and retries),
+//   9 GET /ai.txt                (machine-readable AI crawler policy; powers the
+//                                  agent-instructions sub-check the standard scores)
+// Politeness: ≤18 actual requests per site (hard cap, incl. fallbacks and retries),
 //             robots crawl-delay honored (capped at 3s), 150ms gap between requests by default,
 //             transparent UA, 15s timeout.
 
@@ -111,6 +113,11 @@ export async function scanSite(domain: string, opts: ScanOptions = {}): Promise<
 
   // 8) MCP well-known
   const mcpResp = await politeGet(`https://${host}/.well-known/mcp`, base);
+  await sleep(crawlDelayMs);
+
+  // 9) ai.txt — machine-readable AI crawler policy (the agent-instructions
+  // sub-check awards 1 point only when this probe succeeds)
+  const aiTxt = await politeGet(`https://${host}/ai.txt`, base);
   const mcpFound = statusOk(mcpResp) && (mcpResp.body ?? '').trim().length > 0;
 
   const apiDocLinks = html
@@ -132,6 +139,7 @@ export async function scanSite(domain: string, opts: ScanOptions = {}): Promise<
     openapi: { probed: true, found: openapiFound, urls: openapiFound ? [openapiUrl] : [] },
     apiDocs: { found: apiDocLinks.length > 0 || openapiFound, urls: apiDocLinks.slice(0, 3) },
     mcp: { probed: true, found: mcpFound, urls: mcpFound ? [`https://${host}/.well-known/mcp`] : [] },
+    aiTxt,
     aiFeatures: html ? detectAiFeatures(html) : undefined,
   };
 }

@@ -10,9 +10,9 @@ export const USER_AGENT = 'afrScanner/0.1 (+https://afr.im/bot; AI-friendliness 
 
 export const TIMEOUT_MS = 15_000;
 
-/** Hard cap on actual requests: 8 endpoints × (transparent + challenge fallback) = 16;
+/** Hard cap on actual requests: 9 endpoints × (transparent + challenge fallback) = 18;
  *  includes the agents 404 fallback and 1 network retry on key slots */
-export const MAX_REQUESTS = 16;
+export const MAX_REQUESTS = 18;
 
 /** Status codes that trigger the challenge fallback (a refinement of the spec §4 "Declined"
  *  degradation mechanism, confirmed by the user on 2026-11-10) */

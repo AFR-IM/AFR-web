@@ -82,6 +82,23 @@ describe('polite budget', () => {
     assert.ok(calls.length <= MAX_REQUESTS);
   });
 
+  it('probes /ai.txt and exposes the probe (agent-instructions sub-check input)', async () => {
+    const { impl } = mockFetch({
+      '/robots.txt': { status: 404 },
+      '/llms.txt': { status: 404 },
+      '/llms-full.txt': { status: 404 },
+      '/': { status: 200, body: '<html><body>hi</body></html>' },
+      '/sitemap.xml': { status: 404 },
+      '/agents.md': { status: 404 },
+      '/openapi.json': { status: 404 },
+      '/.well-known/mcp': { status: 404 },
+      '/ai.txt': { status: 200, body: '# AI policy' },
+    });
+    const signals = await scanSite('example.com', { fetchImpl: impl });
+    assert.equal(signals.aiTxt?.status, 200);
+    assert.equal(signals.aiTxt?.body, '# AI policy');
+  });
+
   it('Sitemap and crawl-delay declared in robots.txt are honored', async () => {
     const { impl, calls } = mockFetch({
       '/robots.txt': { status: 200, body: 'Sitemap: https://example.com/custom.xml\ncrawl-delay: 0\n' },
