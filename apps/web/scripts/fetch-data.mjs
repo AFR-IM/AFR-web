@@ -35,7 +35,7 @@ const PUBLIC_DATA_DIR = path.join(WEB_DIR, 'public', 'data');
 
 const LEADERBOARD_SIZE = 50;
 const LATEST_SIZE = 24;
-const SEARCH_TITLE_MAX = 80;
+const SEARCH_TITLE_MAX = 48; // keep the client index inside the 120KB budget at 10k+ sites
 const SEARCH_INDEX_BUDGET = 120 * 1024; // bytes, raw JSON target
 // Entries retired from public listings (kept in git history / detail pages,
 // excluded from every ranking, category, and search payload).
