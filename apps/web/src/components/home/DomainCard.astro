@@ -24,6 +24,9 @@ interface Props {
 const { site, locale, index = 0, skeleton = false } = Astro.props;
 const L = getCatalog(locale);
 const catName = site.category ? (L.categories[site.category]?.name ?? site.category) : '';
+// "other" (Uncategorized) carries no signal — its chip is never rendered
+// (kept in data-cat so page filtering still works).
+const showCat = Boolean(catName && site.category !== 'other');
 const strategy = L.strategies[site.strategyTag]?.label ?? site.strategyTag;
 const href = pathFor(locale, `/site/${site.domain}`);
 const searchBlob = [site.domain, site.title ?? '', ...(site.tags ?? [])]
@@ -59,8 +62,8 @@ const searchBlob = [site.domain, site.title ?? '', ...(site.tags ?? [])]
       <span class="card-domain mono">{site.domain}</span>
       <span class="card-title">{site.title}</span>
       <span class="card-chips">
-        {catName && <span class="chip">{catName}</span>}
-        <span class="chip">{strategy}</span>
+        {showCat && <span class="chip" data-chip="cat">{catName}</span>}
+        <span class="chip" data-chip="strat">{strategy}</span>
       </span>
     </span>
   </a>

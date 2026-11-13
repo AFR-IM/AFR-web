@@ -59,9 +59,15 @@ const paths = [...TOP, ...CATS.map((s) => `/c/${s}`), ...sites.map((d) => `/site
 
 const enc = (p) => p.split('/').map(encodeURIComponent).join('/');
 
+// Astro builds every route as a directory (route/index.html), and production
+// serves `/method` → `/method/` with a 307. Emit the final form directly so
+// crawlers never double-hop: every URL carries a trailing slash (root stays `/`).
+const withSlash = (p) => (p === '/' || p.endsWith('/') ? p : `${p}/`);
+
 const entries = [];
-for (const p of paths) {
-  const enUrl = p === '/' ? `${SITE}/` : `${SITE}${enc(p)}`;
+for (const raw of paths) {
+  const p = withSlash(raw);
+  const enUrl = `${SITE}${enc(p)}`; // '/' → https://afr.im/
   const zhUrl = p === '/' ? `${SITE}/zh-CN/` : `${SITE}/zh-CN${enc(p)}`;
   entries.push({ loc: enUrl, en: enUrl, zh: zhUrl });
   entries.push({ loc: zhUrl, en: enUrl, zh: zhUrl });

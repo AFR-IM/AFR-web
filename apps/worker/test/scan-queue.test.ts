@@ -29,6 +29,7 @@ import { openSeededDb, SCHEMA_SQL } from './helpers.ts';
 function freshScanLimits(): ScanRateLimits {
   return {
     ip: new RateLimiter(memoryStore(), SCAN_IP_LIMIT, DAY_MS, 'scan-ip'),
+      rescanIp: new RateLimiter(memoryStore(), 1, SCAN_DOMAIN_WINDOW_MS, 'rescan-ip'),
     domain: new RateLimiter(memoryStore(), 1, SCAN_DOMAIN_WINDOW_MS, 'scan-domain'),
     global: new RateLimiter(memoryStore(), SCAN_GLOBAL_LIMIT, DAY_MS, 'scan-global'),
   };

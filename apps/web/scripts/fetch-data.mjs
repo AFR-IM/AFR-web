@@ -37,6 +37,11 @@ const LEADERBOARD_SIZE = 50;
 const LATEST_SIZE = 24;
 const SEARCH_TITLE_MAX = 80;
 const SEARCH_INDEX_BUDGET = 120 * 1024; // bytes, raw JSON target
+// Entries retired from public listings (kept in git history / detail pages,
+// excluded from every ranking, category, and search payload).
+const DELISTED = JSON.parse(
+  await readFile(new URL('../src/data/delisted.json', import.meta.url), 'utf8'),
+);
 
 function parseArgs(argv) {
   const args = { date: undefined, dataDir: undefined };
@@ -275,7 +280,8 @@ async function main() {
   }
 
   const isPendingSite = (s) => s.afr.state === 'pending' || s.afr.grade === 'Pending';
-  const scored = sites.filter((s) => !isPendingSite(s));
+  const domainOf = (s) => s.afr.domain ?? '';
+  const scored = sites.filter((s) => !isPendingSite(s) && !DELISTED[domainOf(s)]);
   const pending = sites.filter(isPendingSite);
 
   // ── card / detail builders ────────────────────────────────────────────────
@@ -293,6 +299,7 @@ async function main() {
 
   const detailOf = (s) => ({
     ...cardOf(s),
+    ...(DELISTED[domainOf(s)] ? { delistedNote: DELISTED[domainOf(s)] } : {}),
     engineVersion: s.afr.engineVersion,
     scannerVersion: s.afr.scannerVersion,
     layers: s.afr.layers,
@@ -345,7 +352,7 @@ async function main() {
   for (const list of Object.values(grouped)) list.sort(byScoreDesc);
 
   // ── search index (everything, compact keys) ──────────────────────────────
-  const searchIndex = sites
+  const searchIndex = sites.filter((s) => !DELISTED[s.afr.domain ?? ''])
     .map((s) => {
       const entry = {
         d: s.afr.domain,

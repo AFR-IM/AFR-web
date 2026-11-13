@@ -35,6 +35,11 @@ const firstDate = history[0]?.date ?? '';
 const lastDate = history[history.length - 1]?.date ?? '';
 const delta = n >= 2 ? history[n - 1]!.score - history[0]!.score : 0;
 const deltaText = `${delta > 0 ? '+' : ''}${delta}`;
+// single-scan state — no coordinate system until a second scan exists
+const firstLabel = `${L.ui.historyFirstScan ?? T('First scan', '首次扫描')} · ${history[0]?.date ?? ''}`;
+const buildsNote =
+  L.ui.historyBuildsNote ??
+  T('History builds after each rescan.', '每次重新扫描后历史会继续累积。');
 ---
 
 <section class="hist" aria-label={L.ui.historyTitle}>
@@ -46,6 +51,11 @@ const deltaText = `${delta > 0 ? '+' : ''}${delta}`;
   {
     n === 0 ? (
       <p class="empty">{L.ui.historyEmpty ?? T('No scans yet.', '暂无扫描记录。')}</p>
+    ) : n === 1 ? (
+      <div class="first">
+        <p class="first-scan mono">{firstLabel}</p>
+        <p class="first-note">{buildsNote}</p>
+      </div>
     ) : (
       <svg class="spark" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${L.ui.historyTitle}: ${firstDate} → ${lastDate}`}>
         <line x1={padX} y1={padTop + plotH} x2={W - padX} y2={padTop + plotH} class="axis" />
@@ -94,6 +104,22 @@ const deltaText = `${delta > 0 ? '+' : ''}${delta}`;
   .empty {
     margin: 0;
     font-size: 13px;
+    color: var(--text-3);
+  }
+  /* single-scan sites: text state instead of a near-empty plot */
+  .first {
+    display: grid;
+    gap: 6px;
+  }
+  .first-scan {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-1);
+  }
+  .first-note {
+    margin: 0;
+    font-size: 11.5px;
+    line-height: 1.6;
     color: var(--text-3);
   }
   .spark {

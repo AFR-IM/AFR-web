@@ -10,7 +10,7 @@
 - [Submit](https://afr.im/submit): request a scan of a site you care about.
 - [About](https://afr.im/about): who runs AFR.IM and how to get in touch.
 - [For bots](https://afr.im/bot): what our own scanner fetches and how a score is produced.
-- [Badge](https://afr.im/badge): embeddable rating badge for your site.
+- [Badge](https://afr.im/badges/): embeddable rating badge for your site.
 - [Search](https://afr.im/search): search the directory.
 - [Offline fallback](https://afr.im/offline): cached directory view shown when the network is unavailable.
 

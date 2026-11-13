@@ -38,6 +38,9 @@ zone_name = "afr.im"
 [[routes]]
 pattern = "afr.im/badge/*"
 zone_name = "afr.im"
+[[routes]]
+pattern = "afr.im/badge"
+zone_name = "afr.im"
 # MCP endpoint — stateless JSON-RPC 2.0 over HTTP (POST /mcp)
 [[routes]]
 pattern = "afr.im/mcp*"

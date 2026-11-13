@@ -8,7 +8,7 @@ import {
   createApp,
   SCAN_ETA_SECONDS,
   type ScanRateLimits,
-  type WorkerEnv,
+  type WorkerEnv
 } from '../src/index.ts';
 import { RateLimiter, DAY_MS, memoryStore } from '../src/rate-limit.ts';
 import { SCAN_DOMAIN_WINDOW_MS } from '../src/index.ts';
@@ -21,6 +21,7 @@ import { openSeededDb } from './helpers.ts';
 function freshScanLimits(): ScanRateLimits {
   return {
     ip: new RateLimiter(memoryStore(), 10, DAY_MS, 'scan-ip'),
+    rescanIp: new RateLimiter(memoryStore(), 1, SCAN_DOMAIN_WINDOW_MS, 'rescan-ip'),
     domain: new RateLimiter(memoryStore(), 1, SCAN_DOMAIN_WINDOW_MS, 'scan-domain'),
     global: new RateLimiter(memoryStore(), 50, DAY_MS, 'scan-global'),
   };
@@ -152,7 +153,7 @@ describe('POST /api/v1/rescan', () => {
     assert.equal(rescanRows(raw), 1, 'the request is still queued for the daily cron');
   });
 
-  it('allows only one rescan per domain per day', async () => {
+  it('allows only one rescan per domain per window', async () => {
     const { app, raw } = freshApp();
 
     const first = await postTo(app, '/api/v1/rescan', { domain: 'example.com' });
@@ -166,6 +167,29 @@ describe('POST /api/v1/rescan', () => {
     assert.ok(Date.parse(body.nextAllowedAt) > Date.now(), 'nextAllowedAt is in the future');
     assert.ok(Number(second.headers.get('retry-after')) > 0, 'Retry-After header present');
     assert.equal(rescanRows(raw), 1, 'no second row while the domain is rate limited');
+  });
+
+  it('limits a device to one re-scan per 30 minutes across DIFFERENT domains', async () => {
+    const { app } = freshApp();
+    const first = await app.request('/api/v1/rescan', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ domain: 'example.com' }),
+    });
+    assert.equal(first.status, 200);
+    const second = await app.request('/api/v1/rescan', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ domain: 'coolsite.io' }),
+    });
+    assert.equal(second.status, 429, 'a second device-level rescan must be blocked');
+    const body = await second.json();
+    assert.equal(body.scope, 'device');
+    assert.ok(Number(body.retryAfter) > 0, 'retryAfter is positive');
+    const next = Date.parse(body.nextAllowedAt);
+    const now = Date.now();
+    assert.ok(next > now, 'nextAllowedAt is in the future');
+    assert.ok(next <= now + 30 * 60 * 1000 + 5000, 'nextAllowedAt within the 30-minute window');
   });
 
   it('shares the per-domain quota with search-scan', async () => {

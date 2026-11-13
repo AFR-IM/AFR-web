@@ -650,13 +650,24 @@ const ad = ads[1] ?? ads[0]; // slot position 2 (search-top)
         if (dom) dom.textContent = d;
         var title = el.querySelector('.card-title');
         if (title) title.textContent = t;
-        var chips = el.querySelectorAll('.card-chips .chip');
-        if (chips[0]) {
-          if (c) chips[0].textContent = catNames[c] || c;
-          else chips[0].remove();
+        /* category chip: "other" (Uncategorized) never renders; create the chip
+           when the inert template happened to come from an "other" site */
+        var host = el.querySelector('.card-chips');
+        var catChip = el.querySelector('[data-chip="cat"]');
+        if (c && c !== 'other') {
+          if (!catChip && host) {
+            catChip = document.createElement('span');
+            catChip.className = 'chip';
+            catChip.setAttribute('data-chip', 'cat');
+            host.insertBefore(catChip, host.firstChild);
+          }
+          if (catChip) catChip.textContent = catNames[c] || c;
+        } else if (catChip) {
+          catChip.remove();
         }
         /* the compact index carries no strategy tag — one chip is the truth */
-        if (chips[1]) chips[1].remove();
+        var stratChip = el.querySelector('[data-chip="strat"]');
+        if (stratChip) stratChip.remove();
         return el;
       }
 

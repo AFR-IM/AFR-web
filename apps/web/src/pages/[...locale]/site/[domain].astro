@@ -97,6 +97,11 @@ const description = notFound
       </div>
     ) : (
       <div class="container detail" style={`--gc:${gc};`}>
+        {site.delistedNote && (
+          <p class="retired-banner" role="status">
+            {locale === 'zh-CN' ? site.delistedNote.noteZh : site.delistedNote.noteEn}
+          </p>
+        )}
         <header class="head">
           <div class="head-main">
             <p class="crumb mono">
@@ -116,7 +121,8 @@ const description = notFound
                 {L.ui.scanTime}{' '}
                 <time datetime={site.scannedAt} data-scan-time>{scannedAt}</time>
               </span>
-              {site.category && (
+              {/* "other" = Uncategorized: no chip at all (data-cat keeps filtering) */}
+              {site.category && site.category !== 'other' && (
                 <a class="chip mono" href={href(`/c/${site.category}`)}>
                   {L.categories[site.category]?.name ?? site.category}
                 </a>
@@ -174,7 +180,7 @@ const description = notFound
           </div>
           <div class="col col-right">
             <ClaimBlock claim={site.claim} locale={locale} />
-            <BadgeEmbed domain={site.domain} grade={site.grade} locale={locale} badgeHref={href('/badge')} />
+            <BadgeEmbed domain={site.domain} grade={site.grade} locale={locale} badgeHref={href('/badges')} />
             <VerifyPanel domain={site.domain} locale={locale} verified={!!site.verified} />
             <ClaimForm domain={site.domain} locale={locale} visible={claimFormVisible} />
             <HistorySpark site={site} locale={locale} />
@@ -457,6 +463,15 @@ const description = notFound
       display: grid;
     }
   }
+      .retired-banner {
+        margin: 0 0 16px;
+        padding: 10px 14px;
+        border: 1px dashed var(--line);
+        border-radius: var(--r-2);
+        background: var(--bg-elevated);
+        color: var(--text-2);
+        font-size: 13.5px;
+      }
 </style>
 
 <script>

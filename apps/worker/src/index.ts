@@ -59,8 +59,11 @@ export interface AppOverrides {
 export const SUBMISSION_LIMIT = 5;
 
 // On-demand scan request limits (search-then-collect flow)
-export const SCAN_IP_LIMIT = 10; // per IP per UTC day
-export const SCAN_DOMAIN_LIMIT = 1; // per domain per UTC day
+export const SCAN_IP_LIMIT = 10; // per IP per UTC day (search-triggered scans)
+export const SCAN_DOMAIN_LIMIT = 1; // per domain per 30-minute window
+/** Owner re-scan anti-abuse: one DEVICE may trigger one re-scan (any domain)
+ * per 30-minute window — a per-domain-only rule would let a single device
+ * hammer unlimited distinct sites. */
 export const SCAN_GLOBAL_LIMIT = 50; // all callers per UTC day
 /** Manual re-scan / search-triggered scan: one per domain per 30-minute window.
  * The daily cron keeps its own once-per-day cadence (spec politeness applies to
@@ -250,6 +253,8 @@ export interface ScanRateLimits {
   ip: RateLimiter;
   domain: RateLimiter;
   global: RateLimiter;
+  /** device-level gate for POST /rescan: 1 per 30 minutes */
+  rescanIp: RateLimiter;
 }
 
 /** Verification tiers: starts per domain per day + probes per IP per hour */
@@ -266,6 +271,7 @@ export interface ClaimRateLimits {
 /** Fallback scan limiters (per-isolate memory — degraded but serviceable) */
 const fallbackScanLimits: ScanRateLimits = {
   ip: new RateLimiter(memoryStore(), SCAN_IP_LIMIT, DAY_MS, 'scan-ip'),
+      rescanIp: new RateLimiter(memoryStore(), 1, SCAN_DOMAIN_WINDOW_MS, 'rescan-ip'),
   domain: new RateLimiter(memoryStore(), SCAN_DOMAIN_LIMIT, SCAN_DOMAIN_WINDOW_MS, 'scan-domain'),
   global: new RateLimiter(memoryStore(), SCAN_GLOBAL_LIMIT, DAY_MS, 'scan-global'),
 };
@@ -286,6 +292,7 @@ function scanLimitsOf(c: Context<AppEnv>, overrides: AppOverrides): ScanRateLimi
     const store = kvStore(c.env.KV);
     return {
       ip: new RateLimiter(store, SCAN_IP_LIMIT, DAY_MS, 'scan-ip'),
+      rescanIp: new RateLimiter(store, 1, SCAN_DOMAIN_WINDOW_MS, 'rescan-ip'),
       domain: new RateLimiter(store, SCAN_DOMAIN_LIMIT, SCAN_DOMAIN_WINDOW_MS, 'scan-domain'),
       global: new RateLimiter(store, SCAN_GLOBAL_LIMIT, DAY_MS, 'scan-global'),
     };
@@ -703,6 +710,13 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
   // Badge
   // -------------------------------------------------------------------------
 
+  // Legacy landing paths: the static badge guide now lives at /badges/ (the
+  // badge/* route pattern only allows wildcards at the path end, so /badge/
+  // cannot be routed to the site worker). Forward permanently (308) instead
+  // of the previous 404.
+  app.get('/badge', (c) => c.redirect('/badges/', 308));
+  app.get('/badge/', (c) => c.redirect('/badges/', 308));
+
   // GET /badge/:domain.svg — ring + grade letter + score + label; 1h HTTP cache.
   // Unknown domains get a neutral gray "—" badge (not a 404): the badge itself
   // is the anti-forgery surface, click-through to the detail page verifies it.
@@ -978,15 +992,27 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     if (!site) return c.json({ error: 'unknown_domain' }, 404);
 
     const limits = scanLimitsOf(c, overrides);
-    const decision = await limits.domain.check(domain);
-    if (!decision.allowed) {
-      const { retryAfter, nextAllowedAt } = retryPayload(limits.domain);
+    // Device gate first: one re-scan per device per 30 minutes (anti-abuse —
+    // a per-domain rule alone would allow hammering unlimited distinct sites).
+    const ipDecision = await limits.rescanIp.check('global');
+    if (!ipDecision.allowed) {
+      const { retryAfter, nextAllowedAt } = retryPayload(limits.rescanIp);
       return c.json(
-        { error: 'rate_limited', retryAfter, nextAllowedAt },
+        { error: 'rate_limited', scope: 'device', retryAfter, nextAllowedAt },
         429,
         { 'Retry-After': String(retryAfter) },
       );
     }
+    const decision = await limits.domain.check(domain);
+    if (!decision.allowed) {
+      const { retryAfter, nextAllowedAt } = retryPayload(limits.domain);
+      return c.json(
+        { error: 'rate_limited', scope: 'domain', retryAfter, nextAllowedAt },
+        429,
+        { 'Retry-After': String(retryAfter) },
+      );
+    }
+    await limits.rescanIp.consume('global');
     await limits.domain.consume(domain);
 
     await db

@@ -430,12 +430,27 @@ const loadMoreErrorText = uiText(L.ui, 'loadMoreError', locale);
         if (dom) dom.textContent = s.domain;
         var title = el.querySelector('.card-title');
         if (title) title.textContent = s.title;
-        var chips = el.querySelectorAll('.card-chips .chip');
-        if (chips[0]) chips[0].textContent = catName;
+        /* category chip: "other" (Uncategorized) never renders; create the chip
+           when the inert template happened to come from an "other" site */
+        var host = el.querySelector('.card-chips');
+        var catChip = el.querySelector('[data-chip="cat"]');
+        var cat = s.category || category;
+        if (cat && cat !== 'other') {
+          if (!catChip && host) {
+            catChip = document.createElement('span');
+            catChip.className = 'chip';
+            catChip.setAttribute('data-chip', 'cat');
+            host.insertBefore(catChip, host.firstChild);
+          }
+          if (catChip) catChip.textContent = catName;
+        } else if (catChip) {
+          catChip.remove();
+        }
         var strat = stratLabels[s.strategyTag] || s.strategyTag;
-        if (chips[1]) {
-          if (strat) chips[1].textContent = strat;
-          else chips[1].remove();
+        var stratChip = el.querySelector('[data-chip="strat"]');
+        if (stratChip) {
+          if (strat) stratChip.textContent = strat;
+          else stratChip.remove();
         }
         return el;
       }

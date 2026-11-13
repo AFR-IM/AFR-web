@@ -11,7 +11,7 @@
 - [Submit](https://afr.im/submit): request a scan of a site.
 - [About](https://afr.im/about): who runs the directory, corrections, and contact.
 - [For bots](https://afr.im/bot): the endpoints our own scanner fetches and how points are awarded.
-- [Badge](https://afr.im/badge): how to embed the rating badge on your site.
+- [Badge](https://afr.im/badges/): how to embed the rating badge on your site.
 - [API documentation](https://afr.im/docs): public API reference with parameters and example JSON responses.
 - [Offline fallback](https://afr.im/offline): cached directory view shown when the network is unavailable.
 
@@ -24,7 +24,7 @@
 - [提交站点](https://afr.im/zh-CN/submit): 申请扫描一个网站。
 - [关于](https://afr.im/zh-CN/about): 运营方、纠错通道与联系方式。
 - [机器人专用页](https://afr.im/zh-CN/bot): 我们的扫描器抓取哪些端点、分值如何产生。
-- [徽章](https://afr.im/zh-CN/badge): 在你的网站上嵌入评级徽章。
+- [徽章](https://afr.im/zh-CN/badges/): 在你的网站上嵌入评级徽章。
 - [API 文档](https://afr.im/zh-CN/docs): 公开 API 参考、参数与示例 JSON 响应。
 - [离线回退页](https://afr.im/zh-CN/offline): 断网时显示的缓存目录视图。
 

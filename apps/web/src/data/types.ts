@@ -86,4 +86,6 @@ export interface SiteDetail extends SiteCard {
   /** one entry per rescan so far; 'Pending' grade allowed for unratable scans */
   history: { date: string; score: number; grade: GradeState }[];
   claim?: string; // published owner statement
+  /** set when the entry is retired from public listings (see src/data/delisted.json) */
+  delistedNote?: { noteEn: string; noteZh: string };
 }

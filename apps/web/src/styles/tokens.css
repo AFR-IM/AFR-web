@@ -158,7 +158,7 @@
   /* text */
   --text-1: #e6edf7;
   --text-2: #8ca0bf;
-  --text-3: #6e82a6;
+  --text-3: #8498bd; /* WCAG-AA+ on --bg-ink 6.4:1, --bg-surface 5.8:1, --bg-elevated 5.1:1 */
 
   /* brand (teal = "AI signal") */
   --brand: #3ecfad;
@@ -210,7 +210,7 @@
     --line: #d7dfee;
     --text-1: #101726;
     --text-2: #4c5c78;
-    --text-3: #5f7191;
+    --text-3: #5a6c8d; /* AA on all light surfaces (ink 5.0 / surface 5.3 / elevated 4.7) */
     --brand-dim: #2a9e80;
     --brand-link: #17705e; /* deeper teal: >=4.5:1 on light surfaces */
   }
@@ -223,7 +223,7 @@
   --line: #d7dfee;
   --text-1: #101726;
   --text-2: #4c5c78;
-  --text-3: #5f7191;
+  --text-3: #5a6c8d; /* AA on all light surfaces (ink 5.0 / surface 5.3 / elevated 4.7) */
   --brand-dim: #2a9e80;
   --brand-link: #17705e; /* deeper teal: >=4.5:1 on light surfaces */
 }
