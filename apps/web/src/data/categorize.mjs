@@ -409,6 +409,79 @@ const RULES = [
   ['readthedocs', 'docs', true],
   ['ietf', 'docs'],
   ['ieee', 'docs'],
+
+  // ── conservative additions (append-only: existing classifications never change) ──
+  // news — publishers
+  ['reuters', 'news', true], ['bbc', 'news', true], ['cnn', 'news', true],
+  ['theguardian', 'news', true], ['telegraph', 'news', true], ['nytimes', 'news', true],
+  ['wsj', 'news', true], ['ft.com', 'news'], ['bloomberg', 'news', true],
+  ['spiegel', 'news', true], ['lemonde', 'news', true], ['asahi', 'news', true],
+  ['nhk', 'news', true], ['scmp', 'news', true], ['straitstimes', 'news', true],
+  ['people.com.cn', 'news'], ['chinadaily', 'news', true], ['caixin', 'news', true],
+  ['yicai', 'news', true], ['jiemian', 'news', true],
+  // reference / knowledge
+  ['britannica', 'reference', true], ['wiktionary', 'reference', true],
+  ['wikimedia', 'reference', true], ['arxiv', 'reference', true],
+  ['projectgutenberg', 'reference', true], ['worldcat', 'reference', true],
+  ['scholar.google', 'reference'], ['stackexchange', 'dev-tools', true],
+  // ai-tools
+  ['openai', 'ai-tools', true], ['anthropic', 'ai-tools', true], ['cohere', 'ai-tools', true],
+  ['mistral', 'ai-tools', true], ['perplexity', 'ai-tools', true], ['huggingface', 'ai-tools', true],
+  ['stability.ai', 'ai-tools'], ['midjourney', 'ai-tools', true], ['elevenlabs', 'ai-tools', true],
+  ['deepseek', 'ai-tools', true], ['x.ai', 'ai-tools'], ['gemini', 'ai-tools', true],
+  ['ollama', 'ai-tools', true], ['replicate', 'ai-tools', true], ['together.ai', 'ai-tools'],
+  ['cursor', 'dev-tools', true], ['openrouter', 'ai-tools', true],
+  // ecommerce
+  ['amazon', 'ecommerce', true], ['ebay', 'ecommerce', true], ['aliexpress', 'ecommerce', true],
+  ['taobao', 'ecommerce', true], ['jd.com', 'ecommerce'], ['pinduoduo', 'ecommerce', true],
+  ['walmart', 'ecommerce', true], ['target', 'ecommerce', true], ['bestbuy', 'ecommerce', true],
+  ['etsy', 'ecommerce', true], ['shopify', 'ecommerce', true], ['flipkart', 'ecommerce', true],
+  ['rakuten', 'ecommerce', true], ['zalando', 'ecommerce', true], ['wayfair', 'ecommerce', true],
+  ['indeed', 'dev-tools', true],
+  // education
+  ['coursera', 'education', true], ['udemy', 'education', true], ['edx', 'education', true],
+  ['khanacademy', 'education', true], ['duolingo', 'education', true], ['udacity', 'education', true],
+  ['mit.edu', 'education'], ['stanford.edu', 'education'], ['harvard.edu', 'education'],
+  ['yale.edu', 'education'], ['princeton.edu', 'education'], ['ox.ac.uk', 'education'],
+  ['cam.ac.uk', 'education'], ['springer', 'education', true], ['elsevier', 'education', true],
+  ['sciencedirect', 'education', true], ['researchgate', 'education', true],
+  // finance
+  ['paypal', 'finance', true], ['coinbase', 'finance', true], ['binance', 'finance', true],
+  ['robinhood', 'finance', true], ['wealthfront', 'finance', true], ['chase', 'finance', true],
+  ['bankofamerica', 'finance', true], ['hsbc', 'finance', true], ['barclays', 'finance', true],
+  ['stripe', 'dev-tools', true], ['square', 'finance', true], ['revolut', 'finance', true],
+  ['nubank', 'finance', true], ['klarna', 'finance', true],
+  // health
+  ['mayoclinic', 'health', true], ['webmd', 'health', true], ['healthline', 'health', true],
+  ['medlineplus', 'health', true], ['zocdoc', 'health', true], ['nhs.uk', 'health'],
+  ['who.int', 'health'], ['cdc.gov', 'health'], ['nih.gov', 'health'], ['fda.gov', 'health'],
+  ['psychologytoday', 'health', true],
+  // travel
+  ['booking.com', 'travel'], ['expedia', 'travel', true], ['tripadvisor', 'travel', true],
+  ['ryanair', 'travel', true], ['easyjet', 'travel', true], ['qunar', 'travel', true],
+  ['ctrip', 'travel', true], ['trip.com', 'travel'], ['marriott', 'travel', true],
+  ['hilton', 'travel', true], ['kayak', 'travel', true], ['hostelworld', 'travel', true],
+  // government / institutions
+  ['whitehouse.gov', 'government'], ['govinfo', 'government'], ['europa.eu', 'government'],
+  ['un.org', 'government'], ['census.gov', 'government'], ['gob.', 'government'],
+  // entertainment
+  ['imdb', 'entertainment', true], ['netflix', 'entertainment', true], ['hulu', 'entertainment', true],
+  ['disneyplus', 'entertainment', true], ['spotify', 'entertainment', true],
+  ['twitch', 'entertainment', true], ['steam', 'entertainment', true], ['epicgames', 'entertainment', true],
+  ['playstation', 'entertainment', true], ['xbox', 'entertainment', true], ['crunchyroll', 'entertainment', true],
+  // social / community
+  ['reddit', 'social', true], ['discord', 'social', true], ['telegram', 'social', true],
+  ['forum', 'social', true], ['phpbb', 'social'], ['discourse', 'social', true],
+  ['mastodon', 'social', true], ['xiaohongshu', 'social', true], ['zhihu', 'social', true],
+  ['douban', 'social', true], ['weibo', 'social', true],
+  // docs portals
+  ['readthedocs', 'docs', true], ['gitbook', 'docs', true], ['docsify', 'docs'],
+  ['notion.so', 'docs'], ['confluence', 'docs', true], ['swagger', 'docs', true],
+  // misc confident product→topic
+  ['dropbox', 'dev-tools', true], ['zoom.us', 'social'], ['slack', 'social', true],
+  ['canva', 'dev-tools', true], ['figma', 'dev-tools', true], ['grammarly', 'education', true],
+  ['indeed.com', 'dev-tools'], ['glassdoor', 'dev-tools', true],
+
 ];
 
 const TITLE_RULES = RULES.filter((r) => r[2] === true && !r[0].includes('.'));
