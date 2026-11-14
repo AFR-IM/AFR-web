@@ -46,6 +46,8 @@ CREATE TABLE IF NOT EXISTS scans (
   score_l3 INTEGER,
   grade TEXT,
   snapshot_path TEXT,                    -- data-repo JSON path
+  snapshot_sha TEXT,                    -- git blob sha from the trees listing (sync skip key;
+                                        -- existing DBs: ALTER TABLE scans ADD COLUMN snapshot_sha TEXT)
   started_at TEXT,
   finished_at TEXT
 );

@@ -71,6 +71,25 @@ jobs:
         env:
           QUEUE_TOKEN: ${{ secrets.QUEUE_TOKEN }}
         run: |
+          set -euo pipefail
           # Same snapshot set as the static build: publish, then sync D1.
-          curl -fsS -X POST https://afr.im/api/v1/_internal/sync \
-            -H "X-Queue-Token: ${QUEUE_TOKEN}" | tee -a "$GITHUB_STEP_SUMMARY"
+          # Every date is walked (not just the newest) so a day whose sync
+          # failed once is backfilled by the next run; each date is paged
+          # because one Worker invocation may only fetch ~44 snapshots
+          # (Cloudflare free-plan subrequest cap). nextOffset=null → done.
+          dates=$(find data/scans -name '*.json' -printf '%h\n' | sed 's|data/scans/||' | sort -u)
+          fail=0
+          for date in $dates; do
+            offset=0
+            while :; do
+              resp=$(curl -fsS -X POST https://afr.im/api/v1/_internal/sync \
+                -H "X-Queue-Token: ${QUEUE_TOKEN}" \
+                -H 'Content-Type: application/json' \
+                -d "{\"date\":\"${date}\",\"offset\":${offset}}") || { echo "sync call failed for ${date}@${offset}"; fail=1; break; }
+              echo "${date}@${offset}: ${resp}"
+              next=$(printf '%s' "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("nextOffset") or "")')
+              [ -z "$next" ] && break
+              offset=$next
+            done
+          done
+          exit $fail

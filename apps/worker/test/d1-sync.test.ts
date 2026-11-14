@@ -7,8 +7,16 @@ import { DATA_REPO_RAW, type Snapshot, syncDate } from '../src/d1-sync.ts';
 import { openSeededDb } from './helpers.ts';
 
 const DATE = '2026/11/10';
-const LISTING_URL = `https://api.github.com/repos/AFR-IM/AFR-data/contents/scans/${DATE}`;
+const LISTING_URL = `https://api.github.com/repos/AFR-IM/AFR-data/git/trees/main:scans/${DATE}`;
 const SNAPSHOT_PATH = `scans/${DATE}/acme.dev.json`;
+
+/** Content-sensitive fake of a git blob sha (changes when the payload changes) */
+function fakeSha(value: unknown): string {
+  const s = JSON.stringify(value);
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h.toString(16);
+}
 
 /** Fixture shaped like a real AFR-data snapshot ({ signals, afr }) */
 function makeSnapshot(score: number, grade: Grade): Snapshot {
@@ -73,6 +81,8 @@ interface FakeFetchOptions {
   listingStatus?: number;
   /** Snapshot path → payload; a path mapped to null returns HTTP 404 */
   files?: Record<string, unknown>;
+  /** Skip raw fetches entirely (asserts sha-skip behaviour) */
+  noRaw?: boolean;
 }
 
 function fakeFetch(options: FakeFetchOptions = {}) {
@@ -85,12 +95,14 @@ function fakeFetch(options: FakeFetchOptions = {}) {
       if (options.listingStatus && options.listingStatus >= 400) {
         return new Response('boom', { status: options.listingStatus });
       }
-      const entries = Object.keys(files)
+      // Git Trees shape: entries are relative to the queried subtree (bare
+      // filenames), each carrying its blob sha; truncated=false.
+      const tree = Object.keys(files)
         .sort()
-        .map((path) => ({ name: path.split('/').pop(), path, type: 'file' }));
-      return Response.json(entries);
+        .map((path) => ({ path: path.split('/').pop(), type: 'blob', sha: fakeSha(files[path]) }));
+      return Response.json({ sha: 'roottree', tree, truncated: false });
     }
-    if (url.startsWith(`${DATA_REPO_RAW}/`)) {
+    if (!options.noRaw && url.startsWith(`${DATA_REPO_RAW}/`)) {
       const path = url.slice(DATA_REPO_RAW.length + 1);
       if (path in files && files[path] !== null) return Response.json(files[path]);
     }
@@ -214,5 +226,92 @@ describe('syncDate', () => {
       /listing failed: HTTP 500/,
     );
     await assert.rejects(syncDate('2026-11-10', { db, fetchImpl: failing.impl }), /invalid date/);
+  });
+
+  it('skips files whose stored snapshot_sha matches the listing (no raw fetch)', async () => {
+    const { db, raw } = openSeededDb();
+    const first = fakeFetch();
+    await syncDate(DATE, { db, fetchImpl: first.impl });
+    const sha = raw
+      .prepare('SELECT snapshot_sha FROM scans WHERE snapshot_path = ?')
+      .get(SNAPSHOT_PATH) as { snapshot_sha: string | null };
+    assert.ok(sha.snapshot_sha, 'sha must be committed after a successful sync');
+
+    // Second run: listing still shows the same blob sha → skip without fetching.
+    const second = fakeFetch({ noRaw: true });
+    const result = await syncDate(DATE, { db, fetchImpl: second.impl });
+    assert.equal(result.listed, 1);
+    assert.equal(result.skipped, 1);
+    assert.equal(result.sitesUpserted, 0);
+    assert.equal(result.nextOffset, null);
+    assert.equal(
+      second.calls.filter((u) => u.startsWith(DATA_REPO_RAW)).length,
+      0,
+      'a matching sha must not trigger a raw fetch',
+    );
+  });
+
+  it('re-fetches when the blob sha changes (engine re-run / same-day rescan)', async () => {
+    const { db, raw } = openSeededDb();
+    await syncDate(DATE, { db, fetchImpl: fakeFetch().impl });
+
+    // Same path, new content → new blob sha → must be pulled and applied.
+    const rescanned = fakeFetch({ files: { [SNAPSHOT_PATH]: makeSnapshot(95, 'A') } });
+    const result = await syncDate(DATE, { db, fetchImpl: rescanned.impl });
+    assert.equal(result.skipped, 0);
+    assert.equal(result.sitesUpserted, 1);
+    const row = raw.prepare('SELECT score_total FROM sites WHERE domain = ?').get('acme.dev') as {
+      score_total: number;
+    };
+    assert.equal(row.score_total, 95);
+  });
+
+  it('pages through the listing with offset/limit until nextOffset is null', async () => {
+    const { db, raw } = openSeededDb();
+    const pathA = `scans/${DATE}/aaa.json`;
+    const pathB = `scans/${DATE}/bbb.json`;
+    const snapA = makeSnapshot(60, 'D');
+    const snapB = makeSnapshot(70, 'C');
+    (snapA.afr as { domain: string }).domain = 'aaa.test';
+    (snapA.signals as { domain: string }).domain = 'aaa.test';
+    (snapB.afr as { domain: string }).domain = 'bbb.test';
+    (snapB.signals as { domain: string }).domain = 'bbb.test';
+    const { impl } = fakeFetch({ files: { [pathA]: snapA, [pathB]: snapB } });
+
+    const page1 = await syncDate(DATE, { db, fetchImpl: impl }, { offset: 0, limit: 1 });
+    assert.equal(page1.listed, 2);
+    assert.equal(page1.scansUpserted, 1, 'limit=1 → only aaa.test on page 1');
+    assert.equal(page1.nextOffset, 1);
+
+    const page2 = await syncDate(DATE, { db, fetchImpl: impl }, { offset: page1.nextOffset!, limit: 1 });
+    assert.equal(page2.scansUpserted, 1);
+    assert.equal(page2.nextOffset, null, 'end of listing → done');
+
+    const n = raw
+      .prepare(
+        'SELECT COUNT(*) AS n FROM scans WHERE snapshot_path = ? OR snapshot_path = ?',
+      )
+      .get(pathA, pathB) as { n: number };
+    assert.equal(n.n, 2);
+  });
+
+  it('never lets an older snapshot downgrade a newer site score', async () => {
+    const { db, raw } = openSeededDb();
+    // example.com seed: scanned_at 2026-11-10T10:00, score 92.
+    const stale = makeSnapshot(50, 'C');
+    (stale.afr as { domain: string }).domain = 'example.com';
+    (stale.signals as { domain: string }).domain = 'example.com';
+    (stale.afr as { scannedAt: string }).scannedAt = '2026-11-01T00:00:00.000Z'; // older
+    const path = `scans/${DATE}/example.com.json`;
+    const { impl } = fakeFetch({ files: { [path]: stale } });
+
+    const result = await syncDate(DATE, { db, fetchImpl: impl });
+    assert.equal(result.sitesUpserted, 0, 'stale write must be guarded');
+    assert.equal(result.scansUpserted, 1, 'the scan row still lands (history is kept)');
+    const site = raw
+      .prepare('SELECT score_total, scanned_at FROM sites WHERE domain = ?')
+      .get('example.com') as { score_total: number; scanned_at: string };
+    assert.equal(site.score_total, 92, 'live score must stay at the newer scan');
+    assert.equal(site.scanned_at, '2026-11-10T10:00:00.000Z');
   });
 });

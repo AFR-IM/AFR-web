@@ -508,8 +508,13 @@ describe('daily cron sync', () => {
       if (url === `${DATA_REPO_API}/scans/2026/11`) {
         return Response.json([{ name: '10', type: 'dir' }]);
       }
-      if (url === `${DATA_REPO_API}/scans/${date}`) {
-        return Response.json([{ name: 'acme.dev.json', type: 'file', path: snapshotPath }]);
+      if (url === `${DATA_REPO_API}/scans/${date}` || url.includes(`git/trees/main:scans/${date}`)) {
+        // Git Trees shape: bare filename relative to the subtree + blob sha
+        return Response.json({
+          sha: 'roottree',
+          truncated: false,
+          tree: [{ path: 'acme.dev.json', type: 'blob', sha: 'abc123' }],
+        });
       }
       if (url === `${DATA_REPO_RAW}/${snapshotPath}`) {
         return Response.json({

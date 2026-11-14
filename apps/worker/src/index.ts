@@ -935,27 +935,45 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
   // Ads
   // -------------------------------------------------------------------------
 
-  // POST /api/v1/_internal/sync — run the daily D1 sync immediately.
+  // POST /api/v1/_internal/sync — run one page of the D1 sync immediately.
   // Called by the site-rebuild workflow right after it publishes new static
   // data, so the static build and D1 always carry the same snapshot set
-  // (the 04:30 UTC cron remains as a fallback).
+  // (the 04:30 UTC cron remains as a fallback). Body: { date?, offset?, limit? }
+  // — one invocation may only fetch ~44 snapshots (free-plan subrequest cap),
+  // so the caller pages with {offset} until nextOffset is null.
   app.post('/api/v1/_internal/sync', async (c) => {
     const token = c.env?.QUEUE_TOKEN;
     if (!token || c.req.header('x-queue-token') !== token) {
       return c.json({ error: 'unauthorized' }, 401);
     }
+    let body: { date?: string; offset?: number; limit?: number } = {};
     try {
-      const result = await runDailySync({
-        db: createD1Db(c.env.DB),
-        fetchImpl: githubAuthedFetch(c.env.GITHUB_DISPATCH_TOKEN, fetch),
-      });
+      const parsed = await c.req.json<{ date?: string; offset?: number; limit?: number }>();
+      if (parsed && typeof parsed === 'object') body = parsed;
+    } catch {
+      // no/invalid body → defaults (latest date, first page)
+    }
+    if (body.date !== undefined && !/^\d{4}\/\d{2}\/\d{2}$/.test(body.date)) {
+      return c.json({ error: 'invalid_date', message: 'date must be YYYY/MM/DD' }, 400);
+    }
+    try {
+      const result = await runDailySync(
+        {
+          db: createD1Db(c.env.DB),
+          fetchImpl: githubAuthedFetch(c.env.GITHUB_DISPATCH_TOKEN, fetch),
+        },
+        { date: body.date, offset: body.offset, limit: body.limit },
+      );
+      if (!result) return c.json({ ok: true, date: null, nextOffset: null, note: 'no_snapshot_date' });
       return c.json({
         ok: true,
         date: result.date,
         listed: result.listed,
+        skipped: result.skipped,
         sites: result.sitesUpserted,
         scans: result.scansUpserted,
         evidenceWrites: result.evidenceRows,
+        nextOffset: result.nextOffset,
         errors: result.errors.length,
         firstError: result.errors[0] ?? null,
       });

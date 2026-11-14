@@ -66,20 +66,32 @@ export async function latestSnapshotDate(fetchImpl: typeof fetch): Promise<strin
   return `${latestYear}/${latestMonth}/${latestDay}`;
 }
 
-/** Sync the latest snapshot date into D1. Never throws: failures are logged
- * and reported as null so a bad network day cannot wedge the cron. */
-export async function runDailySync(deps: CronDeps): Promise<SyncResult | null> {
+/** Sync one page of the latest snapshot date into D1. Never throws: failures
+ * are logged and reported as null so a bad network day cannot wedge the cron.
+ * One invocation can only fetch DEFAULT_SYNC_LIMIT files (free-plan subrequest
+ * cap), so callers that need a full day page through `opts.offset` until
+ * `nextOffset === null` — the sync-site workflow does that; the cron itself
+ * falls back to one page per run (sha-skip makes re-runs cheap and the next
+ * day's run resumes where it left off only for files whose sha changed). */
+export async function runDailySync(
+  deps: CronDeps,
+  opts: { date?: string; offset?: number; limit?: number } = {},
+): Promise<SyncResult | null> {
   const log = deps.log ?? ((message: string) => console.log(message));
   try {
-    const date = await latestSnapshotDate(deps.fetchImpl);
+    const date = opts.date ?? (await latestSnapshotDate(deps.fetchImpl));
     if (!date) {
       log('daily sync: no snapshot date found, skipping');
       return null;
     }
-    const result = await syncDate(date, { db: deps.db, fetchImpl: deps.fetchImpl });
+    const result = await syncDate(date, { db: deps.db, fetchImpl: deps.fetchImpl }, {
+      offset: opts.offset,
+      limit: opts.limit,
+    });
     log(
-      `daily sync ${date}: ${result.sitesUpserted} sites, ${result.scansUpserted} scans, ` +
-        `${result.evidenceRows} evidence rows, ${result.errors.length} errors`,
+      `daily sync ${date}@${opts.offset ?? 0}: ${result.sitesUpserted} sites, ${result.scansUpserted} scans, ` +
+        `${result.skipped} skipped, ${result.evidenceRows} evidence rows, ` +
+        `${result.errors.length} errors, next=${result.nextOffset ?? 'done'}`,
     );
     return result;
   } catch (err) {
