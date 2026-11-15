@@ -118,37 +118,51 @@ export async function syncDate(date: string, deps: SyncDeps, opts: SyncOptions =
     .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   result.listed = entries.length;
 
-  // One indexed range read over idx_scans_snapshot: every snapshot of this
-  // date already in D1 plus its stored sha (upper bound = prefix with the
-  // trailing '/' bumped, i.e. 'scans/2026/11/130' for prefix '…/11/13/').
-  const upper = `${prefix.slice(0, -1)}0`;
-  const knownRows = await deps.db
-    .prepare('SELECT snapshot_path, snapshot_sha FROM scans WHERE snapshot_path >= ? AND snapshot_path < ?')
-    .all<{ snapshot_path: string; snapshot_sha: string | null }>(prefix, upper);
-  const known = new Map(knownRows.map((r) => [r.snapshot_path, r.snapshot_sha]));
+  // Page-local sha probe: instead of range-scanning the whole date (1000
+  // rows on every page — what blew the D1 row-read budget during backfill),
+  // probe only as far as this invocation can process: chunks of `limit`
+  // paths via one IN() query each. Fetch-heavy pages stop after the first
+  // chunk (44 rows read); already-synced dates walk further because skips
+  // are free — only fetches consume the subrequest budget.
+  const known = new Map<string, string | null>();
+  const probePaths = async (from: number, count: number): Promise<void> => {
+    const chunk = entries.slice(from, from + count);
+    if (chunk.length === 0) return;
+    const placeholders = chunk.map(() => '?').join(',');
+    const rows = await deps.db
+      .prepare(`SELECT snapshot_path, snapshot_sha FROM scans WHERE snapshot_path IN (${placeholders})`)
+      .all<{ snapshot_path: string; snapshot_sha: string | null }>(...chunk.map((e) => e.path));
+    for (const r of rows) known.set(r.snapshot_path, r.snapshot_sha);
+  };
 
   let fetches = 0;
   let i = offset;
-  for (; i < entries.length; i++) {
-    const entry = entries[i];
-    if (!entry) continue;
-    const { path, sha } = entry;
-    if (known.get(path) === sha) {
-      result.skipped += 1;
-      continue;
-    }
-    if (fetches >= limit) break; // budget spent before processing entries[i]
-    fetches += 1;
-    try {
-      const res = await deps.fetchImpl(snapshotUrl(path));
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const snapshot = (await res.json()) as Snapshot;
-      const stats = await upsertSnapshot(deps.db, snapshot, path, sha);
-      result.sitesUpserted += stats.siteChanged ? 1 : 0;
-      result.scansUpserted += 1;
-      result.evidenceRows += stats.evidenceRows;
-    } catch (err) {
-      result.errors.push({ path, message: err instanceof Error ? err.message : String(err) });
+  walk: while (i < entries.length) {
+    await probePaths(i, limit);
+    const chunkEnd = Math.min(i + limit, entries.length);
+    for (; i < chunkEnd; i++) {
+      const entry = entries[i];
+      if (!entry) continue;
+      const { path, sha } = entry;
+      // present + same sha → skip; absent or sha mismatch (engine re-run,
+      // same-day rescan, legacy NULL sha) → fetch
+      if (known.get(path) === sha) {
+        result.skipped += 1;
+        continue;
+      }
+      if (fetches >= limit) break walk; // budget spent; i stays on the unprocessed entry
+      fetches += 1;
+      try {
+        const res = await deps.fetchImpl(snapshotUrl(path));
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const snapshot = (await res.json()) as Snapshot;
+        const stats = await upsertSnapshot(deps.db, snapshot, path, sha);
+        result.sitesUpserted += stats.siteChanged ? 1 : 0;
+        result.scansUpserted += 1;
+        result.evidenceRows += stats.evidenceRows;
+      } catch (err) {
+        result.errors.push({ path, message: err instanceof Error ? err.message : String(err) });
+      }
     }
   }
   result.nextOffset = i < entries.length ? i : null;

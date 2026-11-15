@@ -96,6 +96,11 @@ export async function runDailySync(
     return result;
   } catch (err) {
     log(`daily sync failed: ${err instanceof Error ? err.message : String(err)}`);
-    return null;
+    // An explicitly requested date must never swallow errors: the endpoint
+    // maps a null result to "ok, nothing to do", which made transient
+    // failures look like a completed sync and stalled paged backfills.
+    // Rethrow so the caller sees HTTP 500 and retries the same offset.
+    if (opts.date) throw err;
+    return null; // cron path: log and try again next day
   }
 }
