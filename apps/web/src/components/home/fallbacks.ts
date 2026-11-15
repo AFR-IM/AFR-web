@@ -92,8 +92,42 @@ export const COPY = {
   },
   submitBusy: { en: 'Submitting…', zh: '提交中…' },
   submitQueued: {
-    en: '{domain} is queued — about {eta} until it is collected. You will find it via search in ~3 min.',
-    zh: '{domain} 已入队——约 {eta} 后完成收录。约 3 分钟后即可在搜索中找到它。',
+    en: 'Queued: {domain} — scanning starts immediately, searchable in about {eta}.',
+    zh: '已入队：{domain}——扫描立即开始，约 {eta} 后可搜索。',
+  },
+  submitQueuedDeferred: {
+    en: '{domain} is queued, but auto-dispatch is unavailable right now — the next daily scan (02:00 UTC) will collect it.',
+    zh: '{domain} 已入队，但自动触发暂不可用——将由次日 02:00 UTC 的每日扫描收录。',
+  },
+  submitExists: {
+    en: '{domain} is already listed — open its detail page.',
+    zh: '{domain} 已收录——打开详情页。',
+  },
+  submitSubdomain: {
+    en: 'Only registered domains are accepted (example.com) — subdomains like blog.example.com are not.',
+    zh: '只接受注册域名（example.com）——blog.example.com 这类子域名不接受。',
+  },
+  submitStandardsTitle: { en: 'Inclusion standards', zh: '收录标准' },
+  submitStandardRegistered: {
+    en: 'Registered domains only — example.com qualifies; subdomains like blog.example.com are rejected.',
+    zh: '只接受注册域名——example.com 可以，blog.example.com 这类子域名拒绝。',
+  },
+  submitStandardReachable: {
+    en: 'Publicly reachable — the scanner must read your homepage or robots.txt; otherwise the site is listed as Pending (not ranked) until a rescan succeeds.',
+    zh: '可公开访问——扫描器需能读取首页或 robots.txt；否则先以 Pending 收录（不进排行），修复后重扫自动更新。',
+  },
+  submitStandardAutomatic: {
+    en: 'Fully automatic — submission triggers the scan immediately: only public signals are collected, there is no manual review and no upfront verification, and scores cannot be bought.',
+    zh: '全自动——提交即触发扫描，只采集公开信号：无人工审核、无需事先验证、付费不能改分。',
+  },
+  submitStandardVerify: {
+    en: 'Verification (file / DNS / meta) is an optional step after listing — it claims the site and unlocks the Verified badge.',
+    zh: '验证（文件 / DNS / 元数据三法）是收录后的可选步骤——用于认领站点与解锁 Verified 徽章。',
+  },
+  submitTimelineTitle: { en: 'How long does inclusion take?', zh: '多久收录？' },
+  submitTimelineBody: {
+    en: 'Submitting dispatches the scan queue right away: about 3 minutes to scan, then about 5 minutes to rebuild and publish — typically searchable within 10 minutes. If auto-dispatch is unavailable, the next daily scan (02:00 UTC) picks it up. Each IP may submit 5 registered domains per day.',
+    zh: '提交后立即触发扫描队列：扫描约 3 分钟，随后重建发布约 5 分钟——通常 10 分钟内即可搜索到。若自动触发暂不可用，最迟由次日 02:00 UTC 的每日扫描收录。每个 IP 每日限提交 5 个注册域名。',
   },
   submitRateLimited: {
     en: 'Submission limit reached from this network — try again later.',

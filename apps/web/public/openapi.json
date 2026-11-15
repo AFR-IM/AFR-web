@@ -256,7 +256,7 @@
     "/api/v1/submissions": {
       "post": {
         "summary": "Request a scan of a site",
-        "description": "Rate-limited to 5 requests per IP per day. The submission is queued for scanning.",
+        "description": "Fully automatic inclusion. Registered domains only (eTLD+1 heuristic): subdomains like blog.example.com are rejected with error subdomain_not_allowed, www is stripped. Already-listed domains return status 'exists' (open the detail page); already-queued domains return status 'queued' (idempotent, no quota burned). New submissions are queued AND immediately dispatch the scan workflow, so a typical listing is searchable within ~10 minutes (etaSeconds covers scan + rebuild); if dispatch is deferred the next daily scan (02:00 UTC) collects it. Rate-limited to 5 new submissions per IP per day.",
         "requestBody": {
           "required": true,
           "content": {
@@ -265,7 +265,7 @@
                 "type": "object",
                 "required": ["domain"],
                 "properties": {
-                  "domain": { "type": "string", "description": "Bare domain, e.g. example.com" },
+                  "domain": { "type": "string", "description": "Bare registered domain, e.g. example.com (subdomains rejected)" },
                   "note": { "type": "string", "maxLength": 500, "description": "Optional note for the reviewers" }
                 }
               },
@@ -274,20 +274,21 @@
           }
         },
         "responses": {
-          "201": {
-            "description": "Queued",
+          "200": {
+            "description": "Already listed (status='exists') or already queued (status='queued') — idempotent, no quota consumed",
             "content": {
               "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "ok": { "type": "boolean" },
-                    "id": { "type": "integer" },
-                    "domain": { "type": "string" },
-                    "status": { "type": "string", "enum": ["queued"] }
-                  }
-                },
-                "example": { "ok": true, "id": 1, "domain": "example.com", "status": "queued" }
+                "schema": { "$ref": "#/components/schemas/SubmissionResult" },
+                "example": { "ok": true, "status": "exists", "domain": "example.com" }
+              }
+            }
+          },
+          "201": {
+            "description": "Queued and scan dispatch attempted",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SubmissionResult" },
+                "example": { "ok": true, "id": 1, "domain": "example.com", "status": "queued", "etaSeconds": 600, "dispatch": "ok" }
               }
             }
           },
@@ -445,6 +446,17 @@
           "version": { "type": "string" },
           "layers": { "type": "array", "items": { "type": "object" } },
           "grades": { "type": "array", "items": { "type": "object" } }
+        }
+      },
+      "SubmissionResult": {
+        "type": "object",
+        "properties": {
+          "ok": { "type": "boolean" },
+          "id": { "type": "integer", "description": "Row id (new submissions only)" },
+          "domain": { "type": "string", "description": "Canonical registered domain" },
+          "status": { "type": "string", "enum": ["exists", "queued"] },
+          "etaSeconds": { "type": "integer", "description": "Estimated seconds until searchable (scan + rebuild)", "example": 600 },
+          "dispatch": { "type": "string", "enum": ["ok", "deferred"], "description": "Scan-workflow dispatch result (new submissions only)" }
         }
       },
       "Error": {

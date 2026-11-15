@@ -1,9 +1,10 @@
-// test/submissions.test.ts — validation + 5/IP/day rate limit.
+// test/submissions.test.ts — validation + registered-domain rule + idempotent
+// dedup (exists/queued) + 5/IP/day rate limit.
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { RateLimiter, DAY_MS, memoryStore } from '../src/rate-limit.ts';
-import { createApp, normalizeDomain, SUBMISSION_LIMIT } from '../src/index.ts';
+import { createApp, normalizeDomain, registrableDomain, SUBMISSION_LIMIT, SUBMIT_ETA_SECONDS } from '../src/index.ts';
 import { openSeededDb } from './helpers.ts';
 
 function post(app: ReturnType<typeof createApp>, body: unknown, ip = '10.0.0.1') {
@@ -36,6 +37,27 @@ describe('normalizeDomain', () => {
   });
 });
 
+describe('registrableDomain', () => {
+  it('accepts registered domains, canonicalizes www, rejects subdomains', () => {
+    assert.equal(registrableDomain('example.com'), 'example.com');
+    assert.equal(registrableDomain('www.example.com'), 'example.com');
+    assert.equal(registrableDomain('WWW.Example.COM.'), 'example.com');
+    assert.equal(registrableDomain('example.co.uk'), 'example.co.uk');
+    assert.equal(registrableDomain('www.example.co.uk'), 'example.co.uk');
+    assert.equal(registrableDomain('example.com.cn'), 'example.com.cn');
+    assert.equal(registrableDomain('xn--bcher-kva.example'), 'xn--bcher-kva.example');
+    // subdomains are not listings of their own
+    assert.equal(registrableDomain('blog.example.com'), null);
+    assert.equal(registrableDomain('sub.example.co.uk'), null); // 4 labels
+    assert.equal(registrableDomain('a.b.example.com'), null);
+    assert.equal(registrableDomain('foo.bar.de'), null); // open 2nd level → bar.de is the domain
+    // bare public suffixes are not listings either
+    assert.equal(registrableDomain('co.uk'), null);
+    assert.equal(registrableDomain('www.co.uk'), null);
+    assert.equal(registrableDomain('not a domain'), null);
+  });
+});
+
 describe('POST /api/v1/submissions', () => {
   it('rejects malformed JSON and invalid domains with 400', async () => {
     const { app } = freshApp();
@@ -58,23 +80,74 @@ describe('POST /api/v1/submissions', () => {
     assert.equal(wrongType.status, 400);
   });
 
-  it('queues a valid submission (normalized, status=queued)', async () => {
+  it('queues a valid submission (normalized, status=queued, real ETA)', async () => {
     const { app, raw } = freshApp();
-    const res = await post(app, { domain: ' Example.COM ', note: 'please index us' });
+    const res = await post(app, { domain: ' Newsite.NET ', note: 'please index us' });
     assert.equal(res.status, 201);
     const body = await res.json();
     assert.equal(body.ok, true);
-    assert.equal(body.domain, 'example.com');
+    assert.equal(body.domain, 'newsite.net');
     assert.equal(body.status, 'queued');
+    assert.equal(body.etaSeconds, SUBMIT_ETA_SECONDS);
+    // no token in tests → soft dispatch reports deferred, never fails
+    assert.equal(body.dispatch, 'deferred');
     assert.equal(typeof body.id, 'number');
 
     const row = raw
       .prepare('SELECT domain, submitter_note, source, status FROM submissions WHERE id = ?')
       .get(body.id) as { domain: string; submitter_note: string; source: string; status: string };
-    assert.equal(row.domain, 'example.com');
+    assert.equal(row.domain, 'newsite.net');
     assert.equal(row.submitter_note, 'please index us');
     assert.equal(row.source, 'public');
     assert.equal(row.status, 'queued');
+  });
+
+  it('rejects subdomains with subdomain_not_allowed', async () => {
+    const { app, raw } = freshApp();
+    for (const domain of ['blog.example.com', 'a.b.example.com', 'sub.example.co.uk']) {
+      const res = await post(app, { domain });
+      assert.equal(res.status, 400, `expected 400 for ${domain}`);
+      assert.equal((await res.json()).error, 'subdomain_not_allowed');
+    }
+    const n = raw.prepare('SELECT COUNT(*) AS n FROM submissions').get() as { n: number };
+    assert.equal(n.n, 0, 'rejected submissions must not insert rows');
+  });
+
+  it('returns exists for listed domains and burns no quota', async () => {
+    const { app, raw } = freshApp();
+    // example.com is a seeded site
+    for (let i = 0; i < SUBMISSION_LIMIT + 2; i++) {
+      const res = await post(app, { domain: 'example.com' });
+      assert.equal(res.status, 200, `attempt ${i}`);
+      assert.equal((await res.json()).status, 'exists');
+    }
+    const rows = raw.prepare('SELECT COUNT(*) AS n FROM submissions').get() as { n: number };
+    assert.equal(rows.n, 0, 'exists must not insert rows');
+    // the 5/day quota was never consumed → a fresh domain still goes through
+    const fresh = await post(app, { domain: 'still-works.example' });
+    assert.equal(fresh.status, 201);
+  });
+
+  it('is idempotent for an already-queued domain', async () => {
+    const { app, raw } = freshApp();
+    const first = await post(app, { domain: 'twice.example' });
+    assert.equal(first.status, 201);
+    const second = await post(app, { domain: 'twice.example' });
+    assert.equal(second.status, 200);
+    const body = await second.json();
+    assert.equal(body.status, 'queued');
+    assert.equal(body.etaSeconds, SUBMIT_ETA_SECONDS);
+    const rows = raw
+      .prepare("SELECT COUNT(*) AS n FROM submissions WHERE domain = 'twice.example'")
+      .get() as { n: number };
+    assert.equal(rows.n, 1, 'duplicate submission must not insert a second row');
+  });
+
+  it('strips www before queueing', async () => {
+    const { app } = freshApp();
+    const res = await post(app, { domain: 'www.fresh-site.example' });
+    assert.equal(res.status, 201);
+    assert.equal((await res.json()).domain, 'fresh-site.example');
   });
 
   it('enforces 5 submissions per IP per day', async () => {

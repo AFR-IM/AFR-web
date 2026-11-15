@@ -14,7 +14,7 @@ import { GRADE_COLORS } from './grade-colors.ts';
 import { badgeSvg } from './badge.ts';
 import { githubAuthedFetch, runDailySync } from './cron.ts';
 import { createD1Db, type Db, type Row, type SqlParam } from './db.ts';
-import { normalizeDomain } from './domain.ts';
+import { normalizeDomain, registrableDomain } from './domain.ts';
 import { handleMcpRequest, MCP_RATE_LIMIT, MCP_RATE_WINDOW_MS } from './mcp.ts';
 import { DAY_MS, HOUR_MS, RateLimiter, kvStore, memoryStore } from './rate-limit.ts';
 import {
@@ -71,6 +71,10 @@ export const SCAN_GLOBAL_LIMIT = 50; // all callers per UTC day
  * by this window plus the IP/day and global/day tiers above). */
 export const SCAN_DOMAIN_WINDOW_MS = 30 * 60 * 1000;
 export const SCAN_ETA_SECONDS = 180; // advertised queue time before the cron/CI picks it up
+/** Submission → searchable wall-clock estimate: ~3 min scan + ~5-8 min rebuild
+ * and publish. Returned by POST /api/v1/submissions so the submit page can
+ * state a real number instead of the old scan-only 180 s. */
+export const SUBMIT_ETA_SECONDS = 600;
 export const QUEUE_LIST_LIMIT = 50;
 
 // Verification flow limits
@@ -90,7 +94,7 @@ const LEADERBOARD_SIZE = 10;
 // Domain validation lives in src/domain.ts (shared with the MCP tools in
 // src/mcp.ts) and is re-exported here so `import { normalizeDomain } from
 // './index.ts'` keeps working.
-export { normalizeDomain };
+export { normalizeDomain, registrableDomain };
 
 function clientIp(c: Context<AppEnv>): string {
   const forwarded = c.req.header('x-forwarded-for');
@@ -751,6 +755,11 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
 
   // -------------------------------------------------------------------------
   // Submissions (POST /api/v1/submissions {domain, note?}, 5/IP/day)
+  // Fully automatic inclusion: registered domains only (subdomains are
+  // rejected — the directory lists one site per registered domain), already
+  // listed → 'exists', already queued → idempotent 'queued', and every new
+  // entry soft-dispatches the scan queue so listing does not wait for the
+  // daily 02:00 UTC cron. etaSeconds covers scan + rebuild/publish.
   // -------------------------------------------------------------------------
 
   app.post('/api/v1/submissions', async (c) => {
@@ -764,12 +773,43 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     if (typeof payload.domain !== 'string') {
       return c.json({ error: 'invalid_domain', message: 'domain must be a string' }, 400);
     }
-    const domain = normalizeDomain(payload.domain);
-    if (!domain) {
+    const normalized = normalizeDomain(payload.domain);
+    if (!normalized) {
       return c.json({ error: 'invalid_domain', message: 'expected a bare domain like example.com' }, 400);
+    }
+    const domain = registrableDomain(normalized);
+    if (!domain) {
+      return c.json(
+        {
+          error: 'subdomain_not_allowed',
+          message: 'only registered domains are accepted (example.com), not subdomains',
+        },
+        400,
+      );
     }
     if (payload.note !== undefined && payload.note !== null && typeof payload.note !== 'string') {
       return c.json({ error: 'invalid_note', message: 'note must be a string' }, 400);
+    }
+
+    const db = dbOf(c, overrides);
+
+    // Already listed → the submit page sends the visitor to the detail page
+    // (the copy has always promised this; the endpoint now actually does it).
+    const listed = await db
+      .prepare('SELECT domain FROM sites WHERE domain = ?')
+      .get<{ domain: string }>(domain);
+    if (listed) return c.json({ ok: true, status: 'exists', domain });
+
+    // Already waiting in the queue → idempotent no-op: no quota burned, no
+    // duplicate row, no second dispatch.
+    const queued = await db
+      .prepare(
+        `SELECT status FROM submissions WHERE domain = ? AND status IN ('queued', 'pending', 'scanning')
+         ORDER BY id DESC LIMIT 1`,
+      )
+      .get<{ status: string }>(domain);
+    if (queued) {
+      return c.json({ ok: true, status: 'queued', domain, etaSeconds: SUBMIT_ETA_SECONDS });
     }
 
     // Rate limit: 5/IP/day via KV counter (in-memory fallback when KV is absent)
@@ -779,7 +819,6 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
       return c.json({ error: 'rate_limited', limit: SUBMISSION_LIMIT, remaining: 0 }, 429);
     }
 
-    const db = dbOf(c, overrides);
     const note = typeof payload.note === 'string' ? payload.note.slice(0, 500) : null;
     const inserted = await db
       .prepare(
@@ -788,7 +827,21 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
       )
       .run(domain, note, new Date().toISOString());
 
-    return c.json({ ok: true, id: inserted.lastInsertRowid, domain, status: 'queued' }, 201);
+    // Soft dispatch (same helper as search-scan/rescan): a missing or failed
+    // token never fails the request — the daily cron drains the queue anyway.
+    const dispatch = await dispatchScanQueue(c.env?.GITHUB_DISPATCH_TOKEN, overrides.fetchImpl ?? fetch);
+
+    return c.json(
+      {
+        ok: true,
+        id: inserted.lastInsertRowid,
+        domain,
+        status: 'queued',
+        etaSeconds: SUBMIT_ETA_SECONDS,
+        dispatch,
+      },
+      201,
+    );
   });
 
   // -------------------------------------------------------------------------
@@ -796,7 +849,7 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
   // -------------------------------------------------------------------------
 
   // POST /api/v1/search-scan {domain} — request an on-demand scan.
-  // Order: already-listed → already-queued → rate limits → insert → dispatch.
+  // Order: registered-domain check → already-listed → already-queued → rate limits → insert → dispatch.
   app.post('/api/v1/search-scan', async (c) => {
     let body: unknown;
     try {
@@ -808,9 +861,20 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     if (typeof payload.domain !== 'string') {
       return c.json({ error: 'invalid_domain', message: 'domain must be a string' }, 400);
     }
-    const domain = normalizeDomain(payload.domain);
-    if (!domain) {
+    const normalized = normalizeDomain(payload.domain);
+    if (!normalized) {
       return c.json({ error: 'invalid_domain', message: 'expected a bare domain like example.com' }, 400);
+    }
+    // Same rule as the submit endpoint: one listing per registered domain.
+    const domain = registrableDomain(normalized);
+    if (!domain) {
+      return c.json(
+        {
+          error: 'subdomain_not_allowed',
+          message: 'only registered domains are accepted (example.com), not subdomains',
+        },
+        400,
+      );
     }
 
     const db = dbOf(c, overrides);

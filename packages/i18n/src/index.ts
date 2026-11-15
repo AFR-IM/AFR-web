@@ -195,20 +195,37 @@ const en: Catalog = {
 
     // P4 submit page
     submitTitle: 'Submit a site',
-    submitStep1: 'Enter a domain — it joins the scan queue',
+    submitStep1: 'Enter a registered domain — it joins the scan queue',
     submitStep2: 'The scanner collects public signals',
     submitStep3: 'The AFR score and report go live',
     submitDomainLabel: 'Domain',
     submitCta: 'Submit domain',
-    submitDisclaimer: 'Rate-limited; existing domains open their detail page instead.',
+    submitDisclaimer:
+      'Registered domains only; 5 submissions per IP per day. Listed domains open their detail page.',
     // submit page — real POST /api/v1/submissions flow
     submitNoteLabel: 'Note (optional)',
     submitNotePlaceholder: 'Anything the scanner should know?',
     submitBusy: 'Submitting…',
-    submitQueued:
-      '{domain} is queued — about {eta} until it is collected. You will find it via search in ~3 min.',
+    submitQueued: 'Queued: {domain} — scanning starts immediately, searchable in about {eta}.',
+    submitQueuedDeferred:
+      '{domain} is queued, but auto-dispatch is unavailable right now — the next daily scan (02:00 UTC) will collect it.',
+    submitExists: '{domain} is already listed — open its detail page.',
+    submitSubdomain:
+      'Only registered domains are accepted (example.com) — subdomains like blog.example.com are not.',
     submitRateLimited: 'Submission limit reached from this network — try again later.',
     submitError: 'Could not reach the server — please try again.',
+    submitStandardsTitle: 'Inclusion standards',
+    submitStandardRegistered:
+      'Registered domains only — example.com qualifies; subdomains like blog.example.com are rejected.',
+    submitStandardReachable:
+      'Publicly reachable — the scanner must read your homepage or robots.txt; otherwise the site is listed as Pending (not ranked) until a rescan succeeds.',
+    submitStandardAutomatic:
+      'Fully automatic — submission triggers the scan immediately: only public signals are collected, there is no manual review and no upfront verification, and scores cannot be bought.',
+    submitStandardVerify:
+      'Verification (file / DNS / meta) is an optional step after listing — it claims the site and unlocks the Verified badge.',
+    submitTimelineTitle: 'How long does inclusion take?',
+    submitTimelineBody:
+      'Submitting dispatches the scan queue right away: about 3 minutes to scan, then about 5 minutes to rebuild and publish — typically searchable within 10 minutes. If auto-dispatch is unavailable, the next daily scan (02:00 UTC) picks it up. Each IP may submit 5 registered domains per day.',
 
     // P5 method page
     methodTitle: 'The AFR standard',
@@ -516,19 +533,32 @@ const zhCN: Catalog = {
 
     // P4 submit page
     submitTitle: '提交站点',
-    submitStep1: '输入域名——进入扫描队列',
+    submitStep1: '输入注册域名——进入扫描队列',
     submitStep2: '扫描器收集公开信号',
     submitStep3: 'AFR 评分与报告上线',
     submitDomainLabel: '域名',
     submitCta: '提交域名',
-    submitDisclaimer: '提交限频；已收录域名将直接跳转详情页。',
+    submitDisclaimer: '只接受注册域名；每 IP 每日 5 次。已收录域名将直接打开详情页。',
     // submit page — real POST /api/v1/submissions flow
     submitNoteLabel: '备注（可选）',
     submitNotePlaceholder: '有什么需要扫描器了解的信息？',
     submitBusy: '提交中…',
-    submitQueued: '{domain} 已入队——约 {eta} 后完成收录。约 3 分钟后即可在搜索中找到它。',
+    submitQueued: '已入队：{domain}——扫描立即开始，约 {eta} 后可搜索。',
+    submitQueuedDeferred: '{domain} 已入队，但自动触发暂不可用——将由次日 02:00 UTC 的每日扫描收录。',
+    submitExists: '{domain} 已收录——打开详情页。',
+    submitSubdomain: '只接受注册域名（example.com）——blog.example.com 这类子域名不接受。',
     submitRateLimited: '该网络的提交次数已达上限——请稍后再试。',
     submitError: '无法连接服务器——请重试。',
+    submitStandardsTitle: '收录标准',
+    submitStandardRegistered: '只接受注册域名——example.com 可以，blog.example.com 这类子域名拒绝。',
+    submitStandardReachable:
+      '可公开访问——扫描器需能读取首页或 robots.txt；否则先以 Pending 收录（不进排行），修复后重扫自动更新。',
+    submitStandardAutomatic:
+      '全自动——提交即触发扫描，只采集公开信号：无人工审核、无需事先验证、付费不能改分。',
+    submitStandardVerify: '验证（文件 / DNS / 元数据三法）是收录后的可选步骤——用于认领站点与解锁 Verified 徽章。',
+    submitTimelineTitle: '多久收录？',
+    submitTimelineBody:
+      '提交后立即触发扫描队列：扫描约 3 分钟，随后重建发布约 5 分钟——通常 10 分钟内即可搜索到。若自动触发暂不可用，最迟由次日 02:00 UTC 的每日扫描收录。每个 IP 每日限提交 5 个注册域名。',
 
     // P5 method page
     methodTitle: 'AFR 标准全文',

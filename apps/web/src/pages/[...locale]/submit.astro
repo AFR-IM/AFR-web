@@ -31,8 +31,18 @@ const queuedTpl = uiText(L.ui, 'submitQueued', locale);
 const rateText = uiText(L.ui, 'submitRateLimited', locale);
 const errorText = uiText(L.ui, 'submitError', locale);
 const flowTitle = uiText(L.ui, 'submitFlow', locale);
-const afterTitle = uiText(L.ui, 'submitAfterTitle', locale);
-const afterBody = uiText(L.ui, 'submitAfterBody', locale);
+const standardsTitle = uiText(L.ui, 'submitStandardsTitle', locale);
+const standards = [
+  uiText(L.ui, 'submitStandardRegistered', locale),
+  uiText(L.ui, 'submitStandardReachable', locale),
+  uiText(L.ui, 'submitStandardAutomatic', locale),
+  uiText(L.ui, 'submitStandardVerify', locale),
+];
+const timelineTitle = uiText(L.ui, 'submitTimelineTitle', locale);
+const timelineBody = uiText(L.ui, 'submitTimelineBody', locale);
+const subText = uiText(L.ui, 'submitSubdomain', locale);
+const existsTpl = uiText(L.ui, 'submitExists', locale);
+const deferredTpl = uiText(L.ui, 'submitQueuedDeferred', locale);
 const politeText = uiText(L.ui, 'submitPoliteNote', locale);
 const botLabel = L.ui.navBot ?? 'For Bots';
 ---
@@ -56,7 +66,11 @@ const botLabel = L.ui.navBot ?? 'For Bots';
       data-queued={queuedTpl}
       data-rate={rateText}
       data-error={errorText}
-      data-eta-default="180"
+      data-sub={subText}
+      data-exists={existsTpl}
+      data-deferred={deferredTpl}
+      data-site-base={href('/site/')}
+      data-eta-default="600"
       data-locale={locale}
       novalidate
     >
@@ -93,6 +107,7 @@ const botLabel = L.ui.navBot ?? 'For Bots';
       <p class="confirm-domain mono" data-confirm-domain></p>
       <p class="confirm-text" data-confirm-text></p>
       <p class="confirm-links">
+        <a data-confirm-site hidden href="#">{L.ui.navSite ?? 'Detail page'} →</a>
         <a href={href('/method')}>{L.ui.navMethod ?? 'Method'} →</a>
         <a href={href('/bot')}>{botLabel} →</a>
       </p>
@@ -111,15 +126,24 @@ const botLabel = L.ui.navBot ?? 'For Bots';
         </ol>
       </section>
 
-      <section class="after">
-        <h2>{afterTitle}</h2>
-        <p class="after-body">{afterBody}</p>
-        <p class="polite">
-          <span>{politeText}</span>
-          <a href={href('/bot')}>{botLabel} →</a>
-        </p>
+      <section class="standards">
+        <h2>{standardsTitle}</h2>
+        <ul class="checklist">
+          {standards.map((s) => (
+            <li class="check-item">{s}</li>
+          ))}
+        </ul>
       </section>
     </div>
+
+    <section class="timeline">
+      <h2>{timelineTitle}</h2>
+      <p class="after-body">{timelineBody}</p>
+      <p class="polite">
+        <span>{politeText}</span>
+        <a href={href('/bot')}>{botLabel} →</a>
+      </p>
+    </section>
   </div>
 
   <!-- client-side validation + POST /api/v1/submissions (queued confirmation) -->
@@ -133,6 +157,10 @@ const botLabel = L.ui.navBot ?? 'For Bots';
       var err = form.querySelector('[data-err]');
       var box = document.querySelector('[data-confirm-box]');
       var RE = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i;
+      // mirrors the server's registrableDomain(): registry namespaces under a
+      // 2-letter ccTLD (co.uk, com.cn) vs everything else being a subdomain
+      var SLD_RE = /^(?:ac|ad|asn|co|com|ed|edu|firm|gen|go|gov|gouv|gr|ind|k12|lg|ltd|me|mil|ne|net|nt|or|org|plc|priv|sch|web)$/;
+      var CC_RE = /^[a-z]{2}$/;
       var idleLabel = btn ? btn.textContent : '';
       var isZh = (form.getAttribute('data-locale') || 'en') === 'zh-CN';
 
@@ -157,16 +185,36 @@ const botLabel = L.ui.navBot ?? 'For Bots';
         }
         if (box) box.hidden = true;
       }
-      function showQueued(domain, eta) {
+      function showQueued(domain, eta, deferred) {
         if (err) err.hidden = true;
         if (!box) return;
         var d = box.querySelector('[data-confirm-domain]');
         var t = box.querySelector('[data-confirm-text]');
         if (d) d.textContent = domain;
         if (t) {
-          t.textContent = attr('data-queued')
-            .replace('{domain}', domain)
-            .replace('{eta}', fmtEta(eta));
+          t.textContent = deferred
+            ? attr('data-deferred').replace('{domain}', domain)
+            : attr('data-queued')
+                .replace('{domain}', domain)
+                .replace('{eta}', fmtEta(eta));
+        }
+        var link = box.querySelector('[data-confirm-site]');
+        if (link) link.hidden = true;
+        box.hidden = false;
+        var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        box.scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
+      }
+      function showExists(domain) {
+        if (err) err.hidden = true;
+        if (!box) return;
+        var d = box.querySelector('[data-confirm-domain]');
+        var t = box.querySelector('[data-confirm-text]');
+        if (d) d.textContent = domain;
+        if (t) t.textContent = attr('data-exists').replace('{domain}', domain);
+        var link = box.querySelector('[data-confirm-site]');
+        if (link) {
+          link.href = attr('data-site-base') + domain + '/';
+          link.hidden = false;
         }
         box.hidden = false;
         var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -196,6 +244,20 @@ const botLabel = L.ui.navBot ?? 'For Bots';
           return;
         }
 
+        /* registered domains only — same heuristic as the API */
+        var labels = v.split('.');
+        var regOk = false;
+        if (labels.length === 2) {
+          regOk = !(CC_RE.test(labels[1]) && SLD_RE.test(labels[0]));
+        } else if (labels.length === 3) {
+          regOk = CC_RE.test(labels[2]) && SLD_RE.test(labels[1]);
+        }
+        if (!regOk) {
+          showErr(attr('data-sub'));
+          if (input) input.focus();
+          return;
+        }
+
         if (err) err.hidden = true;
         if (box) box.hidden = true;
         if (input) input.value = v;
@@ -220,15 +282,23 @@ const botLabel = L.ui.navBot ?? 'For Bots';
               })
               .then(function (body) {
                 if (r.status >= 200 && r.status < 300) {
-                  var eta = parseInt(body && body.etaSeconds, 10);
-                  if (!isFinite(eta) || eta <= 0) {
-                    eta = parseInt(attr('data-eta-default'), 10) || 180;
+                  if (body && body.status === 'exists') {
+                    showExists(typeof body.domain === 'string' ? body.domain : v);
+                  } else {
+                    var eta = parseInt(body && body.etaSeconds, 10);
+                    if (!isFinite(eta) || eta <= 0) {
+                      eta = parseInt(attr('data-eta-default'), 10) || 600;
+                    }
+                    showQueued(v, eta, !!(body && body.dispatch === 'deferred'));
                   }
-                  showQueued(v, eta);
                 } else if (r.status === 429) {
                   showErr(msgOf(body, attr('data-rate')));
                 } else if (r.status === 400) {
-                  showErr(msgOf(body, attr('data-invalid')));
+                  showErr(
+                    body && body.error === 'subdomain_not_allowed'
+                      ? attr('data-sub')
+                      : msgOf(body, attr('data-invalid')),
+                  );
                 } else {
                   showErr(msgOf(body, attr('data-error')));
                 }
@@ -371,6 +441,9 @@ const botLabel = L.ui.navBot ?? 'For Bots';
     gap: 16px;
     font-size: 13px;
   }
+  .confirm-links a[hidden] {
+    display: none;
+  }
 
   .cols {
     display: grid;
@@ -421,6 +494,40 @@ const botLabel = L.ui.navBot ?? 'For Bots';
     font-size: 14px;
     line-height: 1.65;
     color: var(--text-2);
+  }
+
+  .checklist {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 10px;
+  }
+  .check-item {
+    position: relative;
+    padding: 12px 14px 12px 36px;
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: var(--text-1);
+  }
+  .check-item::before {
+    content: '✓';
+    position: absolute;
+    left: 14px;
+    top: 12px;
+    color: var(--brand);
+    font-weight: 700;
+  }
+
+  .timeline {
+    margin-top: 24px;
+  }
+  .timeline h2 {
+    font-size: 17px;
+    margin-bottom: 14px;
   }
   .polite {
     display: grid;
