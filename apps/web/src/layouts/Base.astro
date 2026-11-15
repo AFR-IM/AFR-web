@@ -36,6 +36,10 @@ const pageDesc = description ?? (L.ui.tagline as string);
 /* ── canonical / Open Graph / Twitter / JSON-LD (AFR B3 og-tags) ── */
 const SITE_URL = 'https://afr.im';
 const canonical = new URL(path, SITE_URL).href;
+/** Static 1200×630 brand card (scripts/make-og.mjs → public/og.png) —
+ * platforms (X/Facebook/LinkedIn/Slack…) only render a preview image when
+ * og:image points at an absolute, publicly fetchable URL. */
+const ogImage = `${SITE_URL}/og.png`;
 const stripZh = (p: string) => p.replace(/^\/zh-CN(?=\/|$)/, '') || '/';
 const enUrl = new URL(stripZh(path), SITE_URL).href;
 const zhUrl = new URL(pathFor('zh-CN', stripZh(path)), SITE_URL).href;
@@ -119,9 +123,14 @@ const ldJson = (obj: unknown) => JSON.stringify(obj).replace(/</g, '\\u003c');
     <meta property="og:url" content={canonical} />
     <meta property="og:site_name" content="AFR.IM" />
     <meta property="og:locale" content={isZh ? 'zh_CN' : 'en_US'} />
-    <meta name="twitter:card" content="summary" />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="AFR.IM — AI-Friendliness Rating" />
+    <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={pageTitle} />
     <meta name="twitter:description" content={pageDesc} />
+    <meta name="twitter:image" content={ogImage} />
     <script type="application/ld+json" is:inline set:html={ldJson(websiteJsonLd)}></script>
     {
       breadcrumbJsonLd && (
