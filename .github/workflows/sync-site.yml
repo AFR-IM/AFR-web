@@ -85,14 +85,19 @@ jobs:
           # Same snapshot set as the static build: publish, then sync D1.
           # Every date is walked (not just the newest) so a day whose sync
           # failed once is backfilled by the next run; each date is paged
-          # because one Worker invocation may only fetch ~44 snapshots
-          # (Cloudflare free-plan subrequest cap). nextOffset=null → done.
+          # because one Worker invocation may only fetch ~32 snapshots
+          # (Cloudflare free-plan subrequest/CPU caps). nextOffset=null → done.
+          # curl retries transient failures (connection resets and 5xx from
+          # CPU-limit pages) — the endpoint is idempotent (sha-skip), so a
+          # retry of the same offset resumes instead of duplicating work.
           dates=$(find data/scans -name '*.json' -printf '%h\n' | sed 's|data/scans/||' | sort -u)
           fail=0
           for date in $dates; do
             offset=0
             while :; do
-              resp=$(curl -fsS -X POST https://afr.im/api/v1/_internal/sync \
+              resp=$(curl -fsS --connect-timeout 20 --max-time 240 \
+                --retry 6 --retry-delay 10 --retry-all-errors --retry-max-time 900 \
+                -X POST https://afr.im/api/v1/_internal/sync \
                 -H "X-Queue-Token: ${QUEUE_TOKEN}" \
                 -H 'Content-Type: application/json' \
                 -d "{\"date\":\"${date}\",\"offset\":${offset}}") || { echo "sync call failed for ${date}@${offset}"; fail=1; break; }

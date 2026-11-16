@@ -26,8 +26,11 @@ export const DATA_REPO_TREES = 'https://api.github.com/repos/AFR-IM/AFR-data/git
 export const DATA_REPO_RAW = 'https://raw.githubusercontent.com/AFR-IM/AFR-data/main';
 
 /** Max snapshot fetches per invocation: 3 dir listings (cron path) + 1 trees
- * listing + 44 raw fetches = 48 ≤ the ~50 subrequest free-plan cap. */
-export const DEFAULT_SYNC_LIMIT = 44;
+ * listing + 32 raw fetches = 36 ≤ the ~50 subrequest free-plan cap. Kept at
+ * 32 (not the theoretical 46) because a page also burns CPU parsing snapshots
+ * + diffing evidence — 44-file pages intermittently tripped the CPU limit
+ * (error 1102) during the backfill; sha-skip makes extra pages cheap. */
+export const DEFAULT_SYNC_LIMIT = 32;
 
 export interface Snapshot {
   signals: ScanSignals;
