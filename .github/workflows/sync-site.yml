@@ -15,6 +15,11 @@ on:
   repository_dispatch:
     types: [scan-done]
   workflow_dispatch:
+  # Safety net: rebuild even when a scan-done dispatch is missed (the old
+  # cross-step dispatch condition in scan.yml skipped on scheduled runs).
+  # The date-walk sync is idempotent (sha-skip), so a no-change rebuild is cheap.
+  schedule:
+    - cron: "0 6 * * *"
 
 # One site build at a time: overlapping triggers queue instead of colliding
 # mid-build / mid-deploy (a newer queued run always rebuilds from fresh data).

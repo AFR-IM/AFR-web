@@ -162,6 +162,7 @@ jobs:
         if: steps.mode.outputs.mode == 'daily'
         env:
           SEGMENT: ${{ steps.segment.outputs.start }}
+          DATA_REPO_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
         run: |
           cd data
           git config user.name "afr-bot"
@@ -178,6 +179,18 @@ jobs:
           else
             git commit -m "scan $(date -u +%F) segment${SEGMENT}"
             git push
+            # Dispatch INLINE right after a proven push. The old end-of-job
+            # step used a cross-step `if` that silently evaluated false on
+            # every scheduled run (3/3 daily runs missed the rebuild,
+            # leaving static + D1 stale), while this step's own `if` (mode)
+            # is demonstrably evaluated correctly. Failure here only warns:
+            # sync-site also has a daily safety-net schedule.
+            curl -fsS -X POST https://api.github.com/repos/AFR-IM/AFR-web/dispatches \
+              -H "Authorization: Bearer ${DATA_REPO_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -d '{"event_type":"scan-done"}' \
+              || echo "::warning::scan-done dispatch failed after topn push"
+            echo "repository_dispatch scan-done sent (topn)"
           fi
 
       # ── on-demand queue (both modes) ───────────────────────────────────────
@@ -235,6 +248,13 @@ jobs:
           else
             git commit -m "scan $(date -u +%F) queue"
             git push
+            # Inline dispatch (see commit-topn): rebuild right after the push.
+            curl -fsS -X POST https://api.github.com/repos/AFR-IM/AFR-web/dispatches \
+              -H "Authorization: Bearer ${DATA_REPO_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -d '{"event_type":"scan-done"}' \
+              || echo "::warning::scan-done dispatch failed after queue push"
+            echo "repository_dispatch scan-done sent (queue)"
           fi
 
       # Acknowledge every domain we just scanned so it leaves the queue.
@@ -278,18 +298,8 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # Rebuild the static site (sync-site.yml) after a data push succeeded.
-      # Empty mode=queue runs have no push -> no dispatch -> job ends quickly.
-      - name: Trigger site rebuild
-        if: >-
-          always() && !cancelled() &&
-          (steps.commit-topn.result == 'success' || steps.commit-queue.result == 'success') &&
-          (steps.mode.outputs.mode == 'daily' || fromJSON(steps.queue.outputs.count || '0') > 0)
-        env:
-          DATA_REPO_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
-        run: |
-          curl -fsS -X POST https://api.github.com/repos/AFR-IM/AFR-web/dispatches \
-            -H "Authorization: Bearer ${DATA_REPO_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            -d '{"event_type":"scan-done"}'
-          echo "repository_dispatch scan-done sent"
+      # Rebuild dispatch moved INLINE into the two commit steps above (right
+      # after `git push`): this step's cross-step `if` silently evaluated
+      # false on every scheduled run, so daily scans never rebuilt the site
+      # (missed rebuilds on 11-13, 11-14 and 11-15). sync-site.yml also runs
+      # on a daily schedule as a safety net.
