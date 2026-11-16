@@ -108,6 +108,7 @@ jobs:
         id: commit
         env:
           TOPN: ${{ steps.topn.outputs.topn }}
+          DATA_REPO_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
         run: |
           cd data
           git config user.name "afr-bot"
@@ -126,6 +127,15 @@ jobs:
             git commit -m "scan $(date -u +%F) weekly-top${TOPN}"
             git push
             echo "pushed=true" >> "$GITHUB_OUTPUT"
+            # Inline dispatch (same fix as scan.yml, see SSOT §2.3-16): a
+            # separate step with a cross-step `if` silently evaluates false
+            # on schedule runs (observed 2026-11-16: steps skipped despite
+            # commit success). Only step-local conditions are reliable.
+            curl -fsS -X POST https://api.github.com/repos/AFR-IM/AFR-web/dispatches \
+              -H "Authorization: Bearer ${DATA_REPO_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -d '{"event_type":"scan-done"}'
+            echo "repository_dispatch scan-done sent"
           fi
 
       # Distribution snapshot for threshold review: calibrate.mjs reads the
@@ -133,7 +143,10 @@ jobs:
       # job summary only — the report is never committed anywhere.
       - name: Generate distribution report
         id: report
-        if: steps.commit.result == 'success'
+        # always()-gated: the cross-step `steps.commit.result` reference
+        # silently evaluates false on schedule runs (SSOT §2.3-16 family).
+        # The run body already tolerates missing data.
+        if: always() && !cancelled()
         env:
           SCAN_DATE: ${{ steps.date.outputs.date }}
           TOPN: ${{ steps.topn.outputs.topn }}
@@ -158,20 +171,6 @@ jobs:
             cat "$REPORT_FILE"
           } >> "$GITHUB_STEP_SUMMARY"
           exit $STATUS
-
-      # Rebuild the static site (sync-site.yml) after a data push succeeded.
-      # Runs even if report generation failed (always() gate), because the
-      # pushed snapshots are what the rebuild needs.
-      - name: Trigger site rebuild
-        if: >-
-          always() && !cancelled() &&
-          steps.commit.result == 'success' &&
-          steps.commit.outputs.pushed == 'true'
-        env:
-          DATA_REPO_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
-        run: |
-          curl -fsS -X POST https://api.github.com/repos/AFR-IM/AFR-web/dispatches \
-            -H "Authorization: Bearer ${DATA_REPO_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            -d '{"event_type":"scan-done"}'
-          echo "repository_dispatch scan-done sent"
+          # NOTE: the site-rebuild dispatch is inlined inside the commit step
+          # above (immediately after git push) — see SSOT §2.3-16. Do not
+          # reintroduce a separate step with a cross-step `if`.
