@@ -16,6 +16,7 @@ import BadgeEmbed from '../../../components/detail/BadgeEmbed.astro';
 import VerifyPanel from '../../../components/detail/VerifyPanel.astro';
 import HistorySpark from '../../../components/detail/HistorySpark.astro';
 import RescanButton from '../../../components/detail/RescanButton.astro';
+import { existsSync } from 'node:fs';
 import { getCatalog, LOCALES, pathFor, toLocale, type Locale } from '../../../i18n/loader.ts';
 import { uiText } from '../../../components/home/fallbacks.ts';
 import { listAllSites, loadSite } from '../../../data/loader.ts';
@@ -74,6 +75,13 @@ const tabs = [
 const viewsLabel = uiText(L.ui, 'viewsLabel', locale);
 const claimFormVisible = !!site?.verified || !!site?.claim;
 const notFound = !site;
+// Per-site OG card when this build rendered one (scripts/make-og-cards.mjs);
+// otherwise Base.astro falls back to the brand card. Resolved from cwd —
+// astro build always runs from apps/web (sync-site working-directory + local
+// flow), because import.meta.url is rewritten by Vite during compilation.
+const ogImagePath = existsSync(`public/og/sites/${domain}.png`)
+  ? `/og/sites/${domain}.png`
+  : undefined;
 const title = notFound ? (L.ui.notFound as string) : `${domain} — ${site.title ?? site.grade}`;
 // Unratable scans carry no score claim — the description omits score/grade numbers.
 const description = notFound
@@ -86,7 +94,7 @@ const description = notFound
     : `${domain}: ${site.score}/100 · ${site.grade} · ${strategyLabel} — ${T('AI-friendliness rating with full evidence chain.', '带完整证据链的 AI 友好度评级。')}`;
 ---
 
-<Base title={title} description={description}>
+<Base title={title} description={description} ogImagePath={ogImagePath}>
   {
     notFound ? (
       <div class="container missing">

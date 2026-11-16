@@ -15,7 +15,7 @@ interface Props {
   description?: string;
 }
 
-const { title, description } = Astro.props;
+const { title, description, ogImagePath } = Astro.props;
 const locale: Locale = toLocale(Astro.params.locale);
 const L = getCatalog(locale);
 const path = Astro.url.pathname;
@@ -36,10 +36,14 @@ const pageDesc = description ?? (L.ui.tagline as string);
 /* ── canonical / Open Graph / Twitter / JSON-LD (AFR B3 og-tags) ── */
 const SITE_URL = 'https://afr.im';
 const canonical = new URL(path, SITE_URL).href;
-/** Static 1200×630 brand card (scripts/make-og.mjs → public/og.png) —
- * platforms (X/Facebook/LinkedIn/Slack…) only render a preview image when
- * og:image points at an absolute, publicly fetchable URL. */
-const ogImage = `${SITE_URL}/og.png`;
+/** Static 1200×630 card: per-site score card when the build rendered one
+ * (scripts/make-og-cards.mjs → public/og/sites/<domain>.png), otherwise the
+ * brand card (scripts/make-og.mjs → public/og.png). Platforms (X/Facebook/
+ * LinkedIn/Slack…) only render a preview when og:image is an absolute,
+ * publicly fetchable URL. */
+const ogImage = ogImagePath
+  ? new URL(ogImagePath, SITE_URL).href
+  : `${SITE_URL}/og.png`;
 const stripZh = (p: string) => p.replace(/^\/zh-CN(?=\/|$)/, '') || '/';
 const enUrl = new URL(stripZh(path), SITE_URL).href;
 const zhUrl = new URL(pathFor('zh-CN', stripZh(path)), SITE_URL).href;
