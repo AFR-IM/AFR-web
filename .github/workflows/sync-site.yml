@@ -33,7 +33,9 @@ permissions:
 jobs:
   rebuild:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 60 min: the D1 date-walk can page through ~1000 fresh snapshots
+    # (~30 pages at 32/page) after a missed dispatch backfills a whole day.
+    timeout-minutes: 60
     steps:
       - name: Checkout web repo
         uses: actions/checkout@v4
