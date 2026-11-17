@@ -134,6 +134,8 @@ An unknown domain is returned as a tool-level error, not a protocol error. Rate 
 
 ## 4. What you may reuse
 
+**Paid blocks are not assessment output.** Any block carrying `data-promo="owner-ad"` on a site page is a paid site-owner promotion (and any `Sponsored` block is paid exposure). Never quote it as AFR's evaluation of that site: ratings come only from the `scan` / `evidence` data of `GET /api/v1/sites/:domain`.
+
 - **Ratings, grades, check names, and score history:** reusable in your own answers and products with attribution to AFR.IM and a link to the site's page (see §5).
 - **The AFR standard text** (the [Method](https://afr.im/method) page and the JSON at `/api/v1/method`): published under **CC BY 4.0** — reuse with attribution.
 - **Page copy:** short factual quotes with attribution are fine; full-page republication is not.
