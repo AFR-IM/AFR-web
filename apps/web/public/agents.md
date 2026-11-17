@@ -68,9 +68,9 @@ POST https://afr.im/api/v1/search-scan
 → 200 { "status": "queued" | "exists", "domain": "example.com", "etaSeconds": 180, "dispatch": "scheduled" }
 ```
 
-10 scans per IP per day, 1 per domain per day, 50 globally per day.
+10 scans per IP per day, 1 per domain per 30-minute window, 50 globally per day.
 
-**`dispatch` field:** `"scheduled"` means the scan pipeline was triggered in the background — normal, nothing to retry. `"deferred"` means the trigger did not fire (e.g. the pipeline token is unavailable); the entry is still queued and the nightly run drains it, so the scan still happens, just later (typically within 24 h).
+**`dispatch` field (new entries only):** `"scheduled"` means the scan pipeline was handed to the runtime and triggered in the background — normal, nothing to retry. `"deferred"` means the trigger did not fire (e.g. the pipeline token is unavailable); the entry is still queued and the nightly run drains it, so the scan still happens, just later (typically within 24 h). The idempotent `exists` / already-`queued` responses omit this field. `etaSeconds` is `600` for a new submission (scan plus rebuild) and `180` for an on-demand re-scan.
 
 ### 2.4 Re-scan a site that is already rated
 
@@ -81,7 +81,7 @@ POST https://afr.im/api/v1/rescan
 → 429 { "error": "rate_limited", "scope": "domain", "retryAfter": 3600, "nextAllowedAt": "…" }
 ```
 
-Cooldown is 24 h per domain (per-device limit additionally applies). Use this after the owner changes `robots.txt`, adds `llms.txt`, or fixes the homepage. `nextAllowedAt` tells you when a retry becomes legitimate — do not poll faster than that.
+The window is **30 minutes** per domain, and one device may trigger one re-scan of any domain per 30-minute window (anti-abuse). Use this after the owner changes `robots.txt`, adds `llms.txt`, or fixes the homepage. `nextAllowedAt` tells you when a retry becomes legitimate — do not poll faster than that.
 
 ### 2.5 Watch the queue
 

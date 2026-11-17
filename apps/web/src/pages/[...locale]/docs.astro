@@ -172,7 +172,7 @@ const endpoints: Endpoint[] = [
     method: 'POST',
     path: '/api/v1/submissions',
     desc: T(
-      'Request a scan of a site. Body: { "domain": "example.com", "note": "optional" } — the key is domain, not url. Limited to 5 per IP per day.',
+      'Request a scan of a site. Body: { "domain": "example.com", "note": "optional" } — the key is domain, not url. Limited to 5 per IP per day. New entries return etaSeconds 600 and dispatch scheduled | ok | deferred.',
       '申请扫描一个站点。请求体：{ "domain": "example.com", "note": "可选" }——字段名是 domain，不是 url。每 IP 每天 5 次。',
     ),
     example: submitExample,
@@ -181,8 +181,8 @@ const endpoints: Endpoint[] = [
     method: 'POST',
     path: '/api/v1/search-scan',
     desc: T(
-      'On-demand scan for an interactive session. Body: { "domain": "example.com" }. 10 per IP per day, 1 per domain per day, 50 globally per day. dispatch is "scheduled" when the pipeline was triggered in the background ("deferred" means the nightly run collects it — still queued).',
-      '交互场景的即时扫描。请求体：{ "domain": "example.com" }。每 IP 每天 10 次、每域名每天 1 次、全局每天 50 次。dispatch 为 "scheduled" 表示已在后台触发流水线（"deferred" 表示由夜间任务兜底，仍在队列中）。',
+      'On-demand scan for an interactive session. Body: { "domain": "example.com" }. 10 per IP per day, 1 per domain per 30-minute window, 50 globally per day. dispatch is "scheduled" when the pipeline was triggered in the background ("deferred" means the nightly run collects it — still queued).',
+      '交互场景的即时扫描。请求体：{ "domain": "example.com" }。每 IP 每天 10 次、每域名 30 分钟 1 次、全局每天 50 次。dispatch 为 "scheduled" 表示已在后台触发流水线（"deferred" 表示由夜间任务兜底，仍在队列中）。',
     ),
     example: `{ "status": "queued", "domain": "example.com",
   "etaSeconds": 180, "dispatch": "scheduled" }`,
@@ -191,8 +191,8 @@ const endpoints: Endpoint[] = [
     method: 'POST',
     path: '/api/v1/rescan',
     desc: T(
-      'Re-scan a site that is already rated — use it after changing robots.txt, adding llms.txt, or fixing the homepage. Body: { "domain": "example.com" }. 24 h cooldown per domain; the response carries nextAllowedAt.',
-      '对已评级站点重新扫描——修改 robots.txt、新增 llms.txt 或修复首页后使用。请求体：{ "domain": "example.com" }。每域名 24 小时冷却；响应含 nextAllowedAt。',
+      'Re-scan a site that is already rated — use it after changing robots.txt, adding llms.txt, or fixing the homepage. Body: { "domain": "example.com" }. 30-minute window per domain; the response carries nextAllowedAt.',
+      '对已评级站点重新扫描——修改 robots.txt、新增 llms.txt 或修复首页后使用。请求体：{ "domain": "example.com" }。每域名 30 分钟窗口；响应含 nextAllowedAt。',
     ),
     example: `{ "status": "queued", "etaSeconds": 180,
   "nextAllowedAt": "2026-11-18T09:00:00.000Z" }`,

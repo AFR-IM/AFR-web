@@ -568,7 +568,24 @@ describe('daily cron sync', () => {
 
 describe('scan dispatch runs off the request critical path', () => {
   it('hands the dispatch to waitUntil and answers before GitHub responds', async () => {
-    const { calls, impl } = fakeFetch();
+    // A fetch that stays pending until released: this is what proves the
+    // response does not wait for GitHub. An inline `await` would hang here and
+    // time the request out, so the test fails if the fix is reverted.
+    let release: (() => void) | undefined;
+    let released = false;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const calls: { url: string; init?: RequestInit }[] = [];
+    const impl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: String(input), init });
+      await gate;
+      released = true;
+      return new Response(JSON.stringify({ total_count: 1 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as unknown as typeof fetch;
     const { app } = freshApp(impl);
     const env = envWith({ GITHUB_DISPATCH_TOKEN: 'test-token' });
 
@@ -595,10 +612,14 @@ describe('scan dispatch runs off the request critical path', () => {
     assert.equal(body.status, 'queued');
     assert.equal(body.dispatch, 'scheduled', 'reported as scheduled, not awaited');
     assert.equal(pending.length, 1, 'exactly one background task registered');
+    assert.equal(calls.length, 1, 'the dispatch was started');
+    assert.ok(!released, 'the GitHub call is still blocked when the response lands');
 
-    // The response has been delivered while the dispatch promise may still be
-    // in flight — this is the whole point of the fix (a slow GitHub call must
+    // The response has been delivered while the dispatch promise is still in
+    // flight — this is the whole point of the fix (a slow GitHub call must
     // never make the browser time out and report a fake network error).
+    released = true;
+    release!();
     await Promise.all(pending);
     assert.equal(calls.length, 1, 'the background task performed the dispatch');
     assert.ok(calls[0]!.url.endsWith(DISPATCH_PATH));

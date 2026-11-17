@@ -485,7 +485,7 @@
     "/api/v1/submissions": {
       "post": {
         "summary": "Request a scan of a site",
-        "description": "Fully automatic inclusion. Registered domains only (eTLD+1 heuristic): subdomains like blog.example.com are rejected with error subdomain_not_allowed, www is stripped. Already-listed domains return status 'exists' (open the detail page); already-queued domains return status 'queued' (idempotent, no quota burned). New submissions are queued AND immediately dispatch the scan workflow, so a typical listing is searchable within ~10 minutes (etaSeconds covers scan + rebuild); if dispatch is deferred the next daily scan (02:00 UTC) collects it. Rate-limited to 5 new submissions per IP per day.",
+        "description": "Fully automatic inclusion. Registered domains only (eTLD+1 heuristic): subdomains like blog.example.com are rejected with error subdomain_not_allowed, www is stripped. Already-listed domains return status 'exists' (open the detail page); already-queued domains return status 'queued' (idempotent, no quota burned). New submissions are queued AND immediately dispatch the scan workflow, so a typical listing is searchable within ~10 minutes (etaSeconds covers scan + rebuild); if dispatch is deferred the next daily scan (02:00 UTC) collects it. Rate-limited to 5 new submissions per IP per day. New entries carry etaSeconds 600 (scan plus rebuild) and dispatch 'scheduled' | 'ok' | 'deferred'; the idempotent 'exists'/'queued' responses omit dispatch.",
         "requestBody": {
           "required": true,
           "content": {
@@ -601,7 +601,7 @@
     "/api/v1/search-scan": {
       "post": {
         "summary": "Request an on-demand scan of a domain",
-        "description": "Interactive-session variant of a submission: looser quota tiers (10 per IP per day, 1 per domain per day, 50 globally per day). Already-listed domains return status 'exists'; already-queued domains are an idempotent no-op. The scan workflow is dispatched in the background, so the response never waits for GitHub: 'scheduled' means triggered, 'deferred' means the nightly run will pick it up (still queued, not lost).",
+        "description": "Interactive-session variant of a submission: looser quota tiers (10 per IP per day, 1 per domain per 30-minute window, 50 globally per day). Already-listed domains return status 'exists' and already-queued domains return status 'queued' with no quota burned - both omit the dispatch field. The scan workflow is dispatched in the background, so the response never waits for GitHub: 'scheduled' means triggered, 'deferred' means the nightly run will pick it up (still queued, not lost).",
         "requestBody": {
           "required": true,
           "content": {
@@ -664,7 +664,7 @@
     "/api/v1/rescan": {
       "post": {
         "summary": "Re-scan a site that is already rated",
-        "description": "Use after the owner changes robots.txt, adds llms.txt, or fixes the homepage. 24 h cooldown per domain; the response carries nextAllowedAt, the earliest legitimate retry time. The scan is dispatched in the background.",
+        "description": "Use after the owner changes robots.txt, adds llms.txt, or fixes the homepage. 30-minute per-domain window; the response carries nextAllowedAt, the earliest legitimate retry time. The scan is dispatched in the background and the response omits the dispatch field.",
         "requestBody": {
           "required": true,
           "content": {
@@ -709,7 +709,7 @@
             "$ref": "#/components/responses/NotFound"
           },
           "429": {
-            "description": "Per-domain cooldown still active",
+            "description": "Per-domain or per-device window still active (30 minutes)",
             "content": {
               "application/json": {
                 "schema": {
@@ -1253,10 +1253,11 @@
           "dispatch": {
             "type": "string",
             "enum": [
+              "scheduled",
               "ok",
               "deferred"
             ],
-            "description": "Scan-workflow dispatch result (new submissions only)"
+            "description": "Scan-workflow dispatch result (new submissions only). 'scheduled' = handed to the runtime and triggered in the background (production); 'ok' = triggered and confirmed before responding; 'deferred' = trigger did not fire, the nightly run collects the entry anyway. Idempotent 'exists'/'queued' responses omit this field."
           }
         }
       },

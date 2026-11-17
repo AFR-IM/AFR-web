@@ -26,8 +26,8 @@
 
 - [GET /api/v1/sites/:domain](https://afr.im/api/v1/sites/github.com): one site with its latest scan and evidence. `404 { "error": "not_found" }` means the site has never been scanned.
 - [POST /api/v1/submissions](https://afr.im/api/v1/submissions): request a scan. Body `{ "domain": "example.com" }` (the key is `domain`, not `url`). 5/IP/day.
-- [POST /api/v1/search-scan](https://afr.im/api/v1/search-scan): on-demand scan for an interactive session. Body `{ "domain": "example.com" }`. 10/IP/day, 1/domain/day.
-- [POST /api/v1/rescan](https://afr.im/api/v1/rescan): re-scan an already-rated site after the owner changes something. Body `{ "domain": "example.com" }`; 24 h per-domain cooldown, returns `nextAllowedAt`.
+- [POST /api/v1/search-scan](https://afr.im/api/v1/search-scan): on-demand scan for an interactive session. Body `{ "domain": "example.com" }`. 10/IP/day, 1/domain per 30 min.
+- [POST /api/v1/rescan](https://afr.im/api/v1/rescan): re-scan an already-rated site after the owner changes something. Body `{ "domain": "example.com" }`; 30-minute per-domain window, returns `nextAllowedAt`.
 - [GET /api/v1/queue](https://afr.im/api/v1/queue): pending submissions (oldest 50) — queued is not lost.
 - [GET /api/v1/sites/:domain/history](https://afr.im/api/v1/sites/github.com/history): every scan for a domain, newest first (score trends).
 
