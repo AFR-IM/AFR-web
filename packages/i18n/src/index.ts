@@ -191,6 +191,8 @@ const en: Catalog = {
     sourceLabel: 'source',
     checkIdLabel: 'check id',
     historyEmpty: 'No scans yet.',
+    historyFirstScan: 'First scan',
+    historyBuildsNote: 'History builds after each rescan.',
     outOf100: 'out of 100',
 
     // P4 submit page
@@ -529,6 +531,8 @@ const zhCN: Catalog = {
     sourceLabel: '来源',
     checkIdLabel: '检查项 id',
     historyEmpty: '暂无扫描记录。',
+    historyFirstScan: '首次扫描',
+    historyBuildsNote: '每次重新扫描后历史会继续累积。',
     outOf100: '满分 100',
 
     // P4 submit page
