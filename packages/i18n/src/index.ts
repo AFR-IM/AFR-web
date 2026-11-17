@@ -10,8 +10,8 @@
 //   - layers: spec §3.1 three-layer model
 //   - grades: spec §3.5 (lines 209-217)
 //   - strategies: spec §3.2 A1 StrategyTag
-//   - categories: spec §7.1 (lines 418-425), 14 slugs
-//   - ui: spec §10.3 pages P1-P7 vocabulary
+//   - categories: the 14 product category slugs
+//   - ui: page vocabulary for the site's main pages
 
 export type Locale = 'en' | 'zh-CN';
 

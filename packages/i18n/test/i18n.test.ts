@@ -118,7 +118,7 @@ describe('catalog parity', () => {
     }
   });
 
-  it('categories cover exactly the 14 spec §7.1 slugs', () => {
+  it('categories cover exactly the 14 category slugs', () => {
     const expected = [
       'dev-tools', 'ai-tools', 'news', 'ecommerce', 'education', 'finance', 'social',
       'entertainment', 'health', 'travel', 'government', 'reference', 'docs', 'other',
