@@ -148,3 +148,32 @@ describe('GET /api/v1/sites/:domain/views', () => {
     assert.equal(body.site.domain, 'example.com', 'existing payload untouched');
   });
 });
+
+describe('POST /api/v1/pv (sendBeacon)', () => {
+  it('counts like GET: listed site → 204 + one row; unknown → 204, no row', async () => {
+    const { app, raw } = freshApp();
+
+    const hit = await app.request('/api/v1/pv?site=example.com', { method: 'POST' });
+    assert.equal(hit.status, 204, 'beacon answers 204');
+    assert.equal(hit.headers.get('content-type'), 'image/gif');
+    let row = readCounter(raw, 'example.com');
+    assert.ok(row, 'POST counts');
+    assert.equal(row!.views, 1);
+
+    const miss = await app.request('/api/v1/pv?site=ghost.example', { method: 'POST' });
+    assert.equal(miss.status, 204);
+    row = readCounter(raw, 'ghost.example');
+    assert.equal(row, undefined, 'unknown site never written');
+  });
+
+  it('accepts an empty body (sendBeacon with no payload)', async () => {
+    const { app, raw } = freshApp();
+    const res = await app.request('/api/v1/pv?site=example.com', {
+      method: 'POST',
+      body: null,
+      headers: { 'content-type': 'text/plain' },
+    });
+    assert.equal(res.status, 204);
+    assert.ok(readCounter(raw, 'example.com'), 'counted without a body');
+  });
+});

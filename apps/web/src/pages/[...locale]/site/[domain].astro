@@ -204,15 +204,9 @@ const description = notFound
             />
           </div>
 
-          {/* PV pixel — counts this detail view; absolute + 1×1 ⇒ zero CLS */}
-          <img
-            class="pv-pixel"
-            src={`/api/v1/pv?site=${encodeURIComponent(site.domain)}`}
-            alt=""
-            aria-hidden="true"
-            width="1"
-            height="1"
-          />
+          {/* PV marker — counting moved into the page script: localStorage
+              once-per-domain-per-UTC-day dedup + sendBeacon (T3 write cut) */}
+          <span class="pv-pixel" data-pv={site.domain} hidden aria-hidden="true"></span>
         </div>
       </div>
     )
@@ -363,19 +357,9 @@ const description = notFound
     }
   }
 
-  /* PV pixel: absolute offscreen, 1×1 — counts the view with zero CLS */
+  /* PV marker: hidden, no layout cost */
   .pv-pixel {
-    position: absolute;
-    top: 0;
-    left: -9999px;
-    width: 1px;
-    height: 1px;
-    border: 0;
-    margin: -1px;
-    padding: 0;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
+    display: none;
   }
 
   /* ── mobile tab bar (≤767) ──────────────────────────── */
@@ -492,6 +476,28 @@ const description = notFound
         grid.dataset.tab = btn.dataset.tabBtn ?? 'report';
         for (const other of buttons) other.setAttribute('aria-selected', String(other === btn));
       });
+    }
+  }
+
+  // PV beacon (T3 write cut): count each site at most once per browser per
+  // UTC day — localStorage dedup, then sendBeacon (POST) so the ping never
+  // competes with page resources. Storage failures (private mode, quota)
+  // degrade to counting every view, which the server-side daily cap bounds.
+  const pvDomain = document.querySelector<HTMLElement>('[data-pv]')?.dataset.pv ?? '';
+  if (pvDomain) {
+    const day = new Date().toISOString().slice(0, 10); // UTC — matches counted_on
+    const key = `afr-pv:${pvDomain}:${day}`;
+    let fresh = true;
+    try {
+      if (localStorage.getItem(key)) fresh = false;
+      else localStorage.setItem(key, '1');
+    } catch {
+      /* storage unavailable → count every view (capped server-side) */
+    }
+    if (fresh) {
+      const url = '/api/v1/pv?site=' + encodeURIComponent(pvDomain);
+      if (navigator.sendBeacon) navigator.sendBeacon(url);
+      else fetch(url, { method: 'POST', keepalive: true }).catch(() => {});
     }
   }
 

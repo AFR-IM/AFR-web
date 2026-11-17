@@ -1356,13 +1356,16 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     return c.json({ statement: row.statement, publishedAt: row.created_at });
   });
 
-  // GET /api/v1/pv?site=<domain> — counts a detail-page view. Always answers
-  // 204 (the pixel must never fail visibly); only domains listed in sites are
-  // counted, and the daily write budget is enforced inside the upsert — once
+  // GET/POST /api/v1/pv?site=<domain> — counts a detail-page view. Always
+  // answers 204 (the pixel must never fail visibly); only domains listed in
+  // sites are counted, and the daily write budget is enforced inside the upsert — once
   // today's count reaches PV_DAILY_WRITE_CAP the guarded statement matches no
   // row, so a capped view costs zero rows written (a 0-row statement changes
   // nothing — assumed not to be billed as a row write).
-  app.get('/api/v1/pv', async (c) => {
+  // POST exists for navigator.sendBeacon: the page-side beacon dedups per
+  // domain per UTC day in localStorage (T3), so one browser writes at most
+  // one row per site per day instead of one per view.
+  const pvHandler = async (c: Context) => {
     const domain = normalizeDomain(c.req.query('site') ?? '');
     if (domain) {
       try {
@@ -1383,7 +1386,8 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     // in both Node and workerd), so the beacon ships with the image/gif content
     // type and an empty body — the request itself is what gets counted.
     return new Response(null, { status: 204, headers: { 'content-type': 'image/gif' } });
-  });
+  };
+  app.on(['GET', 'POST'], '/api/v1/pv', pvHandler);
 
   // GET /api/v1/sites/:domain/views — read-only counter {domain, views, today}.
   // Unknown-but-valid domains report zeros (the pixel simply never counted them).
