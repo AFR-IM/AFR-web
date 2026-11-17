@@ -6,7 +6,7 @@
 
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import type { Context } from 'hono';
+import type { Context, MiddlewareHandler } from 'hono';
 import type { D1Database, ExecutionContext, KVNamespace, ScheduledController } from '@cloudflare/workers-types';
 import { GRADE_THRESHOLDS, LAYER_MAX } from '../../../packages/shared/src/index.ts';
 import { AFR_LAYERS, AFR_VERSION } from './method-checks.ts';
@@ -435,8 +435,93 @@ async function dispatchScanQueue(
   }
 }
 
+/** Edge-cacheable read endpoints and their TTL in seconds (T4).
+ * Only responses that are safe to serve slightly stale for a few minutes:
+ * aggregates and per-site lookups. Anything with a write side effect, a
+ * rate-limit response, or a counter that must be fresh is deliberately absent. */
+const EDGE_CACHE_RULES: readonly [RegExp, number][] = [
+  [/^\/api\/v1\/stats$/, 60],
+  [/^\/api\/v1\/categories$/, 300],
+  [/^\/api\/v1\/leaderboard$/, 120],
+  [/^\/api\/v1\/method$/, 3600],
+  [/^\/api\/v1\/sites$/, 60],
+  [/^\/api\/v1\/sites\/[^/]+$/, 120],
+  [/^\/api\/v1\/sites\/[^/]+\/history$/, 300],
+  [/^\/badge\/[^/]+$/, 3600],
+];
+
+function edgeCacheTtl(path: string): number {
+  for (const [pattern, ttl] of EDGE_CACHE_RULES) if (pattern.test(path)) return ttl;
+  return 0;
+}
+
+/** Cache API handle, or undefined where the platform does not provide one
+ * (unit tests run in Node, which has no `caches` global). */
+function edgeCacheStore(): Cache | undefined {
+  const store = (globalThis as { caches?: { default?: Cache } }).caches;
+  return store?.default;
+}
+
+/** T4: put the read-heavy GET endpoints in front of D1 via the edge Cache API.
+ *
+ * D1 reads are the scarce free-tier resource (5M rows/day) and every origin hit
+ * costs a Worker invocation out of the shared 100k/day account budget. Caching
+ * the final response for a few minutes removes both for repeat traffic.
+ * A request carrying `Cache-Control: no-cache` always bypasses the cache, which
+ * is how the E2E checklist verifies freshness after a deploy. */
+const edgeCache: MiddlewareHandler<AppEnv> = async (c, next) => {
+  const ttl = edgeCacheTtl(c.req.path);
+  const store = ttl && c.req.method === 'GET' ? edgeCacheStore() : undefined;
+  if (!store) return next();
+  if ((c.req.header('cache-control') ?? '').includes('no-cache')) return next();
+
+  const key = new Request(c.req.url, { method: 'GET' });
+  try {
+    const hit = await store.match(key);
+    if (hit) {
+      // The cached copy already carries CORS + cache-control from its first run.
+      c.res = hit;
+      return;
+    }
+  } catch {
+    // A cache read failure must never fail the request.
+  }
+
+  await next();
+  const res = c.res;
+  if (!res || res.status !== 200) return;
+
+  const headers = new Headers(res.headers);
+  // The Cache API copy is what saves D1 reads; the HTTP header is a separate
+  // decision. Zone-level Browser Cache TTL rewrites our max-age to 4 h, and a
+  // four-hour-old score in a returning visitor's browser is wrong for a
+  // "current rating" product, so JSON API responses are no-store (the Worker
+  // and its Cache API still answer fast). Badges are exempt: they are embedded
+  // on third-party pages and must be cacheable by their CDNs.
+  const isBadge = c.req.path.startsWith('/badge/');
+  headers.set(
+    'cache-control',
+    isBadge ? `public, max-age=${ttl}` : 'no-store',
+  );
+  // Two independent copies: assigning `c.res` makes Hono rebuild the Response
+  // from the same body stream, so the cache copy must own its own buffer.
+  const buf = await res.clone().arrayBuffer();
+  c.res = new Response(buf.slice(0), { status: 200, headers });
+  try {
+    const warm = store.put(key, new Response(buf, { status: 200, headers })).catch(() => undefined);
+    c.executionCtx.waitUntil(warm);
+  } catch {
+    // No ExecutionContext (tests) or a storage failure: the response is already
+    // produced, so the only cost is a cold cache.
+  }
+};
+
 export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
+
+  // T4 read path: edge cache in front of D1, registered before CORS so a hit
+  // can short-circuit without running any handler.
+  app.use('*', edgeCache);
 
   // CORS open for the whole API surface (all JSON endpoints, open CORS).
   // The /badge/* route is an <img> asset and does not need CORS.
