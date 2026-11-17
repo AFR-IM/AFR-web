@@ -565,3 +565,64 @@ describe('daily cron sync', () => {
     assert.equal(typeof worker.scheduled, 'function');
   });
 });
+
+describe('scan dispatch runs off the request critical path', () => {
+  it('hands the dispatch to waitUntil and answers before GitHub responds', async () => {
+    const { calls, impl } = fakeFetch();
+    const { app } = freshApp(impl);
+    const env = envWith({ GITHUB_DISPATCH_TOKEN: 'test-token' });
+
+    // ExecutionContext stub: collect background promises instead of running them.
+    const pending: Promise<unknown>[] = [];
+    const ctx = {
+      waitUntil: (p: Promise<unknown>) => pending.push(p),
+      passThroughOnException: () => {},
+    };
+
+    const res = await app.request(
+      '/api/v1/search-scan',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-forwarded-for': '198.51.100.7' },
+        body: JSON.stringify({ domain: 'bg-dispatch.io' }),
+      },
+      env,
+      ctx as never,
+    );
+
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.status, 'queued');
+    assert.equal(body.dispatch, 'scheduled', 'reported as scheduled, not awaited');
+    assert.equal(pending.length, 1, 'exactly one background task registered');
+
+    // The response has been delivered while the dispatch promise may still be
+    // in flight — this is the whole point of the fix (a slow GitHub call must
+    // never make the browser time out and report a fake network error).
+    await Promise.all(pending);
+    assert.equal(calls.length, 1, 'the background task performed the dispatch');
+    assert.ok(calls[0]!.url.endsWith(DISPATCH_PATH));
+  });
+
+  it('reports deferred without scheduling when the token is missing', async () => {
+    const { calls, impl } = fakeFetch();
+    const { app } = freshApp(impl);
+    const pending: Promise<unknown>[] = [];
+    const ctx = { waitUntil: (p: Promise<unknown>) => pending.push(p), passThroughOnException: () => {} };
+
+    const res = await app.request(
+      '/api/v1/search-scan',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-forwarded-for': '198.51.100.8' },
+        body: JSON.stringify({ domain: 'no-token.io' }),
+      },
+      envWith({}),
+      ctx as never,
+    );
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).dispatch, 'deferred');
+    assert.equal(calls.length, 0);
+    assert.equal(pending.length, 0, 'nothing scheduled without a token');
+  });
+});

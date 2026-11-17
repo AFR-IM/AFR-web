@@ -1,6 +1,8 @@
 # Agent instructions — AFR.IM
 
-AFR.IM is a public directory of AI-friendliness ratings (AFR). This file tells automated visitors how to crawl it politely, what they may reuse, and how to cite a rating correctly. Humans are welcome too — start at [AFR.IM/about](https://afr.im/about).
+AFR.IM is a public directory of AI-friendliness ratings (AFR). This file tells automated visitors how to use the directory — look up a rating, check whether a site is listed, request a scan, trigger a re-scan — and how to crawl politely and cite a rating correctly. Humans are welcome too — start at [AFR.IM/about](https://afr.im/about).
+
+**If you are an agent acting for a site owner who asked "how does my site rate?" or "is my site in the directory?", jump to [§2](#2-check-one-specific-site--the-most-common-task).** It is a short, deterministic recipe with no key required.
 
 ## 1. Identify yourself
 
@@ -8,50 +10,162 @@ AFR.IM is a public directory of AI-friendliness ratings (AFR). This file tells a
 - If your operator publishes a verification page, link it from your UA. We do not block identified AI crawlers: all 14 known AI user-agent families are explicitly allowed in [robots.txt](https://afr.im/robots.txt), and the same open policy applies to everyone else.
 - If you are acting on a user's behalf (fetch-on-demand), use your product's user-triggered UA rather than a generic bot UA.
 
-## 2. Fetch budget and politeness
+## 2. Check one specific site — the most common task
+
+No API key. No authentication. All endpoints are `GET`/`POST` with JSON. Start with the lookup; it answers "is this site rated, and how" in one request.
+
+### 2.1 Look up a rating
+
+```http
+GET https://afr.im/api/v1/sites/{domain}
+```
+
+- `200` → `{ "site": {...}, "scan": {...}, "evidence": [...], "views": n }`
+  - `site.grade` — `A` | `B` | `C` | `D` | `F` | `Pending`
+  - `site.score_total` — 0–100 AFR score
+  - `site.score_l1` / `score_l2` / `score_l3` — the three layer scores (max 35 / 40 / 25)
+  - `site.strategy_tag` — `AI-Open` | `Middle-Path` | `Training-Open` | `AI-Closed` | `Unconfigured`
+  - `site.status` — `active` | `delisted`
+  - `site.category` — category slug, e.g. `dev-tools`, `news`, `other`
+  - `site.scanned_at` — when that snapshot was taken (scores are snapshots, always cite it)
+  - `scan.engine_version` — the scoring engine version, e.g. `afr-1.2.0`
+  - `evidence[]` — one row per check: `check_id`, `points`, `status` (`pass`/`partial`/`fail`), `detail`. This is how you explain *why* a site lost points.
+- `404` → `{ "error": "not_found", "domain": "…" }` — **the site has never been scanned.**
+
+### 2.2 Read the answer correctly — three states, not two
+
+This is the distinction that trips up both humans and agents:
+
+| State | How to detect it | What it means |
+| --- | --- | --- |
+| **Not in the directory at all** | `GET /api/v1/sites/{domain}` → `404` | Never scanned. Submit it (§2.3). |
+| **Rated, but not shown in lists** | `200`, `site.grade == "Pending"` | Scanned, but neither the homepage nor `robots.txt` was readable, so it cannot be scored. A detail page exists; it is excluded from rankings, category pages, averages, and search. Ask the owner to make the homepage or `robots.txt` reachable, then re-scan (§2.4). |
+| **Fully listed** | `200` and `site.grade` is `A`–`F` | Rated and listed. Find it under `/c/{site.category}/`, in `/search`, and in the search index. |
+
+Also note `site.status == "delisted"` — the entry is retired on request or after a rebrand; its page stays readable for history but it is excluded from every listing.
+
+> A site can therefore have a working report page (`https://afr.im/site/<domain>/`) *and* be absent from `/categories/<slug>/`, because the category slug differs from the one you guessed, or because the grade is `Pending`. Check `site.category` and `site.grade` before concluding "not listed".
+
+### 2.3 Submit a domain for scanning
+
+```http
+POST https://afr.im/api/v1/submissions
+Content-Type: application/json
+
+{ "domain": "example.com", "note": "optional free-text note" }
+```
+
+- The field is **`domain`** (a bare hostname). A full URL such as `"https://example.com"` is normalized, but a JSON key named `url` is **rejected** with `400 { "error": "invalid_domain", "message": "domain must be a string" }`.
+- Subdomains are refused (`400 subdomain_not_allowed`) — submit the registrable domain.
+- Responses: `201 { "ok": true, "id": 1, "domain": "example.com", "status": "queued", "etaSeconds": 180, "dispatch": "scheduled" }` for a new entry; `200 { "ok": true, "status": "exists" }` when the domain is already rated; `200 { "ok": true, "status": "queued" }` when it is already waiting in the queue (idempotent — no quota burned).
+- Quota: 5 requests per IP per day. `429 { "error": "rate_limited" }` otherwise.
+
+For a one-off "scan this now" request during an interactive session there is a second endpoint with its own (looser) quota:
+
+```http
+POST https://afr.im/api/v1/search-scan
+{ "domain": "example.com" }
+→ 200 { "status": "queued" | "exists", "domain": "example.com", "etaSeconds": 180, "dispatch": "scheduled" }
+```
+
+10 scans per IP per day, 1 per domain per day, 50 globally per day.
+
+**`dispatch` field:** `"scheduled"` means the scan pipeline was triggered in the background — normal, nothing to retry. `"deferred"` means the trigger did not fire (e.g. the pipeline token is unavailable); the entry is still queued and the nightly run drains it, so the scan still happens, just later (typically within 24 h).
+
+### 2.4 Re-scan a site that is already rated
+
+```http
+POST https://afr.im/api/v1/rescan
+{ "domain": "example.com" }
+→ 200 { "status": "queued", "etaSeconds": 180, "nextAllowedAt": "2026-11-18T09:00:00.000Z" }
+→ 429 { "error": "rate_limited", "scope": "domain", "retryAfter": 3600, "nextAllowedAt": "…" }
+```
+
+Cooldown is 24 h per domain (per-device limit additionally applies). Use this after the owner changes `robots.txt`, adds `llms.txt`, or fixes the homepage. `nextAllowedAt` tells you when a retry becomes legitimate — do not poll faster than that.
+
+### 2.5 Watch the queue
+
+```http
+GET https://afr.im/api/v1/queue
+→ { "items": [ { "domain": "example.com", "source": "on_demand", "note": null, "createdAt": "2026-11-17T06:47:36.931Z" } ] }
+```
+
+Public and key-free; up to 50 oldest pending entries. If the domain you submitted is listed here it is waiting its turn — queued is not lost. Typical end-to-end latency from queue entry to a published score is minutes when the pipeline triggers, otherwise within one nightly cycle (≤24 h).
+
+### 2.6 Score history and the map of a site
+
+```http
+GET https://afr.im/api/v1/sites/{domain}/history
+→ scan rows newest first (score, grade, engine_version, started_at per row)
+```
+
+Use it for trend questions ("has this site improved since it adopted llms.txt?"). Each row is one immutable snapshot; the earliest row is the first scan.
+
+### 2.7 Embeddable badge
+
+```http
+GET https://afr.im/badge/{domain}.svg
+```
+
+`image/svg+xml`, cached one hour upstream. Unknown domains render a neutral gray badge instead of a 404 — the badge itself is the forgery check, so always link it to `https://afr.im/site/{domain}/`.
+
+### 2.8 Machine-callable tools (MCP)
+
+If your runtime speaks MCP, you can skip HTTP entirely — `POST https://afr.im/mcp` accepts JSON-RPC 2.0 and exposes three tools:
+
+| Tool | Arguments | Returns |
+| --- | --- | --- |
+| `site_rating` | `{ "domain": "example.com" }` | grade, AFR score, strategy tag, last scan time, page views |
+| `search_sites` | `{ "query"?, "grade"?, "limit"? }` | graded sites ranked by score descending |
+| `grade_distribution` | `{}` | totals, pending count, average score, per-grade counts |
+
+An unknown domain is returned as a tool-level error, not a protocol error. Rate limit: 60 requests per IP per minute.
+
+## 3. Fetch budget and politeness
 
 - Honor `robots.txt`, including any `Crawl-delay`, before every request.
-- Keep to about **1 request per second** on HTML pages; the directory is small (tens of pages) and does not change between scans.
-- Use conditional requests (`If-None-Match` / `If-Modified-Since`) where possible and cache responses; re-fetch only pages you detected as changed instead of polling.
-- Do not retry aggressively: one retry after a 5xx or timeout, then back off. 4xx responses are final.
-- `GET /badge/<domain>.svg` is cached for one hour upstream — reuse your copy inside that window.
-- API endpoints are rate-limited (`POST /api/v1/submissions`: 5 per IP per day). GET endpoints need no key and send `Access-Control-Allow-Origin: *`.
+- Keep to about **1 request per second** on HTML pages; the directory is large but static between syncs.
+- Prefer the JSON API over scraping HTML — it is cheaper for both sides and its shapes are stable.
+- Use conditional requests (`If-None-Match` / `If-Modified-Since`) where possible and cache responses; re-fetch only pages you detected as changed instead of polling. Static pages are served with `Cache-Control: max-age=60, stale-while-revalidate=600`; `/data/*` with `max-age=300, stale-while-revalidate=86400`; `/og/*`, `/icons/*`, `/fonts/*` are cacheable for a week.
+- Do not retry aggressively: one retry after a `5xx` or timeout, then back off. `4xx` responses are final (except `429`, where `Retry-After` / `nextAllowedAt` is authoritative).
+- POST endpoints are rate-limited as documented per endpoint; `GET` endpoints need no key.
 
-## 3. What you may reuse
+## 4. What you may reuse
 
-- **Ratings, grades, check names, and score history:** reusable in your own answers and products with attribution to AFR.IM and a link to the site's page (see §4).
+- **Ratings, grades, check names, and score history:** reusable in your own answers and products with attribution to AFR.IM and a link to the site's page (see §5).
 - **The AFR standard text** (the [Method](https://afr.im/method) page and the JSON at `/api/v1/method`): published under **CC BY 4.0** — reuse with attribution.
 - **Page copy:** short factual quotes with attribution are fine; full-page republication is not.
 - **Do not** present a rating without its context (score, grade, scan date, engine version), and **do not** imply endorsement by AFR.IM or by the rated site.
 
-## 4. How to cite a rating
+## 5. How to cite a rating
 
 A complete citation has five parts: **domain, score, grade, engine version, scan timestamp**, plus a link back to the site's page on AFR.IM.
 
 ```text
-github.com — 91/100 (grade A, AI-Open), AFR engine afr-1.1.0,
-scanned 2026-11-10T11:40:00Z — https://afr.im/site/github.com
+github.com — 91/100 (grade A, AI-Open), AFR engine afr-1.2.0,
+scanned 2026-11-17T03:44:00Z — https://afr.im/site/github.com
 ```
 
 - The engine version lives on every result (`engineVersion`); recompute any score with it — see [Recompute](https://afr.im/method#recompute).
 - The scan timestamp is the `scannedAt` field; always state it, because scores are snapshots.
 - Link the standard when you explain what the number means: https://afr.im/method
 
-## 5. Interfaces for agents
+## 6. Interfaces for agents
 
 | Interface | URL | Purpose |
 | --- | --- | --- |
-| llms.txt (summary) | `/llms.txt` | map of the directory |
-| llms-full.txt | `/llms-full.txt` | complete page inventory + API |
+| llms.txt (summary) | `/llms.txt` | map of the directory and its API |
+| llms-full.txt | `/llms-full.txt` | complete page inventory, API shapes, agent workflows |
 | robots.txt | `/robots.txt` | crawler policy (all AI families allowed) |
 | sitemap.xml | `/sitemap.xml` | page inventory with lastmod |
 | AI crawler policy | `/ai.txt` | short policy summary |
 | Agent instructions | `/agents.md` | this file |
 | Human API docs | `/docs` | endpoints, parameters, examples |
 | OpenAPI spec | `/openapi.json` (mirror `/.well-known/openapi.yaml`) | machine-readable API |
+| MCP endpoint | `POST /mcp` | `site_rating`, `search_sites`, `grade_distribution` |
 | Machine-readable standard | `/api/v1/method` | layers, points, grade thresholds |
 | For bots (our scanner) | `/bot` | what our own crawler fetches, how points are awarded |
 
-## 6. Contact
+## 7. Contact
 
 Questions, corrections, or false-positive blocks: see [AFR.IM/about](https://afr.im/about), or open an issue in [github.com/AFR-IM/AFR-web](https://github.com/AFR-IM/AFR-web).

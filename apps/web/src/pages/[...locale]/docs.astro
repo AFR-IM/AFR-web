@@ -172,10 +172,48 @@ const endpoints: Endpoint[] = [
     method: 'POST',
     path: '/api/v1/submissions',
     desc: T(
-      'Request a scan of a site. Body: { "domain": "example.com", "note": "optional" }. Limited to 5 per IP per day.',
-      '申请扫描一个站点。请求体：{ "domain": "example.com", "note": "可选" }。每 IP 每天 5 次。',
+      'Request a scan of a site. Body: { "domain": "example.com", "note": "optional" } — the key is domain, not url. Limited to 5 per IP per day.',
+      '申请扫描一个站点。请求体：{ "domain": "example.com", "note": "可选" }——字段名是 domain，不是 url。每 IP 每天 5 次。',
     ),
     example: submitExample,
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/search-scan',
+    desc: T(
+      'On-demand scan for an interactive session. Body: { "domain": "example.com" }. 10 per IP per day, 1 per domain per day, 50 globally per day. dispatch is "scheduled" when the pipeline was triggered in the background ("deferred" means the nightly run collects it — still queued).',
+      '交互场景的即时扫描。请求体：{ "domain": "example.com" }。每 IP 每天 10 次、每域名每天 1 次、全局每天 50 次。dispatch 为 "scheduled" 表示已在后台触发流水线（"deferred" 表示由夜间任务兜底，仍在队列中）。',
+    ),
+    example: `{ "status": "queued", "domain": "example.com",
+  "etaSeconds": 180, "dispatch": "scheduled" }`,
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/rescan',
+    desc: T(
+      'Re-scan a site that is already rated — use it after changing robots.txt, adding llms.txt, or fixing the homepage. Body: { "domain": "example.com" }. 24 h cooldown per domain; the response carries nextAllowedAt.',
+      '对已评级站点重新扫描——修改 robots.txt、新增 llms.txt 或修复首页后使用。请求体：{ "domain": "example.com" }。每域名 24 小时冷却；响应含 nextAllowedAt。',
+    ),
+    example: `{ "status": "queued", "etaSeconds": 180,
+  "nextAllowedAt": "2026-11-18T09:00:00.000Z" }`,
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/queue',
+    desc: T(
+      'Pending submissions, oldest 50. Public and key-free — queued is not lost.',
+      '待扫描提交（最旧 50 条）。公开且无需密钥——进入队列不会丢失。',
+    ),
+    example: `{ "items": [ { "domain": "example.com", "source": "on_demand",
+    "note": null, "createdAt": "2026-11-17T06:47:36.931Z" } ] }`,
+  },
+  {
+    method: 'POST',
+    path: '/mcp',
+    desc: T(
+      'MCP (JSON-RPC 2.0) for agent runtimes: tools site_rating, search_sites, grade_distribution. Unknown domains return a tool-level error, not a protocol error.',
+      '面向 AI 运行时的 MCP（JSON-RPC 2.0）：工具 site_rating、search_sites、grade_distribution。未知域名返回工具级错误而非协议错误。',
+    ),
   },
 ];
 ---
@@ -191,6 +229,22 @@ const endpoints: Endpoint[] = [
     <section class="sec">
       <h2>{P.baseTitle}</h2>
       <pre class="mono"><code>https://afr.im</code></pre>
+    </section>
+
+    <section class="sec">
+      <h2>{T('Reading a lookup correctly', '如何正确解读查询结果')}</h2>
+      <p class="lede">
+        {T(
+          'Three states exist, not two. A 404 means the domain was never scanned — submit it. A 200 with grade "Pending" means it was scanned but the homepage and robots.txt were both unreadable, so it cannot be scored: a detail page exists, yet the site stays out of rankings, category pages, averages, and search. A 200 with grade A–F means it is rated and listed under /c/{category}/.',
+          '状态有三种，不是两种。404 表示该域名从未被扫描——请提交它。200 且 grade 为 "Pending" 表示已扫描，但首页与 robots.txt 均不可读、无法评分：详情页存在，但站点不进入排行、分类页、平均值与搜索。200 且 grade 为 A–F 表示已评级并在 /c/{category}/ 下收录。',
+        )}
+      </p>
+      <p class="lede">
+        {T(
+          'A working report page therefore does not by itself mean a site appears in the category page you guessed — check the site\'s category and grade fields first. status "delisted" marks an entry retired on request or after a rebrand; its page stays readable for history.',
+          '因此，报告页可访问本身并不等于站点出现在你猜测的分类页中——请先检查站点的 category 与 grade 字段。status 为 "delisted" 表示条目已被下架（按请求或改名后），其页面仍可读取以供历史查阅。',
+        )}
+      </p>
     </section>
 
     <section class="sec">

@@ -22,15 +22,35 @@
 
 ## API endpoints
 
+### Look up, submit, re-scan (the agent workflow)
+
+- [GET /api/v1/sites/:domain](https://afr.im/api/v1/sites/github.com): one site with its latest scan and evidence. `404 { "error": "not_found" }` means the site has never been scanned.
+- [POST /api/v1/submissions](https://afr.im/api/v1/submissions): request a scan. Body `{ "domain": "example.com" }` (the key is `domain`, not `url`). 5/IP/day.
+- [POST /api/v1/search-scan](https://afr.im/api/v1/search-scan): on-demand scan for an interactive session. Body `{ "domain": "example.com" }`. 10/IP/day, 1/domain/day.
+- [POST /api/v1/rescan](https://afr.im/api/v1/rescan): re-scan an already-rated site after the owner changes something. Body `{ "domain": "example.com" }`; 24 h per-domain cooldown, returns `nextAllowedAt`.
+- [GET /api/v1/queue](https://afr.im/api/v1/queue): pending submissions (oldest 50) — queued is not lost.
+- [GET /api/v1/sites/:domain/history](https://afr.im/api/v1/sites/github.com/history): every scan for a domain, newest first (score trends).
+
+### Directory data
+
 - [GET /api/v1/sites](https://afr.im/api/v1/sites): paginated directory listing with category, grade, search, and sort filters.
 - [GET /api/v1/stats](https://afr.im/api/v1/stats): totals, grade distribution, and average score.
 - [GET /api/v1/categories](https://afr.im/api/v1/categories): category tree with per-category site counts.
 - [GET /api/v1/leaderboard](https://afr.im/api/v1/leaderboard): top sites by AFR score descending (never mixes in sponsored placements).
 - [GET /badge/:domain.svg](https://afr.im/badge/example.com.svg): rating badge image for a domain.
+- [POST /mcp](https://afr.im/mcp): MCP (JSON-RPC) with `site_rating`, `search_sites`, `grade_distribution`.
 
 ## Optional: agent usage policy
 
-- [Agent instructions](https://afr.im/agents.md): how to identify yourself, fetch budget, what content may be reused, and how to cite a rating.
+- [Agent instructions](https://afr.im/agents.md): **the full recipe** — identify yourself, check one specific site (lookup → correct reading of the three listing states → submit → re-scan → watch the queue), fetch budget, reuse terms, and how to cite a rating.
 - [AI crawler policy](https://afr.im/ai.txt): short machine-readable summary of what AFR.IM allows and why.
 - [robots.txt](https://afr.im/robots.txt): explicit Allow rules for the 14 AI user-agent families plus the Sitemap declaration.
 - Ratings, grades, and check names may be reused with attribution to AFR.IM; the AFR standard text is CC BY 4.0. See [About](https://afr.im/about) for contact and correction channels.
+
+## Three listing states (read this before answering "is my site in the directory?")
+
+1. `GET /api/v1/sites/:domain` → `404` — never scanned. Submit it with `POST /api/v1/submissions`.
+2. `200` with `grade: "Pending"` — scanned, but the homepage and `robots.txt` were both unreadable, so it cannot be scored: a detail page exists, the site is excluded from rankings, categories, averages, and search.
+3. `200` with `grade` A–F — rated and listed under `/c/{site.category}/`, plus search and the search index.
+
+A site can have a working report page and still be absent from the category page you guessed — check `site.category` and `site.grade` first.

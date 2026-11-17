@@ -372,6 +372,37 @@ const PV_COUNT_SQL = `
  * queue. Soft-fail contract: a missing token or a failed call never fails
  * the request — the daily cron picks the queue up anyway — so we log a
  * warning and report `deferred`. */
+
+/** Schedule the queue dispatch off the request's critical path.
+ *
+ * The dispatch is a cross-origin call to api.github.com with a 5s timeout.
+ * Awaiting it inline made every submit/search-scan response wait for GitHub:
+ * on a slow mobile connection the browser gave up first and surfaced a
+ * "network error" even though the row was already queued (2026-11-17
+ * reported as `aiboss.im` never collected). Production therefore runs it in
+ * `waitUntil` and answers immediately; tests / any context without an
+ * ExecutionContext fall back to awaiting so the outcome stays observable.
+ *
+ * Returns 'scheduled' when handed to the runtime, otherwise the dispatch
+ * outcome ('ok' | 'deferred'). */
+async function scheduleScanDispatch(
+  c: Context<AppEnv>,
+  token: string | undefined,
+  fetchImpl: typeof fetch,
+): Promise<'scheduled' | 'ok' | 'deferred'> {
+  if (!token) {
+    console.warn('scan dispatch: GITHUB_DISPATCH_TOKEN not set, dispatch deferred');
+    return 'deferred';
+  }
+  try {
+    c.executionCtx.waitUntil(dispatchScanQueue(token, fetchImpl));
+    return 'scheduled';
+  } catch {
+    // No ExecutionContext (unit tests, or a runtime that does not expose it):
+    // await so the caller still learns whether GitHub accepted the dispatch.
+    return dispatchScanQueue(token, fetchImpl);
+  }
+}
 async function dispatchScanQueue(
   token: string | undefined,
   fetchImpl: typeof fetch,
@@ -829,7 +860,11 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
 
     // Soft dispatch (same helper as search-scan/rescan): a missing or failed
     // token never fails the request — the daily cron drains the queue anyway.
-    const dispatch = await dispatchScanQueue(c.env?.GITHUB_DISPATCH_TOKEN, overrides.fetchImpl ?? fetch);
+    const dispatch = await scheduleScanDispatch(
+      c,
+      c.env?.GITHUB_DISPATCH_TOKEN,
+      overrides.fetchImpl ?? fetch,
+    );
 
     return c.json(
       {
@@ -922,7 +957,8 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
       .run(domain, new Date().toISOString());
 
     // Soft dispatch: missing/failed token → 200 with dispatch:'deferred'.
-    const dispatch = await dispatchScanQueue(
+    const dispatch = await scheduleScanDispatch(
+      c,
       c.env?.GITHUB_DISPATCH_TOKEN,
       overrides.fetchImpl ?? fetch,
     );
@@ -1139,7 +1175,7 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
 
     // Soft dispatch (same helper as search-scan): a missing or failed token
     // never fails the request — the daily cron drains the queue anyway.
-    await dispatchScanQueue(c.env?.GITHUB_DISPATCH_TOKEN, overrides.fetchImpl ?? fetch);
+    await scheduleScanDispatch(c, c.env?.GITHUB_DISPATCH_TOKEN, overrides.fetchImpl ?? fetch);
 
     // Advertised cooldown for the requester; the limiter itself enforces the
     // shared per-UTC-day bucket.
