@@ -35,10 +35,17 @@ const PUBLIC_DATA_DIR = path.join(WEB_DIR, 'public', 'data');
 
 const LEADERBOARD_SIZE = 50;
 const LATEST_SIZE = 24;
-const SEARCH_TITLE_MAX = 48; // keep the client index inside the 120KB budget at 10k+ sites
-// raw JSON target (~160KB at 2k sites ≈ 45KB gzipped on the wire);
-// re-shard/trim before 10k sites (see engineering SSOT roadmap)
-const SEARCH_INDEX_BUDGET = 160 * 1024;
+const SEARCH_TITLE_MAX = 48;
+// The index is served with brotli by Cloudflare, so the cost a visitor pays is
+// the wire size, not the raw JSON. Budgets (SSOT §7b/T7):
+//  - wire budget: 160 KB compressed (measured ~0.26 ratio for this payload);
+//  - raw guard: 96 B/entry (measured 79 B) — linear headroom, not a
+//    fixed ceiling, so growth does not warn before it actually matters.
+// Re-shard before 10k sites regardless (SSOT item 20: on-demand detail pages
+// + sitemap sharding make the client index a leaderboard/search slice only).
+const SEARCH_INDEX_WIRE_BUDGET = 160 * 1024;
+const SEARCH_INDEX_RAW_PER_ENTRY = 96; // ~20% headroom over the measured 79 B/entry
+const SEARCH_INDEX_BR_RATIO = 0.26; // measured 2026-11-17: 230 KB raw → 59.6 KB br
 // Entries retired from public listings (kept in git history / detail pages,
 // excluded from every ranking, category, and search payload).
 const DELISTED = JSON.parse(
@@ -404,10 +411,22 @@ async function main() {
   console.log(`categories : ${categories.length} non-empty, coverage ${mapped}/${sites.length} (${coverage}%) by keyword/TLD, rest → other`);
   console.log(`written    : src/data/generated/index.json, home.json, categories.json, details/*.json (${(detailBytes / 1024).toFixed(0)} KB)`);
   console.log(`             home.json ${(homeBytes / 1024).toFixed(1)} KB · categories.json ${(catBytes / 1024).toFixed(1)} KB`);
-  const budget = searchBytes <= SEARCH_INDEX_BUDGET ? 'within' : 'OVER';
+  const wireBytes = Math.round(searchBytes * SEARCH_INDEX_BR_RATIO);
+  const rawBudget = searchIndex.length * SEARCH_INDEX_RAW_PER_ENTRY;
+  const wireOk = wireBytes <= SEARCH_INDEX_WIRE_BUDGET;
+  const rawOk = searchBytes <= rawBudget;
+  const verdict = wireOk && rawOk ? 'within' : 'OVER';
   console.log(
-    `search idx : public/data/search-index.json ${(searchBytes / 1024).toFixed(1)} KB (${searchIndex.length} entries, ${budget} ${SEARCH_INDEX_BUDGET / 1024} KB budget)`,
+    `search idx : public/data/search-index.json raw ${(searchBytes / 1024).toFixed(1)} KB ` +
+      `(budget ${(rawBudget / 1024).toFixed(0)} KB = ${searchIndex.length}×${SEARCH_INDEX_RAW_PER_ENTRY}B) · ` +
+      `wire ~${(wireBytes / 1024).toFixed(1)} KB br (budget ${SEARCH_INDEX_WIRE_BUDGET / 1024} KB) · ` +
+      `${searchIndex.length} entries — ${verdict}`,
   );
+  if (!wireOk) {
+    console.warn(
+      'search idx OVER wire budget: shard before scaling (SSOT item 20) or shorten SEARCH_TITLE_MAX',
+    );
+  }
 }
 
 main().catch((err) => {
