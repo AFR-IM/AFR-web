@@ -48,6 +48,11 @@ CREATE TABLE IF NOT EXISTS scans (
   snapshot_path TEXT,                    -- data-repo JSON path
   snapshot_sha TEXT,                    -- git blob sha from the trees listing (sync skip key;
                                         -- existing DBs: ALTER TABLE scans ADD COLUMN snapshot_sha TEXT)
+  evidence_prev INTEGER,                -- when set, this scan's evidence is byte-identical to
+                                        -- that scan's evidence (cross-round diff: unchanged
+                                        -- rounds write 0 evidence rows — see d1-sync.ts).
+                                        -- NULL = this scan owns a full evidence set.
+                                        -- existing DBs: ALTER TABLE scans ADD COLUMN evidence_prev INTEGER
   started_at TEXT,
   finished_at TEXT
 );

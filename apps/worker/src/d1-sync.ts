@@ -178,6 +178,53 @@ export interface UpsertStats {
   evidenceRows: number;
 }
 
+/** The six persisted evidence columns, as stored (owner) or wanted (snapshot). */
+interface EvidenceSnapshotRow {
+  check_id: string;
+  status: string | null;
+  points: number | null;
+  max_points: number | null;
+  evidence_type: string | null;
+  evidence_ref: string | null;
+}
+
+/** Flatten an AFR result into the evidence rows it wants persisted. */
+function wantedRows(afr: AfrResult): EvidenceSnapshotRow[] {
+  return (afr.layers.flatMap((l) => l.checks) as CheckResult[]).map((c) => ({
+    check_id: c.id,
+    status: c.status ?? null,
+    points: c.awarded ?? null,
+    max_points: c.max ?? null,
+    evidence_type: c.evidence?.source ?? null,
+    // Snapshot-local excerpt (spec wants a snapshot path or excerpt hash;
+    // the detail text is the excerpt until hash referencing lands)
+    evidence_ref: c.evidence?.detail ?? null,
+  }));
+}
+
+/** True when both sides hold the same check set with identical field values
+ * (order-independent). Evidence details are deterministic (no timestamps),
+ * so an unchanged site re-scan compares equal across rounds — this is what
+ * makes the cross-round zero-write diff safe. */
+function evidenceSetsEqual(a: EvidenceSnapshotRow[], b: EvidenceSnapshotRow[]): boolean {
+  if (a.length !== b.length) return false;
+  const byId = new Map(a.map((r) => [r.check_id, r]));
+  for (const row of b) {
+    const other = byId.get(row.check_id);
+    if (!other) return false;
+    if (
+      other.status !== row.status ||
+      other.points !== row.points ||
+      other.max_points !== row.max_points ||
+      other.evidence_type !== row.evidence_type ||
+      other.evidence_ref !== row.evidence_ref
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /** Upsert one snapshot: site row (scores/grade/status) + its scan + evidence rows.
  * Re-syncing the same snapshot path updates in place (keyed on scans.snapshot_path)
  * and diffs that scan's evidence — unchanged rows are never rewritten.
@@ -243,12 +290,14 @@ export async function upsertSnapshot(
   // fully completed — otherwise a write-limit abort mid-evidence would leave a
   // "synced" sha behind and permanently skip the missing rows.
   const existing = await db
-    .prepare('SELECT id FROM scans WHERE snapshot_path = ?')
-    .get<{ id: number }>(path);
+    .prepare('SELECT id, evidence_prev FROM scans WHERE snapshot_path = ?')
+    .get<{ id: number; evidence_prev: number | null }>(path);
 
   let scanId: number;
+  let scanPointer: number | null = null;
   if (existing) {
     scanId = existing.id;
+    scanPointer = existing.evidence_prev ?? null;
     await db
       .prepare(
         `UPDATE scans SET engine_version = ?, score_total = ?, score_l1 = ?, score_l2 = ?, score_l3 = ?,
@@ -288,6 +337,57 @@ export async function upsertSnapshot(
     scanId = inserted.lastInsertRowid;
   }
 
+  const wanted = wantedRows(afr);
+
+  // --- cross-round diff (T8b): a re-scan whose evidence is byte-identical to
+  // the most recent FULL set for this domain must cost zero evidence rows.
+  // The daily pipeline spends most of its row-write budget re-inserting the
+  // same 12 rows per unchanged site (weekly full re-scan at 5k sites ≈ 60k
+  // rows in one day, against a 100k/day free-tier cap). Instead this scan
+  // points at the owner via scans.evidence_prev — one row update instead of
+  // twelve inserts. Reads fall back through the pointer (see the detail
+  // endpoint). Only scans that own a full set (evidence_prev IS NULL) are
+  // candidates, so a pointed scan can never be compared against another
+  // pointed scan's (possibly stale) pointer — chains cannot form.
+  const ownedCount = await db
+    .prepare('SELECT COUNT(*) AS n FROM evidence WHERE scan_id = ?')
+    .get<{ n: number }>(scanId);
+  if (!ownedCount || ownedCount.n === 0) {
+    const prevOwner = await db
+      .prepare(
+        `SELECT id FROM scans
+         WHERE domain = ? AND id <> ? AND evidence_prev IS NULL
+         ORDER BY started_at DESC, id DESC LIMIT 1`,
+      )
+      .get<{ id: number }>(domain, scanId);
+    if (prevOwner) {
+      const prevEvidence = await db
+        .prepare(
+          `SELECT check_id, status, points, max_points, evidence_type, evidence_ref
+           FROM evidence WHERE scan_id = ?`,
+        )
+        .all<EvidenceSnapshotRow>(prevOwner.id);
+      if (evidenceSetsEqual(prevEvidence, wanted)) {
+        if (scanPointer !== prevOwner.id) {
+          await db.prepare('UPDATE scans SET evidence_prev = ? WHERE id = ?').run(prevOwner.id, scanId);
+        }
+        // Content verified identical — committing the skip key is safe.
+        if (sha !== null) {
+          await db.prepare('UPDATE scans SET snapshot_sha = ? WHERE id = ?').run(sha, scanId);
+        }
+        return { siteChanged: siteRun.changes > 0, evidenceRows: 0 };
+      }
+      // Same path re-fetched with different bytes (engine re-run): this scan
+      // must own a full set again — drop the stale pointer, then fall through
+      // to the per-scan diff, which inserts every wanted row (it sees an
+      // empty evidence set for this scan).
+      if (scanPointer !== null) {
+        await db.prepare('UPDATE scans SET evidence_prev = NULL WHERE id = ?').run(scanId);
+        scanPointer = null;
+      }
+    }
+  }
+
   // --- evidence: DIFF against what the scan already has. A full replace cost
   // ~24 writes per site every sync (~25k/day) and blew the free-tier row-write
   // budget; unchanged rows must cost zero writes. evidenceRows counts actual
@@ -307,24 +407,6 @@ export async function upsertSnapshot(
     }>(scanId);
   const currentByCheck = new Map(existingEvidence.map((r) => [r.check_id, r]));
 
-  interface WantedRow {
-    check_id: string;
-    status: string | null;
-    points: number | null;
-    max_points: number | null;
-    evidence_type: string | null;
-    evidence_ref: string | null;
-  }
-  const wanted: WantedRow[] = (afr.layers.flatMap((l) => l.checks) as CheckResult[]).map((c) => ({
-    check_id: c.id,
-    status: c.status ?? null,
-    points: c.awarded ?? null,
-    max_points: c.max ?? null,
-    evidence_type: c.evidence?.source ?? null,
-    // Snapshot-local excerpt (spec wants a snapshot path or excerpt hash;
-    // the detail text is the excerpt until hash referencing lands)
-    evidence_ref: c.evidence?.detail ?? null,
-  }));
   const wantedIds = new Set(wanted.map((w) => w.check_id));
 
   let evidenceRows = 0;

@@ -136,6 +136,7 @@ interface ScanRow extends Row {
   score_l3: number | null;
   grade: string | null;
   snapshot_path: string | null;
+  evidence_prev: number | null;
   started_at: string | null;
   finished_at: string | null;
 }
@@ -611,9 +612,33 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     const scan = await db
       .prepare('SELECT * FROM scans WHERE domain = ? ORDER BY started_at DESC, id DESC LIMIT 1')
       .get<ScanRow>(domain);
-    const evidence = scan
-      ? await db.prepare('SELECT * FROM evidence WHERE scan_id = ? ORDER BY rowid').all<EvidenceRow>(scan.id)
-      : [];
+    // Evidence for this scan. An unchanged cross-round re-scan stores no rows
+    // of its own and points at the round that owns the identical set
+    // (scans.evidence_prev, set by the d1-sync cross-round diff). Follow the
+    // pointer until a non-empty set appears; `seen` guards against a dangling
+    // pointer (e.g. the owner removed by the scans dedup in schema.sql).
+    let evidence: EvidenceRow[] = [];
+    if (scan) {
+      evidence = await db
+        .prepare('SELECT * FROM evidence WHERE scan_id = ? ORDER BY rowid')
+        .all<EvidenceRow>(scan.id);
+      let pointer = scan.evidence_prev ?? null;
+      const seen = new Set<number>([scan.id]);
+      while (evidence.length === 0 && pointer !== null && !seen.has(pointer)) {
+        seen.add(pointer);
+        const rows = await db
+          .prepare('SELECT * FROM evidence WHERE scan_id = ? ORDER BY rowid')
+          .all<EvidenceRow>(pointer);
+        if (rows.length > 0) {
+          evidence = rows;
+          break;
+        }
+        const next = await db
+          .prepare('SELECT evidence_prev FROM scans WHERE id = ?')
+          .get<{ evidence_prev: number | null }>(pointer);
+        pointer = next?.evidence_prev ?? null;
+      }
+    }
 
     // Runtime view counter (best-effort: a database without the counter table
     // still serves the detail page, with views reported as 0)

@@ -91,7 +91,7 @@ function fakeFetch(options: FakeFetchOptions = {}) {
   const impl = (async (input: RequestInfo | URL): Promise<Response> => {
     const url = String(input);
     calls.push(url);
-    if (url === LISTING_URL) {
+    if (url.startsWith('https://api.github.com/repos/AFR-IM/AFR-data/git/trees/main:scans/')) {
       if (options.listingStatus && options.listingStatus >= 400) {
         return new Response('boom', { status: options.listingStatus });
       }
@@ -313,5 +313,112 @@ describe('syncDate', () => {
       .get('example.com') as { score_total: number; scanned_at: string };
     assert.equal(site.score_total, 92, 'live score must stay at the newer scan');
     assert.equal(site.scanned_at, '2026-11-10T10:00:00.000Z');
+  });
+});
+
+describe('cross-round evidence diff (T8b)', () => {
+  const DATE2 = '2026/11/11';
+  const PATH2 = `scans/${DATE2}/acme.dev.json`;
+  const DATE3 = '2026/11/12';
+  const PATH3 = `scans/${DATE3}/acme.dev.json`;
+
+  /** Same snapshot, but one check actually changed (score/grade move with it). */
+  function changedSnapshot(): Snapshot {
+    const snap = makeSnapshot(71, 'C');
+    const l2 = snap.afr.layers.find((l) => l.layer === 'L2')!;
+    const check = l2.checks.find((c) => c.id === 'B1.llms-txt')!;
+    check.status = 'pass';
+    check.awarded = 8;
+    (check.evidence as { detail: string }).detail = 'HTTP 200';
+    return snap;
+  }
+
+  function scanRow(raw: ReturnType<typeof openSeededDb>['raw'], path: string) {
+    return raw
+      .prepare('SELECT id, evidence_prev, snapshot_path FROM scans WHERE snapshot_path = ?')
+      .get(path) as { id: number; evidence_prev: number | null };
+  }
+
+  it('writes zero evidence rows for an unchanged re-scan and points at the owner', async () => {
+    const { db, raw } = openSeededDb();
+
+    const r1 = await syncDate(DATE, { db, fetchImpl: fakeFetch().impl });
+    assert.equal(r1.evidenceRows, 3, 'first round owns a full set');
+
+    // Second round: same content, new snapshot path → new scan row.
+    const r2 = await syncDate(DATE2, {
+      db,
+      fetchImpl: fakeFetch({ files: { [PATH2]: makeSnapshot(87, 'B') } }).impl,
+    });
+    assert.equal(r2.evidenceRows, 0, 'unchanged round must not rewrite evidence');
+
+    const s1 = scanRow(raw, SNAPSHOT_PATH);
+    const s2 = scanRow(raw, PATH2);
+    assert.equal(s2.evidence_prev, s1.id, 'second scan points at the owner');
+    assert.equal(s1.evidence_prev, null, 'owner keeps a NULL pointer');
+
+    const total = raw
+      .prepare('SELECT COUNT(*) AS n FROM evidence e JOIN scans s ON s.id = e.scan_id WHERE s.domain = ?')
+      .get('acme.dev') as { n: number };
+    assert.equal(total.n, 3, 'no duplicate evidence rows were written');
+
+    // Idempotent re-sync of the pointed scan: still zero writes, pointer stable.
+    const r2again = await syncDate(DATE2, {
+      db,
+      fetchImpl: fakeFetch({ files: { [PATH2]: makeSnapshot(87, 'B') } }).impl,
+    });
+    assert.equal(r2again.evidenceRows, 0, 're-sync of a pointed scan writes nothing');
+    assert.equal(scanRow(raw, PATH2).evidence_prev, s1.id, 'pointer unchanged');
+  });
+
+  it('serves the full evidence chain through the detail endpoint for a pointed scan', async () => {
+    const { db, raw } = openSeededDb();
+    await syncDate(DATE, { db, fetchImpl: fakeFetch().impl });
+    await syncDate(DATE2, {
+      db,
+      fetchImpl: fakeFetch({ files: { [PATH2]: makeSnapshot(87, 'B') } }).impl,
+    });
+
+    const { createApp } = await import('../src/index.ts');
+    const app = createApp({ db });
+    const res = await app.request('http://localhost/api/v1/sites/acme.dev');
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { evidence: { check_id: string }[]; scan: { snapshot_path: string } };
+    assert.equal(body.scan.snapshot_path, PATH2, 'latest scan is the pointed one');
+    assert.equal(body.evidence.length, 3, 'evidence falls back through evidence_prev');
+    assert.deepEqual(
+      body.evidence.map((e) => e.check_id),
+      ['A1.gptbot', 'A2.nojs', 'B1.llms-txt'],
+      'fallback preserves the owner row order',
+    );
+  });
+
+  it('writes a full set again when the re-scan content changed', async () => {
+    const { db, raw } = openSeededDb();
+    await syncDate(DATE, { db, fetchImpl: fakeFetch().impl });
+    await syncDate(DATE2, {
+      db,
+      fetchImpl: fakeFetch({ files: { [PATH2]: makeSnapshot(87, 'B') } }).impl,
+    });
+
+    const r3 = await syncDate(DATE3, {
+      db,
+      fetchImpl: fakeFetch({ files: { [PATH3]: changedSnapshot() } }).impl,
+    });
+    assert.equal(r3.evidenceRows, 3, 'a changed round writes its own full set');
+
+    const s3 = scanRow(raw, PATH3);
+    assert.equal(s3.evidence_prev, null, 'changed round owns its rows');
+
+    const rows = raw
+      .prepare('SELECT check_id, status FROM evidence WHERE scan_id = ? ORDER BY rowid')
+      .all(s3.id) as { check_id: string; status: string }[];
+    assert.equal(rows.length, 3);
+    assert.equal(rows[2]!.status, 'pass', 'the changed check carries the new value');
+
+    const { createApp } = await import('../src/index.ts');
+    const res = await createApp({ db }).request('http://localhost/api/v1/sites/acme.dev');
+    const body = (await res.json()) as { evidence: { status: string }[] };
+    assert.equal(body.evidence[2]!.status, 'pass', 'endpoint serves the new round, not the pointed one');
   });
 });
