@@ -1,12 +1,65 @@
-/llms.txt
-  Content-Type: text/plain; charset=utf-8
-/llms-full.txt
-  Content-Type: text/plain; charset=utf-8
-/robots.txt
-  Content-Type: text/plain; charset=utf-8
-/ai.txt
-  Content-Type: text/plain; charset=utf-8
-/agents.md
-  Content-Type: text/markdown; charset=utf-8
-/openapi.json
-  Content-Type: application/json; charset=utf-8
+# afr.im cache policy — T2 static-traffic reduction (SSOT §7b).
+# Platform default is max-age=0 everywhere: every repeat view revalidates
+# through the Worker and burns the account-level 100k/day request budget.
+#
+# Rules MUST NOT overlap: a request matching several rules inherits all of
+# them and same-name header values get concatenated (a catch-all Cache-Control
+# plus a specific one merges into the most conservative value, defeating the
+# long TTLs). So HTML paths are listed explicitly and never share a pattern
+# with the asset rules below. Data changes at most on daily syncs, so these
+# freshness windows are safe.
+
+# --- Service worker / manifest ---
+/sw.js
+  Cache-Control: no-cache
+/manifest.webmanifest
+  Cache-Control: public, max-age=3600
+
+# --- Daily-built data payload: brief TTL + long background revalidate ---
+/data/*
+  Cache-Control: public, max-age=300, stale-while-revalidate=86400
+
+# --- Fingerprinted / rarely-changing build assets: hard cache ---
+/og/sites/*
+  Cache-Control: public, max-age=604800, immutable
+/og.png
+  Cache-Control: public, max-age=86400
+/icons/*
+  Cache-Control: public, max-age=604800
+/fonts/*
+  Cache-Control: public, max-age=604800
+
+# --- HTML: brief freshness, then serve stale while revalidating ---
+# (English top-level pages; locale copies live under /zh-CN/*)
+/
+  Cache-Control: public, max-age=60, stale-while-revalidate=600
+/about/
+  Cache-Control: public, max-age=60, stale-while-revalidate=600
+/badges/
+  Cache-Control: public, max-age=60, stale-while-revalidate=600
+/bot/
+  Cache-Control: public, max-age=60, stale-while-revalidate=600
+/categories/
+  Cache-Control: public, max-age=60, stale-while-revalidate=600
+/docs/
+  Cache-Control: public, max-age=60, stale-while-revalidate=600
+/method/
+  Cache-Control: public, max-age=60, stale-while-revalidate=600
+/offline/
+  Cache-Control: public, max-age=60, stale-while-revalidate=600
+/search/
+  Cache-Control: public, max-age=60, stale-while-revalidate=600
+/submit/
+  Cache-Control: public, max-age=60, stale-while-revalidate=600
+/site/*
+  Cache-Control: public, max-age=60, stale-while-revalidate=600
+/c/*
+  Cache-Control: public, max-age=60, stale-while-revalidate=600
+
+# --- Chinese locale: every zh page (no assets are served under /zh-CN/) ---
+/zh-CN
+  Cache-Control: public, max-age=60, stale-while-revalidate=600
+/zh-CN/
+  Cache-Control: public, max-age=60, stale-while-revalidate=600
+/zh-CN/*
+  Cache-Control: public, max-age=60, stale-while-revalidate=600

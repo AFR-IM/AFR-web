@@ -13,7 +13,7 @@
  * back to the locale copy when possible, then to the English one.
  */
 
-const VERSION = 'afr-sw-v1';
+const VERSION = 'afr-sw-v2';
 const PRECACHE = `afr-precache-${VERSION}`;
 const RUNTIME = `afr-runtime-${VERSION}`;
 const OFFLINE_CANONICAL = '/offline';
@@ -52,18 +52,27 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-/** Network-first for pages: fresh when online, cached copy when not. */
-async function networkFirstNavigation(request) {
-  try {
-    const response = await fetch(request);
-    if (response && response.ok && response.type === 'basic') {
-      const cache = await caches.open(RUNTIME);
-      cache.put(request, response.clone()).catch(() => {});
-    }
-    return response;
-  } catch {
-    const cached = await caches.match(request);
-    if (cached) return cached;
+/** Stale-while-revalidate for pages: instant paint from cache, refresh in
+ *  background. Data only changes on daily syncs, so a <=10 min stale copy is
+ *  acceptable and repeat navigations stop hitting the origin entirely (T2). */
+async function staleWhileRevalidateNavigation(request) {
+  const cache = await caches.open(RUNTIME);
+  const cached = await cache.match(request);
+  const network = fetch(request)
+    .then((response) => {
+      if (response && response.ok && response.type === 'basic') {
+        cache.put(request, response.clone()).catch(() => {});
+      }
+      return response;
+    })
+    .catch(() => undefined);
+  if (cached) {
+    return cached; // serve stale now, `network` refreshes the cache above
+  }
+  {
+    const response = await network;
+    if (response) return response;
+    {
     // Locale-aware fallback: the zh-CN offline page if this was a zh page,
     // otherwise the canonical English offline page.
     const url = new URL(request.url);
@@ -77,6 +86,7 @@ async function networkFirstNavigation(request) {
       'You are offline and no cached copy is available yet. Reconnect and refresh.',
       { status: 503, headers: { 'content-type': 'text/plain; charset=utf-8' } },
     );
+    }
   }
 }
 
@@ -125,7 +135,7 @@ self.addEventListener('fetch', (event) => {
   const path = new URL(request.url).pathname;
 
   if (request.mode === 'navigate') {
-    event.respondWith(networkFirstNavigation(request));
+    event.respondWith(staleWhileRevalidateNavigation(request));
     return;
   }
   if (path.startsWith('/data/') || path === '/search-index.json') {
