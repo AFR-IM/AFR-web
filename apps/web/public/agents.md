@@ -57,7 +57,7 @@ Content-Type: application/json
 
 - The field is **`domain`** (a bare hostname). A full URL such as `"https://example.com"` is normalized, but a JSON key named `url` is **rejected** with `400 { "error": "invalid_domain", "message": "domain must be a string" }`.
 - Subdomains are refused (`400 subdomain_not_allowed`) — submit the registrable domain.
-- Responses: `201 { "ok": true, "id": 1, "domain": "example.com", "status": "queued", "etaSeconds": 180, "dispatch": "scheduled" }` for a new entry; `200 { "ok": true, "status": "exists" }` when the domain is already rated; `200 { "ok": true, "status": "queued" }` when it is already waiting in the queue (idempotent — no quota burned).
+- Responses: `201 { "ok": true, "id": 1, "domain": "example.com", "status": "queued", "etaSeconds": 600, "dispatch": "scheduled" }` for a new entry; `200 { "ok": true, "status": "exists" }` when the domain is already rated; `200 { "ok": true, "status": "queued" }` when it is already waiting in the queue (idempotent — no quota burned).
 - Quota: 5 requests per IP per day. `429 { "error": "rate_limited" }` otherwise.
 
 For a one-off "scan this now" request during an interactive session there is a second endpoint with its own (looser) quota:
@@ -65,7 +65,9 @@ For a one-off "scan this now" request during an interactive session there is a s
 ```http
 POST https://afr.im/api/v1/search-scan
 { "domain": "example.com" }
-→ 200 { "status": "queued" | "exists", "domain": "example.com", "etaSeconds": 180, "dispatch": "scheduled" }
+→ 200 { "status": "queued", "domain": "example.com", "etaSeconds": 180, "dispatch": "scheduled" }
+→ 200 { "status": "exists" }   ← already rated (no dispatch field)
+→ 200 { "status": "queued" }  ← already waiting in the queue (no dispatch field)
 ```
 
 10 scans per IP per day, 1 per domain per 30-minute window, 50 globally per day.
@@ -77,8 +79,8 @@ POST https://afr.im/api/v1/search-scan
 ```http
 POST https://afr.im/api/v1/rescan
 { "domain": "example.com" }
-→ 200 { "status": "queued", "etaSeconds": 180, "nextAllowedAt": "2026-11-18T09:00:00.000Z" }
-→ 429 { "error": "rate_limited", "scope": "domain", "retryAfter": 3600, "nextAllowedAt": "…" }
+→ 200 { "status": "queued", "etaSeconds": 180, "nextAllowedAt": "…" }   (≈ now + 30 min)
+→ 429 { "error": "rate_limited", "scope": "domain", "retryAfter": 1800, "nextAllowedAt": "…" }
 ```
 
 The window is **30 minutes** per domain, and one device may trigger one re-scan of any domain per 30-minute window (anti-abuse). Use this after the owner changes `robots.txt`, adds `llms.txt`, or fixes the homepage. `nextAllowedAt` tells you when a retry becomes legitimate — do not poll faster than that.

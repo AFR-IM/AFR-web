@@ -653,7 +653,7 @@
                 },
                 "example": {
                   "error": "rate_limited",
-                  "retryAfter": 3600
+                  "retryAfter": 1800
                 }
               }
             }
@@ -718,7 +718,7 @@
                 "example": {
                   "error": "rate_limited",
                   "scope": "domain",
-                  "retryAfter": 3600
+                  "retryAfter": 1800
                 }
               }
             }
