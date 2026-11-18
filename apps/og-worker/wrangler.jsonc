@@ -1,0 +1,27 @@
+{
+  // afr-og — serves the per-site Open Graph cards as static assets only.
+  //
+  // Why a second Worker exists: Workers Free caps static assets at 20,000
+  // files per version. The main site needs two locale detail pages per domain
+  // (~2N) and the cards are another ~N, so one Worker cannot hold both past
+  // ~6.6k domains. Splitting the cards keeps the main Worker at ~85 + 2N and
+  // this Worker at N. Both stay inside the free tier; no paid upgrade.
+  //
+  // The main Worker's _routes.json already excludes /og/*, so card requests
+  // never invoke its script. Both routes below are more specific than the
+  // main Worker's afr.im/* and www.afr.im/*, so those requests land here.
+  // Every og:image URL is built from the canonical https://afr.im origin, but
+  // www visitors and previews must not hit a 404 on the same path.
+  "name": "afr-og",
+  "main": "index.js",
+  "compatibility_date": "2026-11-10",
+  "observability": { "enabled": true },
+  "assets": {
+    "binding": "ASSETS",
+    "directory": "assets"
+  },
+  "routes": [
+    { "pattern": "afr.im/og/sites/*", "zone_name": "afr.im" },
+    { "pattern": "www.afr.im/og/sites/*", "zone_name": "afr.im" }
+  ]
+}

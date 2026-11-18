@@ -16,3 +16,5 @@ apps/web/public/og/sites/
 .d1-batches/
 *lighthouse*/
 C:*
+# afr-og Worker assets — staged from apps/web/public/og/sites during CI
+apps/og-worker/assets/

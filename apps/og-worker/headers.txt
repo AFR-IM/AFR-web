@@ -1,0 +1,5 @@
+# afr-og cache policy: one PNG per domain, content changes at most on a daily
+# rescan. Domain-named URLs are stable, so cache hard but allow a background
+# revalidate so a new score appears within a day without a purge.
+/og/sites/*
+  Cache-Control: public, max-age=604800, stale-while-revalidate=86400
