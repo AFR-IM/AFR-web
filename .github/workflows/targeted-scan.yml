@@ -1,0 +1,132 @@
+# Targeted refresh for a bounded list of known domains (GitHub runner network).
+# This complements scan.yml without scanning an unrelated Tranco segment.
+name: targeted-scan
+
+on:
+  workflow_dispatch:
+    inputs:
+      domains:
+        description: "Comma- or newline-separated registered domains (maximum 20)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout web repo
+        uses: actions/checkout@v4
+
+      - name: Checkout data repo
+        uses: actions/checkout@v4
+        with:
+          repository: AFR-IM/AFR-data
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: data
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate domain list
+        id: targets
+        env:
+          DOMAINS_INPUT: ${{ inputs.domains }}
+        run: |
+          python3 - <<'PY'
+          import os, re, sys
+          raw = os.environ['DOMAINS_INPUT']
+          domains = sorted(set(x.strip().lower() for x in re.split(r'[;,\s]+', raw) if x.strip()))
+          if not domains or len(domains) > 20:
+              sys.exit('Provide between 1 and 20 domains')
+          for domain in domains:
+              if len(domain) > 253 or not re.fullmatch(r'(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}', domain):
+                  sys.exit(f'Invalid domain: {domain}')
+          with open('targets.txt', 'w') as f:
+              f.write('\n'.join(domains) + '\n')
+          print(f'Validated {len(domains)} domains')
+          PY
+          echo "count=$(wc -l < targets.txt | tr -d ' ')" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve scan date
+        id: date
+        run: echo "date=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+
+      - name: Scan requested domains
+        shell: bash
+        env:
+          SCAN_DATE: ${{ steps.date.outputs.date }}
+        run: |
+          set -o pipefail
+          DATE_DIR="data/scans/${SCAN_DATE//-//}"
+          mkdir -p "$DATE_DIR"
+          while IFS= read -r domain; do rm -f "$DATE_DIR/$domain.json"; done < targets.txt
+          node packages/scanner/src/cli.ts --file targets.txt --out "$DATE_DIR" --concurrency 2 | tee scan-summary.txt
+          while IFS= read -r domain; do
+            if [ ! -s "$DATE_DIR/$domain.json" ]; then
+              echo "::error::No snapshot produced for $domain"
+              exit 1
+            fi
+          done < targets.txt
+
+      - name: Sanitize and publish snapshots
+        id: publish
+        env:
+          DATA_REPO_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd data
+          REDACT='s/r8_[A-Za-z0-9_-]{16,}/r8_[redacted]/g; s/sk-[A-Za-z0-9_-]{16,}/sk-[redacted]/g; s/ghp_[A-Za-z0-9]{20,}/ghp_[redacted]/g; s/AKIA[0-9A-Z]{16}/[redacted-key]/g; s/xox[baprs]-[A-Za-z0-9-]{10,}/[redacted]/g; s/AIza[0-9A-Za-z_-]{30,}/[redacted]/g'
+          git status --porcelain | awk '{print $NF}' | grep '\.json$' | while read -r f; do
+            [ -f "$f" ] && sed -E -i "$REDACT" "$f" || true
+          done
+          git config user.name "afr-bot"
+          git config user.email "dev@afr.im"
+          git add scans
+          if git diff --cached --quiet; then
+            echo "No snapshot changes to publish"
+            exit 0
+          fi
+          git commit -m "targeted scan $(date -u +%F)"
+          AUTH="$(printf 'x-access-token:%s' "$DATA_REPO_TOKEN" | base64 -w0)"
+          GIT_CONFIG_COUNT=1 \
+          GIT_CONFIG_KEY_0=http.https://github.com/.extraheader \
+          GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $AUTH" \
+            git push origin HEAD:main
+          echo "published=true" >> "$GITHUB_OUTPUT"
+
+      - name: Trigger site rebuild
+        if: steps.publish.outputs.published == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+        run: |
+          curl -fsS -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/AFR-IM/AFR-web/dispatches \
+            -d '{"event_type":"scan-done"}'
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "## Targeted AFR scan"
+            echo ""
+            echo "Domains requested: ${{ steps.targets.outputs.count || 'validation failed' }}"
+            echo "Scan date: ${{ steps.date.outputs.date || 'n/a' }}"
+            echo ""
+            if [ -f scan-summary.txt ]; then
+              echo '```text'
+              cat scan-summary.txt
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
