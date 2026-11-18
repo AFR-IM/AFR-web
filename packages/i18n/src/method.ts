@@ -36,7 +36,7 @@ export const AFR_METHOD: {
   grades: { min: number; grade: string; color: string }[];
 } = {
   standard: 'AFR',
-  version: '1.2',
+  version: '1.3',
   layers: [
     {
       id: 'L1',

@@ -17,10 +17,8 @@ import { scoreL2 } from './l2.ts';
 import { scoreL3 } from './l3.ts';
 import { evaluateRobotsPolicy, parseRobots, type RobotsTxt } from './robots.ts';
 
-// v1.1.0 (2026-11-10 calibration): robots-absent → full credit (spec §3.2 protocol default);
-// no evaluable homepage evidence → state 'pending', grade 'Pending' (spec §3.5).
 // Score logic change = minor bump per spec §4.4.
-export const ENGINE_VERSION = 'afr-1.2.0';
+export const ENGINE_VERSION = 'afr-1.3.0';
 
 export function gradeFor(score: number): Grade {
   for (const t of GRADE_THRESHOLDS) {
@@ -32,14 +30,14 @@ export function gradeFor(score: number): Grade {
 /** Main entry: signals → AFR result */
 export function scoreAfr(signals: ScanSignals): AfrResult {
   const rp = signals.robots;
-  const robotsReachable = !!rp && !rp.error && rp.status !== undefined;
+  const robotsStatus = rp && !rp.error ? rp.status : undefined;
+  const robotsReadable = robotsStatus !== undefined && robotsStatus >= 200 && robotsStatus < 300;
+  const robotsMissing = robotsStatus === 404;
   let robotsTxt: RobotsTxt | null = null;
-  if (robotsReachable && rp!.status! >= 200 && rp!.status! < 300) {
-    robotsTxt = parseRobots(rp!.body ?? '');
-  }
-  // 404 / no robots.txt → robotsTxt = null, reachable = true (scored as unconfigured, 0.5)
-  // network error → reachable = false (all unknown, 0 points — no penalty, no reward)
-  const robotsEval = evaluateRobotsPolicy(robotsTxt, robotsReachable);
+  if (robotsReadable) robotsTxt = parseRobots(rp!.body ?? '');
+  // Only a successful response is parsed; 404 is the sole HTTP status treated as absent.
+  // Other HTTP statuses and network errors are unknown (0 points, no penalty or reward).
+  const robotsEval = evaluateRobotsPolicy(robotsTxt, robotsReadable || robotsMissing);
 
   const layers = [scoreL1(signals, robotsEval), scoreL2(signals), scoreL3(signals)];
   // Precision normalization: family-score arithmetic can yield long floats

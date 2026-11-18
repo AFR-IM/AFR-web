@@ -17,7 +17,8 @@ export function scoreL1(signals: ScanSignals, robotsEval: RobotsEvaluation): Lay
 
   // 1) robots AI crawler policy — 25 points
   const rp = signals.robots;
-  const robotsReachable = !!rp && !rp.error && rp.status !== undefined;
+  const robotsReachable =
+    !!rp && !rp.error && (rp.status === 404 || (rp.status !== undefined && rp.status >= 200 && rp.status < 300));
   const robotsTotal = robotsReachable ? robotsEval.robotsTotal : 0;
   const blocked = robotsEval.verdicts.filter((v) => v.access === 'explicit-block').slice(0, 3);
   const unconf = robotsEval.verdicts.filter((v) => v.access === 'unconfigured').slice(0, 3);

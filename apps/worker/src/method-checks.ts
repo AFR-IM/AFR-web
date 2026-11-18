@@ -25,7 +25,7 @@ export interface AfrLayerDef {
 }
 
 /** AFR standard version (spec §14-D shape) */
-export const AFR_VERSION = '1.2.0';
+export const AFR_VERSION = '1.3.0';
 // v1.2 (2026-11-13): engine aligned to this published composition —
 // C1 now scores 5/2/1 (was an unpublished 4/2/2 + homepage link) and C2 scores
 // agents.md 2 + llms.txt agent-policy 2 (engine-only ai.txt/homepage awards

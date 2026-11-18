@@ -270,6 +270,29 @@ describe('end-to-end scoring', () => {
     assert.deepEqual(scoreAfr(s), scoreAfr(s));
   });
 
+  it('robots HTTP status matrix distinguishes readable, missing, redirected, and unavailable responses', () => {
+    const cases: Array<{ status: number; expected: 'pass' | 'unknown'; points: number }> = [
+      { status: 200, expected: 'pass', points: 25 },
+      { status: 404, expected: 'pass', points: 25 },
+      { status: 301, expected: 'unknown', points: 0 },
+      { status: 401, expected: 'unknown', points: 0 },
+      { status: 403, expected: 'unknown', points: 0 },
+      { status: 429, expected: 'unknown', points: 0 },
+      { status: 500, expected: 'unknown', points: 0 },
+      { status: 503, expected: 'unknown', points: 0 },
+    ];
+    for (const { status, expected, points } of cases) {
+      const s = idealSignals();
+      s.robots = {
+        status,
+        body: AI_UAS.map((ua) => `User-agent: ${ua.ua}\nAllow: /`).join('\n'),
+      };
+      const check = scoreAfr(s).layers[0]!.checks[0]!;
+      assert.equal(check.status, expected, `HTTP ${status}`);
+      assert.equal(check.awarded, points, `HTTP ${status}`);
+    }
+  });
+
   it('robots network error → that check unknown with 0 points, no exception thrown', () => {
     const s = idealSignals();
     s.robots = { error: 'ECONNRESET' };
