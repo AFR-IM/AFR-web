@@ -33,8 +33,11 @@ permissions:
 jobs:
   rebuild:
     runs-on: ubuntu-latest
-    # 60 min: the D1 date-walk can page through ~1000 fresh snapshots
-    # (~30 pages at 32/page) after a missed dispatch backfills a whole day.
+    # 60 min: the D1 date-walk pages through the fresh snapshots (~30 pages
+    # at 32/page for a full scan day) after a missed dispatch backfills a
+    # whole day. A page now costs ~20 s instead of ~2.5 min, so the walk
+    # fits in minutes; the hour stays as a safety net for a multi-day
+    # backfill.
     timeout-minutes: 60
     steps:
       - name: Checkout web repo
@@ -124,10 +127,18 @@ jobs:
           # failed once is backfilled by the next run; each date is paged
           # because one Worker invocation may only fetch ~32 snapshots
           # (Cloudflare free-plan subrequest/CPU caps). nextOffset=null → done.
+          # A date whose snapshots are all in D1 already (same blob sha) is
+          # skipped by the Worker without downloading a file, so re-walking
+          # the history costs one cheap page per date. The expensive part is
+          # the fresh day: the Worker fetches and writes a page with bounded
+          # concurrency (~20 s per page instead of ~2.5 min), so a full
+          # 1000-snapshot day fits in minutes, not in a 60-minute job.
+          # Newest date first: if the job ever hits its timeout again, the
+          # data that matters most is already in D1.
           # curl retries transient failures (connection resets and 5xx from
           # CPU-limit pages) — the endpoint is idempotent (sha-skip), so a
           # retry of the same offset resumes instead of duplicating work.
-          dates=$(find data/scans -name '*.json' -printf '%h\n' | sed 's|data/scans/||' | sort -u)
+          dates=$(find data/scans -name '*.json' -printf '%h\n' | sed 's|data/scans/||' | sort -u -r)
           fail=0
           for date in $dates; do
             offset=0
@@ -139,8 +150,23 @@ jobs:
                 -H 'Content-Type: application/json' \
                 -d "{\"date\":\"${date}\",\"offset\":${offset}}") || { echo "sync call failed for ${date}@${offset}"; fail=1; break; }
               echo "${date}@${offset}: ${resp}"
+              # A snapshot whose write failed keeps its old blob sha, so the
+              # next run syncs it again — surface it instead of losing it.
+              errors=$(printf '%s' "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("errors") or 0)')
+              if [ "$errors" != "0" ]; then
+                echo "::warning::${errors} snapshot(s) failed to sync in ${date}@${offset} (retried on the next run)"
+              fi
               next=$(printf '%s' "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("nextOffset") or "")')
               [ -z "$next" ] && break
+              # The cursor must move forward. A page that returns the same
+              # offset again would spin until the job times out (2026-11-18:
+              # 60 minutes and 226 MB of identical log lines), so stop the
+              # date here and let the next run retry it from the top.
+              if [ "$next" -le "$offset" ]; then
+                echo "::error::sync cursor did not advance for ${date} (offset ${offset} → ${next}); stopping this date"
+                fail=1
+                break
+              fi
               offset=$next
             done
           done
