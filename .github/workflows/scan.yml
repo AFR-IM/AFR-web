@@ -3,7 +3,9 @@
 # segment_start = floor(collected / 1000) * 1000 from the data repo snapshots
 # (or uses the manual `segment` input) and scans the next 1000 domains.
 # Runs on GitHub-hosted runners (public repo = free unlimited).
-# Schedule: daily 02:00 UTC (scheduled runs behave as mode=daily).
+# Schedule: daily 02:00 UTC; while expansion is paused, scheduled runs drain
+# only the on-demand queue. Tranco segment advancement requires an explicit
+# workflow_dispatch with mode=daily.
 # Manual runs pick mode=daily (Tranco segment + queue drain) or mode=queue
 # (on-demand queue only — exits quickly when the queue is empty).
 #
@@ -22,13 +24,13 @@ on:
         required: false
         default: "1000"
       mode:
-        description: "daily = Tranco top-1M segment + queue drain; queue = on-demand queue only"
+        description: "queue = on-demand queue only; daily = advance Tranco segment (requires explicit approval)"
         required: false
-        default: "daily"
+        default: "queue"
         type: choice
         options:
-          - daily
           - queue
+          - daily
       segment:
         description: "Tranco segment start override (mode=daily), e.g. 2000; leave empty to derive it from collected data"
         required: false
@@ -58,13 +60,19 @@ jobs:
         with:
           node-version: 22
 
-      # Scheduled runs have no inputs at all -> empty mode falls back to daily.
+      # Daily schedule is queue-only while Tranco expansion is paused.
+      # Advancing a Tranco segment requires an explicit manual mode=daily run.
       - name: Resolve run mode
         id: mode
         env:
+          EVENT_NAME: ${{ github.event_name }}
           INPUT_MODE: ${{ inputs.mode }}
         run: |
-          MODE="${INPUT_MODE:-daily}"
+          if [ "$EVENT_NAME" = "schedule" ]; then
+            MODE=queue
+          else
+            MODE="${INPUT_MODE:-queue}"
+          fi
           case "$MODE" in
             daily|queue) ;;
             *) echo "::error::Invalid mode '$MODE' (expected: daily or queue)"; exit 1 ;;
