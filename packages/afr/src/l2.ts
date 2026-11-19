@@ -211,7 +211,8 @@ export function scoreL2(signals: ScanSignals): LayerScore {
     dDetails.push(probeDetail(sm, '/sitemap.xml'));
   }
   const rp = signals.robots;
-  if (rp && !rp.error && rp.status !== undefined) {
+  const robotsReadable = !!rp && !rp.error && rp.status !== undefined && rp.status >= 200 && rp.status < 300;
+  if (robotsReadable) {
     if ((rp.body ?? '').match(/sitemap\s*:/i)) {
       d += 1;
       dDetails.push('robots.txt references a Sitemap');
@@ -220,7 +221,7 @@ export function scoreL2(signals: ScanSignals): LayerScore {
     }
   } else {
     dUnknown = true;
-    dDetails.push('robots.txt unavailable; cannot check Sitemap reference');
+    dDetails.push('robots.txt unavailable or non-2xx; cannot check Sitemap reference');
   }
   if (ok(sm)) {
     const host = signals.domain.replace(/^www\./, '');

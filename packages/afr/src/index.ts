@@ -18,7 +18,7 @@ import { scoreL3 } from './l3.ts';
 import { evaluateRobotsPolicy, parseRobots, type RobotsTxt } from './robots.ts';
 
 // Score logic change = minor bump per spec §4.4.
-export const ENGINE_VERSION = 'afr-1.3.0';
+export const ENGINE_VERSION = 'afr-1.4.0';
 
 export function gradeFor(score: number): Grade {
   for (const t of GRADE_THRESHOLDS) {
@@ -65,7 +65,7 @@ export function scoreAfr(signals: ScanSignals): AfrResult {
   const hpProbe = signals.homepage;
   const rpProbe = signals.robots;
   const ok = (p?: { status?: number; error?: string }) =>
-    !!p && !p.error && p.status !== undefined && p.status >= 200 && p.status < 400;
+    !!p && !p.error && p.status !== undefined && p.status >= 200 && p.status < 300;
   const state: ScanState = ok(hpProbe) || ok(rpProbe) ? 'scored' : 'pending';
 
   return {

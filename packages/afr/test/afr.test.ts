@@ -265,6 +265,58 @@ describe('end-to-end scoring', () => {
     assert.ok(r.score >= 85, `score=${r.score} (only the 5-point wall penalty)`);
   });
 
+  it('does not treat a robots redirect or error body as readable evidence', () => {
+    const redirected = idealSignals();
+    redirected.homepage = { status: 503, body: 'unavailable' };
+    redirected.robots = { status: 301, body: 'Sitemap: https://example.com/sitemap.xml' };
+    redirected.sitemap = { status: 403, body: 'challenge' };
+    const r = scoreAfr(redirected);
+    assert.equal(r.state, 'pending', 'a robots redirect is not primary readable evidence');
+    assert.equal(r.grade, 'Pending');
+    const sitemap = r.layers[1]!.checks.find((c) => c.id === 'l2.sitemap')!;
+    assert.equal(sitemap.awarded, 0, 'non-2xx robots and sitemap bodies earn no sitemap points');
+    assert.equal(sitemap.status, 'unknown');
+  });
+
+  it('keeps the 404 default-allow policy score but does not read its body as a Sitemap reference', () => {
+    const s = idealSignals();
+    s.robots = { status: 404, body: 'Sitemap: https://example.com/forged.xml' };
+    const r = scoreAfr(s);
+    const robots = r.layers[0]!.checks.find((c) => c.id === 'l1.robots.ai-policy')!;
+    const sitemap = r.layers[1]!.checks.find((c) => c.id === 'l2.sitemap')!;
+    assert.equal(robots.awarded, 25, '404 remains missing robots.txt and receives default-allow policy points');
+    assert.equal(sitemap.awarded, 3, 'only sitemap fetch and host match count, not a body from HTTP 404');
+  });
+
+  it('a homepage 404 alone does not count as readable primary evidence', () => {
+    const s = idealSignals();
+    s.homepage = { status: 404, body: 'not found' };
+    s.robots = { status: 500, body: 'error' };
+    const r = scoreAfr(s);
+    assert.equal(r.state, 'pending');
+    assert.equal(r.grade, 'Pending');
+  });
+
+  it('a successful homepage remains sufficient evidence when robots is redirected', () => {
+    const s = idealSignals();
+    s.robots = { status: 301, body: 'Sitemap: https://example.com/sitemap.xml' };
+    const r = scoreAfr(s);
+    assert.equal(r.state, 'scored');
+    assert.equal(r.grade, 'B');
+    const sitemap = r.layers[1]!.checks.find((c) => c.id === 'l2.sitemap')!;
+    assert.equal(sitemap.awarded, 3, 'sitemap fetch and host match count, but robots reference does not');
+  });
+
+  it('a robots 404 earns default-allow policy points but does not alone make a site ratable', () => {
+    const s = idealSignals();
+    s.homepage = { status: 404, body: 'not found' };
+    s.robots = { status: 404, body: '' };
+    const r = scoreAfr(s);
+    assert.equal(r.layers[0]!.checks[0]!.awarded, 25);
+    assert.equal(r.state, 'pending');
+    assert.equal(r.grade, 'Pending');
+  });
+
   it('recomputable: the same signals input yields identical results twice', () => {
     const s = idealSignals();
     assert.deepEqual(scoreAfr(s), scoreAfr(s));
@@ -278,6 +330,7 @@ describe('end-to-end scoring', () => {
       { status: 401, expected: 'unknown', points: 0 },
       { status: 403, expected: 'unknown', points: 0 },
       { status: 429, expected: 'unknown', points: 0 },
+      { status: 500, expected: 'unknown', points: 0 },
       { status: 500, expected: 'unknown', points: 0 },
       { status: 503, expected: 'unknown', points: 0 },
     ];
