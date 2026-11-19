@@ -2276,6 +2276,33 @@ const RULES = [
 ['lsapp.eu', 'dev-tools'],
 ['lsrelayaccess', 'dev-tools'],
 
+  // Exact-domain mappings supported by each site's public service description.
+  ['getpostman.com', 'dev-tools'],
+  ['siftscience.com', 'dev-tools'],
+  ['vtex.com', 'ecommerce'],
+  ['hsappstatic.net', 'dev-tools'],
+  ['kling.ai', 'ai-tools'],
+  ['apptimize.com', 'dev-tools'],
+  ['gotoresolve.com', 'dev-tools'],
+  ['invisalign.com', 'health'],
+  ['openart.ai', 'ai-tools'],
+  ['sorrisi.com', 'entertainment'],
+  ['statuspage.io', 'dev-tools'],
+  ['evaluationkit.com', 'education'],
+  ['gist.build', 'dev-tools'],
+  ['hostnet.nl', 'dev-tools'],
+  ['infobip.com', 'dev-tools'],
+  ['jfrog.io', 'dev-tools'],
+  ['lithium.com', 'social'],
+  ['voicefleet.ai', 'ai-tools'],
+  ['zopim.com', 'dev-tools'],
+  ['goodnotes.com', 'dev-tools'],
+  ['gravitational.io', 'dev-tools'],
+  ['pcloud.com', 'dev-tools'],
+  ['puma.com', 'ecommerce'],
+  ['sparkpostmail.com', 'dev-tools'],
+  ['ssrchat.com', 'dev-tools'],
+  ['unleash-hosted.com', 'dev-tools'],
 ];
 
 const TITLE_RULES = RULES.filter((r) => r[2] === true && !r[0].includes('.'));
