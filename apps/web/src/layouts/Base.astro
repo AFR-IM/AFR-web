@@ -395,8 +395,39 @@ const ldJson = (obj: unknown) => JSON.stringify(obj).replace(/</g, '\\u003c');
       }
     </style>
     <script>
-      // PWA service worker registration: secure contexts only,
-      // no duplicate registration, register after load so it never blocks rendering.
+      // PWA service worker registration: secure contexts only, registered
+      // after load so it never blocks rendering.
+      //
+      // The registration is (re-)issued on every visit and followed by an
+      // explicit update check. Without the explicit check the browser only
+      // re-fetches sw.js on its own soft-update schedule (often 24 h), so an
+      // installed PWA could keep yesterday's caching rules for a whole day.
+      // Re-registering is free: per the Service Worker spec, registering the
+      // same script URL again resolves with the existing registration and
+      // does not fetch the script — only registration.update() does.
+      const SW_UPDATE_INTERVAL_MS = 6 * 60 * 60 * 1000; // 4 checks per day
+
+      /** Update checks cost one request through the Worker, and the site's
+       *  request budget is shared with everything else, so they are spaced
+       *  out instead of running on every page view. */
+      const shouldCheckForUpdate = () => {
+        try {
+          const last = Number(localStorage.getItem('afr-sw-update-check') || '0');
+          if (!Number.isFinite(last) || last <= 0) return true;
+          return Date.now() - last >= SW_UPDATE_INTERVAL_MS;
+        } catch {
+          return true; // storage blocked (private mode): check anyway
+        }
+      };
+
+      const markUpdateChecked = () => {
+        try {
+          localStorage.setItem('afr-sw-update-check', String(Date.now()));
+        } catch {
+          /* ignore: the throttle is an optimisation, not a requirement */
+        }
+      };
+
       const registerSw = () => {
         if (!('serviceWorker' in navigator)) return;
         const secure =
@@ -405,9 +436,21 @@ const ldJson = (obj: unknown) => JSON.stringify(obj).replace(/</g, '\\u003c');
           location.hostname === '127.0.0.1' ||
           location.hostname === '[::1]';
         if (!secure) return;
-        navigator.serviceWorker.getRegistration().then((existing) => {
-          if (!existing) navigator.serviceWorker.register('/sw.js').catch(() => {});
-        });
+        navigator.serviceWorker
+          .register('/sw.js')
+          .then((registration) => {
+            // A worker that is installing right now was just fetched: an
+            // immediate update check would only repeat that request.
+            if (registration && registration.installing && !registration.active) return;
+            if (!shouldCheckForUpdate()) return;
+            markUpdateChecked();
+            // The new worker calls skipWaiting() on install, so an updated
+            // service worker takes over without waiting for a reload.
+            if (registration && typeof registration.update === 'function') {
+              registration.update().catch(() => {});
+            }
+          })
+          .catch(() => {});
       };
       if (document.readyState === 'complete') registerSw();
       else addEventListener('load', registerSw);
