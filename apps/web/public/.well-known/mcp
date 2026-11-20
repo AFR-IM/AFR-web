@@ -1,0 +1,23 @@
+{
+  "name": "afr",
+  "description": "AFR.IM — public directory of AI-friendliness ratings for websites. Every rating comes from public, reproducible scans.",
+  "version": "1.0.0",
+  "endpoint": "https://afr.im/mcp",
+  "transport": "http",
+  "method": "POST",
+  "jsonRpcVersion": "2.0",
+  "protocolVersion": "2025-06-18",
+  "capabilities": {
+    "tools": {
+      "listChanged": false
+    }
+  },
+  "tools": [
+    "site_rating",
+    "search_sites",
+    "grade_distribution"
+  ],
+  "docs": "https://afr.im/docs",
+  "instructions": "https://afr.im/agents.md",
+  "openapi": "https://afr.im/openapi.json"
+}

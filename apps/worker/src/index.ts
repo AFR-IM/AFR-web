@@ -210,13 +210,13 @@ function clientIp(c: Context<AppEnv>): string {
  */
 async function requireTurnstile(
   c: Context<AppEnv>,
-  opts: { action: string; payload?: unknown; fetchImpl?: typeof fetch },
+  opts: { action: string; payload?: unknown; fetchImpl?: typeof fetch; db: Db },
 ): Promise<TurnstileCheck> {
   // A machine client (AI agent, script) cannot run a browser widget, so it
   // presents an API key instead. The key is the authorisation, the captcha is
   // only there for humans.
   const apiKey = c.req.header(API_KEY_HEADER) ?? null;
-  if (apiKey && (await isValidApiKey(dbOf(c, overrides), apiKey))) {
+  if (apiKey && (await isValidApiKey(opts.db, apiKey))) {
     return { ok: true };
   }
   let payload = opts.payload;
@@ -1468,6 +1468,7 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
       action: TURNSTILE_ACTIONS.submit,
       payload,
       fetchImpl: overrides.turnstileFetch,
+      db: dbOf(c, overrides),
     });
     if (!turnstile.ok) {
       return c.json({ error: 'turnstile_failed', reason: turnstile.reason }, 400);
@@ -1569,6 +1570,7 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
       action: TURNSTILE_ACTIONS.searchScan,
       payload,
       fetchImpl: overrides.turnstileFetch,
+      db: dbOf(c, overrides),
     });
     if (!turnstile.ok) {
       return c.json({ error: 'turnstile_failed', reason: turnstile.reason }, 400);

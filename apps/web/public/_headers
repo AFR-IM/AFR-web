@@ -15,6 +15,11 @@
 /manifest.webmanifest
   Cache-Control: public, max-age=3600
 
+# --- MCP discovery document (served as JSON, see public/.well-known/mcp) ---
+/.well-known/mcp
+  Content-Type: application/json
+  Cache-Control: public, max-age=3600
+
 # --- Daily-built data payload: brief TTL + long background revalidate ---
 /data/*
   Cache-Control: public, max-age=300, stale-while-revalidate=86400

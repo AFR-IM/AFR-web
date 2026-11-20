@@ -11,6 +11,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { API_KEY_HEADER, hashApiKey, isValidApiKey } from '../src/api-key.ts';
+import { createApp } from '../src/index.ts';
 import { pruneMailArtifacts } from '../src/mail-gc.ts';
 import { openSeededDb } from './helpers.ts';
 
@@ -146,5 +147,46 @@ describe('mail housekeeping', () => {
       outbox: 0,
       cooldown: 0,
     });
+  });
+});
+
+describe('the human check and the machine path', () => {
+  it('lets a machine client through with an API key and rejects it without one', async () => {
+    const { db, raw } = openSeededDb();
+    const key = 'agent-key-for-the-machine';
+    raw
+      .prepare(
+        'INSERT INTO api_keys (key_hash, domain_contact, tier, created_at, revoked_at) VALUES (?, ?, ?, ?, NULL)',
+      )
+      .run(await hashApiKey(key), null, 'free', new Date().toISOString());
+
+    const app = createApp({ db });
+    const body = JSON.stringify({ domain: 'machine-client-example.com' });
+
+    const rejected = await app.request(
+      '/api/v1/submissions',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body,
+      },
+      { TURNSTILE_SECRET: 'test-secret' },
+    );
+    assert.equal(rejected.status, 400);
+    assert.equal((await rejected.json()).error, 'turnstile_failed');
+
+    const accepted = await app.request(
+      '/api/v1/submissions',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', [API_KEY_HEADER]: key },
+        body,
+      },
+      { TURNSTILE_SECRET: 'test-secret' },
+    );
+    assert.equal(accepted.status, 201, 'an API key replaces the human check');
+    const payload = await accepted.json();
+    assert.equal(payload.ok, true);
+    assert.equal(payload.domain, 'machine-client-example.com');
   });
 });
