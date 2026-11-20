@@ -35,7 +35,7 @@ const PUBLIC_DATA_DIR = path.join(WEB_DIR, 'public', 'data');
 
 const LEADERBOARD_SIZE = 50;
 const LATEST_SIZE = 24;
-const SEARCH_TITLE_MAX = 48;
+const SEARCH_TITLE_MAX = 40;
 // The index is served with brotli by Cloudflare, so the cost a visitor pays is
 // the wire size, not the raw JSON. Budgets (SSOT §7b/T7):
 //  - wire budget: 160 KB compressed (measured ~0.26 ratio for this payload);
