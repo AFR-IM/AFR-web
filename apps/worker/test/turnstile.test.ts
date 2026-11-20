@@ -12,6 +12,7 @@ import {
   TURNSTILE_VERIFY_URL,
   verifyTurnstile,
 } from '../src/turnstile.ts';
+import { API_KEY_HEADER, hashApiKey } from '../src/api-key.ts';
 import { createApp } from '../src/index.ts';
 import { openSeededDb } from './helpers.ts';
 
@@ -213,5 +214,90 @@ describe('protected POST endpoints', () => {
     assert.equal(res.status, 201);
     const body = await res.json();
     assert.equal(body.status, 'queued');
+  });
+
+  // ── owner mailbox — the two write endpoints of the self-service panel ──
+
+  it('POST /api/v1/owners/email/start rejects a request without a token', async () => {
+    const res = await gatedApp().request(
+      '/api/v1/owners/email/start',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ domain: 'example.com', email: 'owner@example.com' }),
+      },
+      { TURNSTILE_SECRET: 'test-secret' },
+    );
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.equal(body.error, 'turnstile_failed');
+    assert.equal(body.reason, 'missing_token');
+  });
+
+  it('POST /api/v1/owners/email rejects a request without a token', async () => {
+    const res = await gatedApp().request(
+      '/api/v1/owners/email',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          domain: 'example.com',
+          email: 'owner@example.com',
+          challenge: 'ch-0123456789abcdef0123456789abcdef',
+        }),
+      },
+      { TURNSTILE_SECRET: 'test-secret' },
+    );
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.equal(body.error, 'turnstile_failed');
+    assert.equal(body.reason, 'missing_token');
+  });
+
+  it('lets a machine client through the owner-mail endpoints with an API key', async () => {
+    const seeded = openSeededDb();
+    const key = 'owner-mail-agent-key';
+    seeded.raw
+      .prepare(
+        'INSERT INTO api_keys (key_hash, domain_contact, tier, created_at, revoked_at) VALUES (?, ?, ?, ?, NULL)',
+      )
+      .run(await hashApiKey(key), null, 'free', new Date().toISOString());
+
+    const app = createApp({
+      db: seeded.db,
+      turnstileFetch: (async () => jsonResponse({ success: true })) as typeof fetch,
+    });
+    const env = { TURNSTILE_SECRET: 'test-secret', EMAIL_ENC_KEY: btoa('a'.repeat(32)) };
+
+    const started = await app.request(
+      '/api/v1/owners/email/start',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', [API_KEY_HEADER]: key },
+        body: JSON.stringify({ domain: 'example.com', email: 'owner@example.com' }),
+      },
+      env,
+    );
+    assert.equal(started.status, 200, 'an API key replaces the human check');
+    const startedBody = await started.json();
+    assert.match(startedBody.challenge, /^ch-[0-9a-f]{32}$/);
+
+    // The gate let the request through — it now fails on the challenge
+    // itself, which is the next check of that endpoint.
+    const registered = await app.request(
+      '/api/v1/owners/email',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', [API_KEY_HEADER]: key },
+        body: JSON.stringify({
+          domain: 'example.com',
+          email: 'owner@example.com',
+          challenge: 'ch-ffffffffffffffffffffffffffffffff',
+        }),
+      },
+      env,
+    );
+    assert.equal(registered.status, 403);
+    assert.equal((await registered.json()).error, 'challenge_not_found');
   });
 });

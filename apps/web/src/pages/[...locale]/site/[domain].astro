@@ -14,6 +14,7 @@ import ClaimBlock from '../../../components/detail/ClaimBlock.astro';
 import ClaimForm from '../../../components/detail/ClaimForm.astro';
 import BadgeEmbed from '../../../components/detail/BadgeEmbed.astro';
 import VerifyPanel from '../../../components/detail/VerifyPanel.astro';
+import OwnerMailbox from '../../../components/detail/OwnerMailbox.astro';
 import HistorySpark from '../../../components/detail/HistorySpark.astro';
 import RescanButton from '../../../components/detail/RescanButton.astro';
 import { existsSync } from 'node:fs';
@@ -190,6 +191,7 @@ const description = notFound
             <ClaimBlock claim={site.claim} locale={locale} />
             <BadgeEmbed domain={site.domain} grade={site.grade} locale={locale} badgeHref={href('/badges')} />
             <VerifyPanel domain={site.domain} locale={locale} verified={!!site.verified} />
+            <OwnerMailbox domain={site.domain} locale={locale} />
             <ClaimForm domain={site.domain} locale={locale} visible={claimFormVisible} />
             <HistorySpark site={site} locale={locale} />
             <p class="views mono" data-views data-domain={site.domain} data-label={viewsLabel}>

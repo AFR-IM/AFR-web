@@ -404,6 +404,304 @@ paths:
               example: { error: turnstile_failed, reason: missing_token }
         '429':
           description: One of the three daily tiers is exhausted
+  /api/v1/owners/email/start:
+    post:
+      summary: Request a domain-control challenge for an owner mailbox
+      description: >-
+        Starts the owner-mailbox registration of a domain (score-change
+        notifications). The body carries the domain and the address that
+        should receive the notices; AFR answers with a challenge plus the
+        three ways to publish it on the domain (DNS TXT record, well-known
+        file, homepage meta tag). The challenge is bound to the address,
+        valid for 24 hours and can be spent only once. Quotas: 3 challenges
+        per domain per day, 5 per IP per hour. A human check is part of the
+        contract: the body must also carry { "turnstile_token": "…" } (a
+        Cloudflare Turnstile token, action 'afr_owner_email', minted by the
+        widget on the site detail page). A missing, expired or foreign token
+        is answered 400 { "error": "turnstile_failed", "reason":
+        "missing_token" | "invalid_token" | "wrong_action" | "verify_failed" }
+        — no challenge is minted and no rate-limit budget is spent. An agent
+        that cannot run the widget may send the 'X-AFR-Agent-Key' header
+        instead (a key issued by AFR, not self-service yet).
+      parameters:
+        - name: X-AFR-Agent-Key
+          in: header
+          required: false
+          schema: { type: string }
+          description: >-
+            Agent key issued by AFR. When present and valid — the SHA-256 hash
+            of the key is in the api_keys table and not revoked — the human
+            check is skipped and turnstile_token is not required. Self-service
+            issuance is not open yet: ask AFR for a key.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [domain, email]
+              properties:
+                domain: { type: string, description: 'Bare registered domain, e.g. example.com' }
+                email: { type: string, format: email, description: 'Mailbox that should receive the score-change notices' }
+                turnstile_token: { type: string, description: 'Human-verification token — a Cloudflare Turnstile token (action afr_owner_email) minted by the widget on the AFR site detail page. Optional in the schema, required in practice: without a valid token the request is answered 400 turnstile_failed — unless the caller sends a valid X-AFR-Agent-Key header, which skips the human check.' }
+            example: { domain: example.com, email: 'owner@example.com', turnstile_token: '0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d' }
+      responses:
+        '200':
+          description: The challenge and the three ways to publish it on the domain
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OwnerChallenge'
+              example:
+                challenge: ch-0123456789abcdef0123456789abcdef
+                methods:
+                  dns: { type: TXT, name: example.com, value: 'afr-mail=ch-0123456789abcdef0123456789abcdef' }
+                  file: { url: 'https://example.com/.well-known/afr-mail.txt', content: ch-0123456789abcdef0123456789abcdef }
+                  meta: { name: afr-mail-verification, content: ch-0123456789abcdef0123456789abcdef }
+                expiresAt: '2026-11-21T12:00:00.000Z'
+        '400':
+          description: >-
+            Invalid parameter (invalid_domain, invalid_email) or a failed human
+            check — { "error": "turnstile_failed", "reason": "missing_token" |
+            "invalid_token" | "wrong_action" | "verify_failed" }. Nothing is
+            minted and no rate-limit budget is spent.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: turnstile_failed, reason: missing_token }
+        '404':
+          description: The domain is not listed in AFR (unknown_domain)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: unknown_domain }
+        '429':
+          description: Rate limited — 3 challenges per domain per day, 5 per IP per hour
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: rate_limited, retryAfter: 3600 }
+  /api/v1/owners/email:
+    post:
+      summary: Register the owner mailbox (needs the published challenge)
+      description: >-
+        Second step of the owner-mailbox registration: AFR probes the domain
+        itself for the challenge and stores the mailbox only when it finds it
+        there (DNS TXT record, well-known file or homepage meta tag). The
+        answer is { "status": "sent", "emailed": true } when the confirmation
+        mail went out, or { "status": "stored", "emailed": false, "verifyUrl":
+        "…" } when no mail provider is configured — in that case the returned
+        link completes the confirmation instead. A successful registration
+        consumes the challenge. Errors: 400 invalid_email | invalid_challenge
+        | turnstile_failed, 403 challenge_not_found | challenge_email_mismatch
+        | domain_control_failed (the answer carries a per-method "checks"
+        summary of what AFR saw on the domain), 409 mailbox_already_verified,
+        429 rate_limited (3 registrations per domain per day, 5 per IP per
+        hour). The same human check as the challenge endpoint applies
+        (turnstile_token, action 'afr_owner_email'); the same 'X-AFR-Agent-Key'
+        header skips it.
+      parameters:
+        - name: X-AFR-Agent-Key
+          in: header
+          required: false
+          schema: { type: string }
+          description: >-
+            Agent key issued by AFR. When present and valid — the SHA-256 hash
+            of the key is in the api_keys table and not revoked — the human
+            check is skipped and turnstile_token is not required. Self-service
+            issuance is not open yet: ask AFR for a key.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [domain, email, challenge]
+              properties:
+                domain: { type: string, description: 'Bare registered domain, e.g. example.com' }
+                email: { type: string, format: email, description: 'The same address the challenge was issued for' }
+                challenge: { type: string, description: 'The challenge value published on the domain, e.g. ch-0123456789abcdef0123456789abcdef' }
+                turnstile_token: { type: string, description: 'Human-verification token — a Cloudflare Turnstile token (action afr_owner_email) minted by the widget on the AFR site detail page. Optional in the schema, required in practice: without a valid token the request is answered 400 turnstile_failed — unless the caller sends a valid X-AFR-Agent-Key header, which skips the human check.' }
+            example: { domain: example.com, email: 'owner@example.com', challenge: 'ch-0123456789abcdef0123456789abcdef', turnstile_token: '0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d' }
+      responses:
+        '200':
+          description: Mailbox stored — the confirmation mail was sent or the link is handed back
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OwnerRegistration'
+              example: { status: sent, emailed: true }
+        '400':
+          description: >-
+            Invalid parameter (invalid_domain, invalid_email, invalid_challenge)
+            or a failed human check — { "error": "turnstile_failed", "reason":
+            "missing_token" | "invalid_token" | "wrong_action" |
+            "verify_failed" }. Nothing is stored and no rate-limit budget is
+            spent.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: turnstile_failed, reason: missing_token }
+        '403':
+          description: >-
+            challenge_not_found, challenge_email_mismatch or
+            domain_control_failed — the platform did not see the challenge on
+            the domain. The answer then carries a "checks" array with one entry
+            per method ({ "method": "dns|file|meta", "detail": "…" }).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: domain_control_failed, checks: [ { method: dns, detail: 'no TXT record' }, { method: file, detail: '404' }, { method: meta, detail: 'tag not found' } ] }
+        '409':
+          description: mailbox_already_verified — a confirmed mailbox is never overwritten
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: mailbox_already_verified }
+        '429':
+          description: Rate limited — 3 registrations per domain per day, 5 per IP per hour
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: rate_limited, retryAfter: 3600 }
+    get:
+      summary: Mailbox status (management token required)
+      description: >-
+        Reads the mailbox of a domain. The management token of that mailbox must
+        be sent as 'Authorization: Bearer <token>' — without it, with a wrong
+        token, or with the token of another domain the answer is 401
+        unauthorized. The address is never returned in full: only masked, e.g.
+        'o***@example.com'.
+      parameters:
+        - name: domain
+          in: query
+          required: true
+          schema: { type: string }
+          description: 'Bare registered domain, e.g. example.com'
+          example: example.com
+        - name: Authorization
+          in: header
+          required: true
+          schema: { type: string }
+          description: "Bearer token of the confirmed mailbox, e.g. 'Bearer manage-0123456789abcdef0123456789abcdef'"
+      responses:
+        '200':
+          description: The mailbox state — the address is masked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OwnerMailbox'
+              example: { domain: example.com, email_masked: 'o***@example.com', verified: true, notify: true }
+        '400':
+          description: Invalid parameter (invalid_domain)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: invalid_domain }
+        '401':
+          description: unauthorized — the management token is missing, wrong or belongs to another domain
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: unauthorized }
+  /api/v1/owners/email/verify:
+    get:
+      summary: Confirm the mailbox and collect the management token
+      description: >-
+        Consumes the single-use confirmation token of the mail link. On success
+        it answers { "verified": true, "domain": "…", "manageToken":
+        "manage-…" }. The management token is returned exactly once — only its
+        hash is stored, so AFR can never show it again. Keep it: it authorises
+        every later read of the mailbox and the notification switch. 400
+        invalid_or_expired_token, 429 rate_limited (20 verifications per IP
+        per hour).
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema: { type: string }
+          description: The single-use confirmation token from the mail link
+          example: 0123456789abcdef0123456789abcdef
+      responses:
+        '200':
+          description: The mailbox is confirmed and the management token is handed out — once
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OwnerVerification'
+              example: { verified: true, domain: example.com, manageToken: 'manage-0123456789abcdef0123456789abcdef' }
+        '400':
+          description: invalid_or_expired_token — the token is unknown, expired or already spent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: invalid_or_expired_token }
+        '429':
+          description: Rate limited — 20 verifications per IP per hour
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: rate_limited }
+  /api/v1/owners/notify:
+    post:
+      summary: Switch the score-change notifications on or off
+      description: >-
+        Turns the score-change mails of a domain on or off. The management
+        token of that mailbox must be sent as 'Authorization: Bearer <token>'.
+        400 invalid_domain | invalid_notify, 401 unauthorized.
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          schema: { type: string }
+          description: "Bearer token of the confirmed mailbox, e.g. 'Bearer manage-0123456789abcdef0123456789abcdef'"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [domain, notify]
+              properties:
+                domain: { type: string, description: 'Bare registered domain, e.g. example.com' }
+                notify: { type: boolean, description: 'true = send score-change mails, false = mute them' }
+            example: { domain: example.com, notify: false }
+      responses:
+        '200':
+          description: The new state of the notification switch
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  domain: { type: string }
+                  notify: { type: boolean }
+              example: { domain: example.com, notify: false }
+        '400':
+          description: Invalid parameter (invalid_domain, invalid_notify)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: invalid_notify }
+        '401':
+          description: unauthorized — the management token is missing, wrong or belongs to another domain
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: unauthorized }
 components:
   schemas:
     Site:
@@ -511,6 +809,54 @@ components:
         version: { type: string }
         layers: { type: array, items: { type: object } }
         grades: { type: array, items: { type: object } }
+    OwnerChallenge:
+      type: object
+      description: A domain-control challenge and the three ways to publish it on the domain
+      properties:
+        challenge: { type: string, description: 'The challenge value, e.g. ch-0123456789abcdef0123456789abcdef' }
+        methods:
+          type: object
+          description: Any one of the three methods is enough — AFR reads it from the domain
+          properties:
+            dns:
+              type: object
+              properties:
+                type: { type: string, example: TXT }
+                name: { type: string, example: example.com }
+                value: { type: string, example: 'afr-mail=ch-0123456789abcdef0123456789abcdef' }
+            file:
+              type: object
+              properties:
+                url: { type: string, example: 'https://example.com/.well-known/afr-mail.txt' }
+                content: { type: string, example: ch-0123456789abcdef0123456789abcdef }
+            meta:
+              type: object
+              properties:
+                name: { type: string, example: afr-mail-verification }
+                content: { type: string, example: ch-0123456789abcdef0123456789abcdef }
+        expiresAt: { type: string, format: date-time, description: When the challenge stops being accepted (24 hours after it was issued) }
+    OwnerRegistration:
+      type: object
+      description: The result of a mailbox registration
+      properties:
+        status: { type: string, enum: [sent, stored], description: "'sent' = the confirmation mail went out, 'stored' = the link is handed back instead" }
+        emailed: { type: boolean, description: Whether a confirmation mail was actually sent }
+        verifyUrl: { type: string, description: 'Present when no mail provider is configured: the one-time confirmation link' }
+    OwnerVerification:
+      type: object
+      description: The confirmation of a mailbox — the management token is shown exactly once
+      properties:
+        verified: { type: boolean }
+        domain: { type: string }
+        manageToken: { type: string, description: 'The management token of the mailbox — returned only here, never again', example: 'manage-0123456789abcdef0123456789abcdef' }
+    OwnerMailbox:
+      type: object
+      description: The state of an owner mailbox — the address is masked
+      properties:
+        domain: { type: string }
+        email_masked: { type: string, description: 'The address, masked — the plaintext never leaves the database', example: 'o***@example.com' }
+        verified: { type: boolean }
+        notify: { type: boolean, description: Whether score-change mails are sent }
     Error:
       type: object
       properties:

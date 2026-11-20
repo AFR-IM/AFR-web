@@ -130,6 +130,69 @@ If your runtime speaks MCP, you can skip HTTP entirely — `POST https://afr.im/
 
 An unknown domain is returned as a tool-level error, not a protocol error. Rate limit: 60 requests per IP per minute.
 
+### 2.9 Register an owner mailbox (score-change notifications)
+
+A site owner can register **one mailbox per domain** and get a mail when the AFR rating of that domain changes. The site detail page (`https://afr.im/site/example.com/`) has a self-service panel for it; the API below is the same flow for scripts.
+
+Three locks stand in front of the mailbox, and all three must open:
+
+1. **Domain control** — AFR hands out a challenge, the owner publishes it on the domain, AFR reads it back from the domain itself.
+2. **Mailbox control** — AFR mails a single-use confirmation link to that address.
+3. **Management token** — that confirmation returns the token exactly once; it authorises every later read of the mailbox and the notification switch.
+
+```http
+POST https://afr.im/api/v1/owners/email/start
+{ "domain": "example.com", "email": "owner@example.com",
+  "turnstile_token": "<token minted by the widget on https://afr.im/site/example.com/>" }
+→ 200 { "challenge": "ch-…",
+        "methods": { "dns": { "type": "TXT", "name": "example.com", "value": "afr-mail=ch-…" },
+                     "file": { "url": "https://example.com/.well-known/afr-mail.txt", "content": "ch-…" },
+                     "meta": { "name": "afr-mail-verification", "content": "ch-…" } },
+        "expiresAt": "…" }
+```
+
+Publish the challenge in **one** of the three ways — AFR probes all of them, any hit is enough:
+
+| Method | What to publish on the domain |
+| --- | --- |
+| DNS | TXT record: `afr-mail=<challenge>` |
+| File | `https://example.com/.well-known/afr-mail.txt` containing the challenge |
+| Meta | `<meta name="afr-mail-verification" content="<challenge>">` in the homepage `<head>` |
+
+```http
+POST https://afr.im/api/v1/owners/email
+{ "domain": "example.com", "email": "owner@example.com", "challenge": "ch-…",
+  "turnstile_token": "<token>" }
+→ 200 { "status": "sent", "emailed": true }
+→ 200 { "status": "stored", "emailed": false, "verifyUrl": "https://afr.im/api/v1/owners/email/verify?token=…" }
+→ 403 { "error": "domain_control_failed", "checks": [ { "method": "dns", "detail": "…" }, … ] }
+```
+
+Then open the confirmation link — from the mail, or the `verifyUrl` above when no mail provider is configured:
+
+```http
+GET https://afr.im/api/v1/owners/email/verify?token=…
+→ 200 { "verified": true, "domain": "example.com", "manageToken": "manage-…" }
+```
+
+**The management token is shown exactly once.** Only its hash is stored, so AFR can never show it again — keep it. With it in hand:
+
+```http
+GET  https://afr.im/api/v1/owners/email?domain=example.com
+Authorization: Bearer manage-…
+→ 200 { "domain": "example.com", "email_masked": "o***@example.com", "verified": true, "notify": true }
+
+POST https://afr.im/api/v1/owners/notify
+Authorization: Bearer manage-…
+{ "domain": "example.com", "notify": false }
+→ 200 { "domain": "example.com", "notify": false }
+```
+
+- **A human check is part of the contract**: both write endpoints (`/api/v1/owners/email/start`, `/api/v1/owners/email`) need `"turnstile_token"` (action `afr_owner_email`), otherwise `400 { "error": "turnstile_failed", "reason": "missing_token" | "invalid_token" | "wrong_action" | "verify_failed" }`. The `X-AFR-Agent-Key` header skips the check for agents that cannot run a browser widget.
+- Limits: 3 challenges and 3 registrations per domain per day, 5 per IP per hour.
+- The address is stored encrypted and is only ever reported masked (`o***@example.com`) — AFR never returns the plaintext address.
+- The AFR panel keeps the management token in the browser you used (localStorage). Moving to another machine means pasting the token back into the panel; a lost token means confirming the mailbox again.
+
 ## 3. Fetch budget and politeness
 
 - Honor `robots.txt`, including any `Crawl-delay`, before every request.
@@ -138,6 +201,7 @@ An unknown domain is returned as a tool-level error, not a protocol error. Rate 
 - Use conditional requests (`If-None-Match` / `If-Modified-Since`) where possible and cache responses; re-fetch only pages you detected as changed instead of polling. Static pages are served with `Cache-Control: max-age=60, stale-while-revalidate=600`; `/data/*` with `max-age=300, stale-while-revalidate=86400`; `/og/*`, `/icons/*`, `/fonts/*` are cacheable for a week.
 - Do not retry aggressively: one retry after a `5xx` or timeout, then back off. `4xx` responses are final (except `429`, where `Retry-After` / `nextAllowedAt` is authoritative).
 - POST endpoints are rate-limited as documented per endpoint; `GET` endpoints need no key. The two POST endpoints that queue a scan also need the human-verification token of §2.3 (`turnstile_token`, or the `X-AFR-Agent-Key` header for agents).
+- The owner-mailbox write endpoints (`/api/v1/owners/email/start`, `/api/v1/owners/email`) carry the same human-verification token — `turnstile_token` (action `afr_owner_email`), or the `X-AFR-Agent-Key` header for agents. See §2.9.
 
 ## 4. What you may reuse
 

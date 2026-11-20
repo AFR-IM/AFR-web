@@ -11,6 +11,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { API_KEY_HEADER, hashApiKey, isValidApiKey } from '../src/api-key.ts';
+import { encryptEmail, hashToken } from '../src/email.ts';
 import { createApp } from '../src/index.ts';
 import { pruneMailArtifacts } from '../src/mail-gc.ts';
 import { openSeededDb } from './helpers.ts';
@@ -188,5 +189,97 @@ describe('the human check and the machine path', () => {
     const payload = await accepted.json();
     assert.equal(payload.ok, true);
     assert.equal(payload.domain, 'machine-client-example.com');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The management token of an owner mailbox
+//
+// The token is handed out exactly once (by the mailbox confirmation) and
+// authorises every later read of the mailbox. Without it nobody learns even
+// the masked address of a stranger's mailbox.
+// ---------------------------------------------------------------------------
+
+describe('the management token of an owner mailbox', () => {
+  const SECRET = btoa('a'.repeat(32));
+  const TOKEN = 'manage-0123456789abcdef0123456789abcdef';
+
+  /** A confirmed mailbox with a known management token. */
+  async function seedMailbox(raw: DatabaseSync, domain: string, email: string): Promise<void> {
+    const { cipher, hash } = await encryptEmail(email, SECRET);
+    raw
+      .prepare(
+        `INSERT INTO owner_emails
+           (domain, email_cipher, email_hash, verified_at, verify_token_hash, verify_expires_at, manage_token_hash, notify, created_at, updated_at)
+         VALUES (?, ?, ?, '2026-11-20T00:00:00.000Z', NULL, NULL, ?, 1, '2026-11-20', '2026-11-20')`,
+      )
+      .run(domain, cipher, hash, await hashToken(TOKEN));
+  }
+
+  function read(
+    app: ReturnType<typeof createApp>,
+    token: string | null,
+  ): Promise<Response> {
+    const headers: Record<string, string> = {
+      accept: 'application/json',
+      'x-forwarded-for': '203.0.113.95',
+    };
+    if (token) headers.authorization = `Bearer ${token}`;
+    return app.request(
+      '/api/v1/owners/email?domain=example.com',
+      { headers },
+      { EMAIL_ENC_KEY: SECRET },
+    );
+  }
+
+  it('refuses a request without a token and with a wrong token', async () => {
+    const { db, raw } = openSeededDb();
+    await seedMailbox(raw, 'example.com', 'owner@example.com');
+    const app = createApp({ db });
+
+    const anonymous = await read(app, null);
+    assert.equal(anonymous.status, 401);
+    assert.equal((await anonymous.json()).error, 'unauthorized');
+
+    const wrong = await read(app, 'manage-ffffffffffffffffffffffffffffffff');
+    assert.equal(wrong.status, 401);
+    assert.equal((await wrong.json()).error, 'unauthorized');
+  });
+
+  it('answers the masked address for the right token — and nothing else', async () => {
+    const { db, raw } = openSeededDb();
+    await seedMailbox(raw, 'example.com', 'owner@example.com');
+    const app = createApp({ db });
+
+    const res = await read(app, TOKEN);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.deepEqual(Object.keys(body).sort(), ['domain', 'email_masked', 'notify', 'verified']);
+    assert.equal(body.domain, 'example.com');
+    assert.equal(body.email_masked, 'o***@example.com');
+    assert.equal(body.verified, true);
+    assert.equal(body.notify, true);
+    assert.ok(!JSON.stringify(body).includes('owner@example.com'), 'no plaintext in the answer');
+    assert.ok(!JSON.stringify(body).includes(TOKEN), 'the token is never echoed back');
+  });
+
+  it('refuses a token of another domain', async () => {
+    const { db, raw } = openSeededDb();
+    await seedMailbox(raw, 'example.com', 'owner@example.com');
+    const app = createApp({ db });
+
+    const res = await app.request(
+      '/api/v1/owners/email?domain=coolsite.io',
+      {
+        headers: {
+          accept: 'application/json',
+          'x-forwarded-for': '203.0.113.95',
+          authorization: `Bearer ${TOKEN}`,
+        },
+      },
+      { EMAIL_ENC_KEY: SECRET },
+    );
+    assert.equal(res.status, 401);
+    assert.equal((await res.json()).error, 'unauthorized');
   });
 });

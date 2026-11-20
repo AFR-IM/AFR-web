@@ -2103,6 +2103,21 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
       return c.json({ error: 'invalid_email', message: 'expected an email address like owner@example.com' }, 400);
     }
 
+    // Human check (Turnstile). It runs before every read of the directory
+    // and before the challenge is minted, so a request without a valid
+    // human-verification token neither stores a challenge nor burns the
+    // domain/IP budget. A machine client (AI agent, script) presents an
+    // API key instead — requireTurnstile() honours that exemption.
+    const turnstile = await requireTurnstile(c, {
+      action: TURNSTILE_ACTIONS.ownerEmail,
+      payload,
+      fetchImpl: overrides.turnstileFetch,
+      db: dbOf(c, overrides),
+    });
+    if (!turnstile.ok) {
+      return c.json({ error: 'turnstile_failed', reason: turnstile.reason }, 400);
+    }
+
     const db = dbOf(c, overrides);
     // Owners often type the www form; the directory stores the registered
     // domain, so fall back to it before answering "unknown domain".
@@ -2203,6 +2218,21 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     // The challenge was issued for the directory key of the domain — the
     // lookup below uses the very same value.
     const canonical = directoryDomain(domain);
+
+    // Human check (Turnstile) — same gate as the challenge endpoint, same
+    // API-key exemption for machine clients. It runs before the challenge
+    // is looked up and before the domain is probed, so a request without a
+    // valid token neither reads the challenge store nor sends a probe and
+    // never reaches the rate limiter.
+    const turnstile = await requireTurnstile(c, {
+      action: TURNSTILE_ACTIONS.ownerEmail,
+      payload,
+      fetchImpl: overrides.turnstileFetch,
+      db: dbOf(c, overrides),
+    });
+    if (!turnstile.ok) {
+      return c.json({ error: 'turnstile_failed', reason: turnstile.reason }, 400);
+    }
 
     const db = dbOf(c, overrides);
     // Without the encryption secret the mailbox cannot be stored at all.

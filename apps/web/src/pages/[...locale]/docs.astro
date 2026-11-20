@@ -43,6 +43,12 @@ const PROSE = {
       'The two POST endpoints above are protected by Cloudflare Turnstile: the request body must carry a "turnstile_token" that a browser widget minted on the AFR forms. A missing, expired or foreign token is answered 400 { "error": "turnstile_failed" } — no scan is queued and no rate-limit budget is spent. The widget is rendered by the site itself (afr.im/submit and the search page); the secret never leaves the server. An AI agent that cannot run a browser widget can instead send the "X-AFR-Agent-Key" request header: a key issued by AFR and not revoked skips the human check (self-service issuance is not open yet — ask for one).',
     backToMethod: 'Read the AFR standard',
     botLink: 'What our own scanner fetches',
+    ownerTitle: 'Owner mailbox (score-change notifications)',
+    ownerBody:
+      'A site owner can register one mailbox per domain and receive a mail when the AFR rating of that domain changes. Three locks guard it, and all three must open: (1) domain control — AFR hands out a challenge and reads it back from the domain itself (DNS TXT record, /.well-known/afr-mail.txt, or a homepage meta tag); (2) mailbox control — AFR mails a single-use confirmation link to that address; (3) the management token — that confirmation returns the token exactly once, and every later read or notification switch has to present it. The address is stored encrypted and is only ever reported masked (o***@example.com). The management token is never shown a second time: keep it (the AFR panel stores it in your own browser, nothing else does). Both write endpoints are gated by the same human check as the scans: the body carries "turnstile_token" (action afr_owner_email), a missing token is answered 400 { "error": "turnstile_failed" }, and the X-AFR-Agent-Key header skips the check for agents. Limits: 3 challenges and 3 registrations per domain per day, 5 per IP per hour.',
+    ownerErrorsTitle: 'Owner mailbox errors',
+    ownerErrorsBody:
+      'invalid_email and invalid_challenge (400), unknown_domain (404), challenge_not_found, challenge_email_mismatch and domain_control_failed (403 — the answer carries a per-method "checks" summary of what AFR saw on the domain), mailbox_already_verified (409) and rate_limited (429).',
   },
   'zh-CN': {
     title: 'API 文档',
@@ -69,6 +75,12 @@ const PROSE = {
       '上述两个 POST 端点由 Cloudflare Turnstile 保护：请求体必须携带由 AFR 表单上的浏览器组件生成的 "turnstile_token"。缺少、过期或不对应的 token 返回 400 { "error": "turnstile_failed" }——不入队，也不消耗限额。组件由本站自身渲染（afr.im/submit 与搜索页），secret 不会离开服务器。无法运行浏览器组件的 AI agent 可改用 "X-AFR-Agent-Key" 请求头：由 AFR 签发且未撤销的 key 可跳过人机校验（暂未开放自助签发，需向 AFR 申请）。',
     backToMethod: '阅读 AFR 标准',
     botLink: '我们自己的扫描器抓取什么',
+    ownerTitle: '站主邮箱（评分变化通知）',
+    ownerBody:
+      '站主可为每个域名登记一个邮箱，在该域名的 AFR 评级变化时收到邮件。三道锁必须全部打开：(1) 域名控制——AFR 发出挑战码，并亲自到域名上读取（DNS TXT 记录、/.well-known/afr-mail.txt 或首页 meta 标签）；(2) 邮箱控制——AFR 向该邮箱寄出一次性确认链接；(3) 管理令牌——确认时一次性返回，之后每次读取或开关通知都必须出示它。地址加密存储，对外只以掩码形式返回（o***@example.com）。管理令牌不会第二次显示：请自行保存（AFR 面板只把它保存在你自己的浏览器里）。两个写接口与扫描接口共用同一人机校验：请求体携带 "turnstile_token"（action afr_owner_email），缺少 token 返回 400 { "error": "turnstile_failed" }，agent 可用 X-AFR-Agent-Key 头跳过。限额：每域名每天 3 次挑战码与 3 次登记、每 IP 每小时 5 次。',
+    ownerErrorsTitle: '站主邮箱错误码',
+    ownerErrorsBody:
+      'invalid_email 与 invalid_challenge（400）、unknown_domain（404）、challenge_not_found、challenge_email_mismatch 与 domain_control_failed（403——响应附带平台在域名上看到情况的逐方式 "checks" 摘要）、mailbox_already_verified（409）以及 rate_limited（429）。',
   },
 } as const;
 
@@ -221,6 +233,59 @@ const endpoints: Endpoint[] = [
       '面向 AI 运行时的 MCP（JSON-RPC 2.0）：工具 site_rating、search_sites、grade_distribution。未知域名返回工具级错误而非协议错误。',
     ),
   },
+  {
+    method: 'POST',
+    path: '/api/v1/owners/email/start',
+    desc: T(
+      'Step 1 of the owner mailbox: ask for a domain-control challenge. Body: { "domain": "example.com", "email": "owner@example.com" } — the answer carries the challenge plus the three ways to publish it on the domain (DNS TXT record, /.well-known/afr-mail.txt, homepage meta tag). The challenge is bound to that address and valid for 24 hours; 3 per domain per day, 5 per IP per hour. A human check is part of the contract: the body must also carry { "turnstile_token": "…" } (action afr_owner_email), otherwise 400 { "error": "turnstile_failed" } — the X-AFR-Agent-Key header skips it for agents.',
+      '站主邮箱第 1 步：申请域名控制挑战码。请求体：{ "domain": "example.com", "email": "owner@example.com" }——响应含挑战码与三种在域名上的发布方式（DNS TXT 记录、/.well-known/afr-mail.txt、首页 meta 标签）。挑战码与该邮箱绑定、24 小时内有效；每域名每天 3 次、每 IP 每小时 5 次。同样需要人机校验：请求体须携带 { "turnstile_token": "…" }（action afr_owner_email），否则返回 400 { "error": "turnstile_failed" }；agent 可用 X-AFR-Agent-Key 头跳过。',
+    ),
+    example: `{ "challenge": "ch-0123456789abcdef0123456789abcdef",
+  "methods": {
+    "dns":  { "type": "TXT", "name": "example.com", "value": "afr-mail=ch-…" },
+    "file": { "url": "https://example.com/.well-known/afr-mail.txt", "content": "ch-…" },
+    "meta": { "name": "afr-mail-verification", "content": "ch-…" } },
+  "expiresAt": "2026-11-21T12:00:00.000Z" }`,
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/owners/email',
+    desc: T(
+      'Step 2 of the owner mailbox: register the address. Body: { "domain": "example.com", "email": "owner@example.com", "challenge": "ch-…" } — AFR probes the domain itself and stores the mailbox only when it finds the challenge there. The answer is { "status": "sent", "emailed": true } when the confirmation mail went out, or { "status": "stored", "emailed": false, "verifyUrl": "…" } when no mail provider is configured (the returned link finishes the confirmation). The same human check applies (turnstile_token, action afr_owner_email; X-AFR-Agent-Key skips it).',
+      '站主邮箱第 2 步：登记邮箱。请求体：{ "domain": "example.com", "email": "owner@example.com", "challenge": "ch-…" }——AFR 会亲自到域名上探测，只有看到挑战码才写入邮箱。邮件寄出时返回 { "status": "sent", "emailed": true }；未配置邮件通道时返回 { "status": "stored", "emailed": false, "verifyUrl": "…" }（用该链接完成确认）。同样需要人机校验（turnstile_token，action afr_owner_email；X-AFR-Agent-Key 可跳过）。',
+    ),
+    example: `{ "status": "sent", "emailed": true }`,
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/owners/email/verify',
+    desc: T(
+      'Consume the single-use confirmation link. The answer carries the management token: { "verified": true, "domain": "example.com", "manageToken": "manage-…" }. That token is returned exactly once — only its hash is stored, so AFR can never show it again. It authorises every later read of the mailbox and the notification switch.',
+      '消费一次性确认链接。响应会给出管理令牌：{ "verified": true, "domain": "example.com", "manageToken": "manage-…" }。该令牌只此一次返回——服务端只存哈希，永远无法再次显示。它是之后读取邮箱与开关通知的唯一凭据。',
+    ),
+    example: `{ "verified": true, "domain": "example.com",
+  "manageToken": "manage-0123456789abcdef0123456789abcdef" }`,
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/owners/email',
+    desc: T(
+      'Read the mailbox of a domain. Requires the management token of that mailbox: Authorization: Bearer manage-… — without it (or with a wrong token, or the token of another domain) the answer is 401 unauthorized. The address is only ever reported masked.',
+      '读取某域名的邮箱。须携带该邮箱的管理令牌：Authorization: Bearer manage-…——缺少、错误或属于其他域名时返回 401 unauthorized。地址只以掩码形式返回。',
+    ),
+    params: 'domain · Authorization: Bearer <manageToken>',
+    example: `{ "domain": "example.com", "email_masked": "o***@example.com",
+  "verified": true, "notify": true }`,
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/owners/notify',
+    desc: T(
+      'Turn the score-change mails of a domain on or off. Body: { "domain": "example.com", "notify": false } with the same Authorization: Bearer manage-… header. A confirmed mailbox is never overwritten by another registration (409 mailbox_already_verified).',
+      '开关某域名的评分变化邮件。请求体：{ "domain": "example.com", "notify": false }，同样带 Authorization: Bearer manage-… 头。已确认的邮箱不会被其他登记覆盖（409 mailbox_already_verified）。',
+    ),
+    example: `{ "domain": "example.com", "notify": false }`,
+  },
 ];
 ---
 
@@ -288,6 +353,17 @@ const endpoints: Endpoint[] = [
     </section>
 
     <section class="sec">
+      <h2>{P.ownerTitle}</h2>
+      <p class="body">{P.ownerBody}</p>
+      <h3>{P.ownerErrorsTitle}</h3>
+      <p class="body">{P.ownerErrorsBody}</p>
+      <pre class="mono"><code>{`{ "error": "domain_control_failed",
+  "checks": [ { "method": "dns", "detail": "no TXT record" },
+              { "method": "file", "detail": "404" },
+              { "method": "meta", "detail": "tag not found" } ] }`}</code></pre>
+    </section>
+
+    <section class="sec">
       <h2>{P.machineTitle}</h2>
       <ul class="links">
         {P.machineItems.map(([label, detail]) => (
@@ -341,6 +417,10 @@ const endpoints: Endpoint[] = [
   .sec h2 {
     font-size: 19px;
     margin-bottom: 12px;
+  }
+  .sec h3 {
+    font-size: 15px;
+    margin: 18px 0 8px;
   }
   .body {
     margin: 0 0 12px;

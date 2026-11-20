@@ -114,6 +114,23 @@ describe('catalog parity', () => {
       'backToDirectory', 'lastSync', 'cachedSites',
       // PWA install prompt (InstallBanner.astro)
       'installPrompt', 'installCta', 'installLater', 'installDismiss',
+      // owner mailbox self-service (detail page — OwnerMailbox.astro)
+      'ownerMailTitle', 'ownerMailDesc', 'ownerMailEmailLabel', 'ownerMailStart', 'ownerMailBusy',
+      'ownerMailPublishTitle', 'ownerMailPublishDesc', 'ownerMailChallengeLabel', 'ownerMailExpires',
+      'ownerMailDnsType', 'ownerMailDnsName', 'ownerMailDnsValue', 'ownerMailFileUrl',
+      'ownerMailFileContent', 'ownerMailMetaName', 'ownerMailMetaContent', 'ownerMailMetaTag',
+      'ownerMailCheck',
+      'ownerMailChecking', 'ownerMailChangeEmail', 'ownerMailChecklistTitle', 'ownerMailSentTitle',
+      'ownerMailSentBody', 'ownerMailStoredTitle', 'ownerMailStoredBody', 'ownerMailVerifyLink',
+      'ownerMailTokenLabel', 'ownerMailTokenHelp', 'ownerMailTokenUse', 'ownerMailTokenSaved',
+      'ownerMailTokenInvalid', 'ownerMailVerifiedTitle', 'ownerMailMaskedLabel', 'ownerMailNotifyLabel',
+      'ownerMailNotifySaved', 'ownerMailSignOut', 'ownerMailSignedOut', 'ownerMailRestoreTitle',
+      'ownerMailRate', 'ownerMailError', 'ownerMailErrInvalidEmail', 'ownerMailErrInvalidDomain',
+      'ownerMailErrInvalidChallenge', 'ownerMailErrChallengeNotFound',
+      'ownerMailErrChallengeMismatch', 'ownerMailErrDomainControl', 'ownerMailErrUnknownDomain',
+      'ownerMailErrMailboxVerified', 'ownerMailErrRateLimited', 'ownerMailErrUnauthorized',
+      'ownerMailErrTurnstile', 'ownerMailErrTurnstileRequired',
+      'ownerMailErrTurnstileUnavailable', 'ownerMailErrNotConfigured',
     ];
     for (const locale of LOCALES) {
       for (const key of required) {

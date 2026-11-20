@@ -1,0 +1,1130 @@
+---
+// OwnerMailbox — owner mailbox self-service, right column of the site detail
+// page. Three locks stand in front of the notification channel, in the order
+// the owner meets them:
+//   1. domain control — AFR hands out a challenge; the owner publishes it on
+//      the domain (DNS TXT / well-known file / homepage meta) and AFR reads
+//      it back from the domain itself,
+//   2. mailbox control — AFR mails a confirmation link to that address; only
+//      the holder of the mailbox can open it,
+//   3. the management token — the confirmation returns it exactly once, and
+//      every later read/toggle of the mailbox has to present it.
+//
+// The token lives in localStorage (this browser only) and the panel says so
+// out loud: a lost token means the mailbox has to be confirmed again. The
+// address itself is never shown in full — the API reports a masked one.
+//
+// Nothing is requested during SSR: the whole flow is browser-side, so a
+// static build of the detail page stays a static build.
+
+import Turnstile from '../security/Turnstile.astro';
+import { getCatalog, toLocale, type Locale } from '../../i18n/loader.ts';
+
+interface Props {
+  domain: string;
+  locale: string;
+}
+
+const { domain, locale } = Astro.props;
+const loc: Locale = toLocale(locale);
+const L = getCatalog(loc);
+const isZh = loc === 'zh-CN';
+
+/**
+ * Catalog first, inline bilingual fallback second. The owner-mail copy is
+ * not part of the legacy COPY map (components/home/fallbacks.ts) — the
+ * packages/i18n catalog is the single source of truth for it.
+ */
+const t = (key: string, en: string, zh: string): string => L.ui[key] ?? (isZh ? zh : en);
+
+/** The Turnstile action of the owner-mail endpoints (worker: TURNSTILE_ACTIONS.ownerEmail). */
+const ACTION = 'afr_owner_email';
+
+const title = t('ownerMailTitle', 'Owner notifications', '站主通知');
+const desc = t(
+  'ownerMailDesc',
+  'Register the mailbox that should receive score-change notices for this site. The address is stored encrypted and never shown in full.',
+  '登记接收本站评分变化通知的邮箱。地址加密存储，且永不完整显示。',
+);
+const emailLabel = t('ownerMailEmailLabel', 'Your email address', '你的邮箱地址');
+const startText = t('ownerMailStart', 'Start verification', '开始验证');
+const busyText = t('ownerMailBusy', 'Starting…', '正在开始…');
+const publishTitle = t('ownerMailPublishTitle', 'Publish the challenge on your domain', '在你的域名上发布挑战码');
+const publishDesc = t(
+  'ownerMailPublishDesc',
+  'One method is enough — AFR reads the challenge from your domain itself.',
+  '三种方式任选其一即可——AFR 会亲自到你的域名上读取挑战码。',
+);
+const challengeLabel = t('ownerMailChallengeLabel', 'Challenge', '挑战码');
+const expiresText = t('ownerMailExpires', 'The challenge is valid for 24 hours.', '挑战码 24 小时内有效。');
+const dnsTypeLabel = t('ownerMailDnsType', 'Record type', '记录类型');
+const dnsNameLabel = t('ownerMailDnsName', 'Record name', '记录名称');
+const dnsValueLabel = t('ownerMailDnsValue', 'Record value', '记录值');
+const fileUrlLabel = t('ownerMailFileUrl', 'File URL', '文件地址');
+const fileContentLabel = t('ownerMailFileContent', 'File content', '文件内容');
+const metaNameLabel = t('ownerMailMetaName', 'Meta tag name', 'Meta 标签名');
+const metaContentLabel = t('ownerMailMetaContent', 'Meta tag content', 'Meta 标签内容');
+const metaTagLabel = t('ownerMailMetaTag', 'Meta tag', 'Meta 标签');
+const checkText = t('ownerMailCheck', 'I published it — check now', '我已发布，立即检查');
+const checkingText = t('ownerMailChecking', 'Checking…', '正在检查…');
+const changeEmailText = t('ownerMailChangeEmail', 'Use another email', '换个邮箱');
+const checklistTitle = t('ownerMailChecklistTitle', 'What AFR saw on your domain', 'AFR 在你的域名上看到的情况');
+const sentTitle = t('ownerMailSentTitle', 'Confirmation mail sent', '确认信已寄出');
+const sentBody = t(
+  'ownerMailSentBody',
+  'Open the link in the mail. It shows your management token exactly once — save it right away.',
+  '打开邮件中的链接。它会一次性显示管理令牌——请立即保存。',
+);
+const storedTitle = t('ownerMailStoredTitle', 'The mail channel is not configured', '邮件通道未配置');
+const storedBody = t(
+  'ownerMailStoredBody',
+  'No mail could be sent, but the link below completes the confirmation just as well and works once.',
+  '无法发送邮件，但下面的确认链接作用相同，且只能使用一次。',
+);
+const verifyLinkText = t('ownerMailVerifyLink', 'Finish the confirmation here', '在此完成确认');
+const tokenLabel = t('ownerMailTokenLabel', 'Management token', '管理令牌');
+const tokenHelp = t(
+  'ownerMailTokenHelp',
+  'The management token is shown once, lives only in this browser, and is lost when you change browser or clear the cache. Paste it here to restore the mailbox on another device.',
+  '管理令牌只显示一次、只存在本机浏览器；换浏览器或清缓存即失效。可在此粘贴，在别的设备上恢复邮箱管理。',
+);
+const tokenUseText = t('ownerMailTokenUse', 'Use this token', '使用该令牌');
+const tokenSavedText = t('ownerMailTokenSaved', 'Management token saved in this browser.', '管理令牌已保存在本机浏览器。');
+const tokenInvalidText = t(
+  'ownerMailTokenInvalid',
+  'This management token is not valid — confirm the mailbox again.',
+  '该管理令牌无效——请重新确认邮箱。',
+);
+const verifiedTitle = t('ownerMailVerifiedTitle', 'Notifications are on', '通知已开启');
+const maskedLabel = t('ownerMailMaskedLabel', 'Registered mailbox', '已登记邮箱');
+const notifyLabel = t('ownerMailNotifyLabel', 'Email me when the AFR score changes', 'AFR 分数变化时给我发邮件');
+const notifySavedText = t('ownerMailNotifySaved', 'Notification preference saved.', '通知偏好已保存。');
+const signOutText = t('ownerMailSignOut', 'Sign out / register again', '退出 / 重新登记');
+const signedOutText = t('ownerMailSignedOut', 'Signed out — the token was removed from this browser.', '已退出——令牌已从本机浏览器移除。');
+const restoreTitle = t('ownerMailRestoreTitle', 'I saved my management token', '我保存的管理令牌');
+const rateText = t('ownerMailRate', 'Too many attempts — try again in {t}.', '尝试次数过多——请在 {t} 后重试。');
+const errorText = t('ownerMailError', 'Could not reach the server — try again.', '无法连接服务器——请重试。');
+const copyLabel = L.ui.copy ?? 'Copy';
+const copiedLabel = `${L.ui.copied ?? 'Copied'} ✓`;
+const methodFile = L.ui.verifyMethodFile ?? 'File';
+const methodMeta = L.ui.verifyMethodMeta ?? 'Meta';
+const methodDns = L.ui.verifyMethodDns ?? 'DNS';
+
+/* Error codes of the owner-mail endpoints → human words (both locales). */
+const errInvalidEmail = t('ownerMailErrInvalidEmail', 'Please enter a valid email address.', '请输入有效的邮箱地址。');
+const errInvalidDomain = t('ownerMailErrInvalidDomain', 'This domain cannot be registered.', '该域名无法登记。');
+const errInvalidChallenge = t('ownerMailErrInvalidChallenge', 'This challenge is missing or malformed.', '挑战码缺失或格式错误。');
+const errChallengeNotFound = t('ownerMailErrChallengeNotFound', 'Unknown or already used challenge — start a new one.', '挑战码未知或已被使用——请重新开始。');
+const errChallengeMismatch = t('ownerMailErrChallengeMismatch', 'This challenge belongs to another address — start a new one.', '该挑战码属于另一个邮箱——请重新开始。');
+const errDomainControl = t('ownerMailErrDomainControl', 'AFR does not see the challenge on your domain yet — publish it and try again.', 'AFR 还没在你的域名上看到挑战码——发布后再试。');
+const errUnknownDomain = t('ownerMailErrUnknownDomain', 'This domain is not listed in AFR yet.', '该域名尚未被 AFR 收录。');
+const errMailboxVerified = t('ownerMailErrMailboxVerified', 'This domain already has a confirmed mailbox.', '该域名已有确认过的邮箱。');
+const errRateLimited = t('ownerMailErrRateLimited', 'Too many attempts — try again later.', '尝试次数过多——请稍后再试。');
+const errUnauthorized = t('ownerMailErrUnauthorized', 'The management token is not valid — confirm the mailbox again.', '管理令牌无效——请重新确认邮箱。');
+const errTurnstile = t('ownerMailErrTurnstile', 'Human verification failed — please try again.', '人机验证失败——请重试。');
+const errTurnstileRequired = t('ownerMailErrTurnstileRequired', 'Please complete the human verification, then try again.', '请先完成人机验证，然后重试。');
+const errTurnstileUnavailable = t('ownerMailErrTurnstileUnavailable', 'The human check could not be loaded — check your connection and try again.', '人机验证组件加载失败——请检查网络后重试。');
+const errNotConfigured = t('ownerMailErrNotConfigured', 'The owner-mail feature is not configured on this deployment.', '当前部署未配置站主邮箱功能。');
+---
+
+<section
+  class="om"
+  data-owner-mailbox
+  data-domain={domain}
+  data-action={ACTION}
+  data-label-idle={startText}
+  data-label-busy={busyText}
+  data-label-check={checkText}
+  data-label-checking={checkingText}
+  data-msg-error={errorText}
+  data-tpl-rate={rateText}
+  data-copy-label={copyLabel}
+  data-copied-label={copiedLabel}
+  data-method-file={methodFile}
+  data-method-meta={methodMeta}
+  data-method-dns={methodDns}
+  data-msg-token-saved={tokenSavedText}
+  data-msg-token-invalid={tokenInvalidText}
+  data-msg-notify-saved={notifySavedText}
+  data-msg-signed-out={signedOutText}
+  data-err-invalid-email={errInvalidEmail}
+  data-err-invalid-domain={errInvalidDomain}
+  data-err-invalid-challenge={errInvalidChallenge}
+  data-err-challenge-not-found={errChallengeNotFound}
+  data-err-challenge-mismatch={errChallengeMismatch}
+  data-err-domain-control={errDomainControl}
+  data-err-unknown-domain={errUnknownDomain}
+  data-err-mailbox-verified={errMailboxVerified}
+  data-err-rate-limited={errRateLimited}
+  data-err-unauthorized={errUnauthorized}
+  data-err-turnstile={errTurnstile}
+  data-err-turnstile-required={errTurnstileRequired}
+  data-err-turnstile-unavailable={errTurnstileUnavailable}
+  data-err-not-configured={errNotConfigured}
+  aria-labelledby="owner-mailbox-title"
+>
+  <header class="om-head">
+    <h2 id="owner-mailbox-title">{title}</h2>
+  </header>
+
+  {/* ── state: nothing started yet ─────────────────────────────── */}
+  <div class="om-state" data-om-state="idle">
+    <p class="om-desc">{desc}</p>
+    <form class="om-form" data-om-form novalidate>
+      <label class="om-label" for="om-email">{emailLabel}</label>
+      <input
+        class="om-input"
+        id="om-email"
+        name="email"
+        type="email"
+        inputmode="email"
+        autocomplete="email"
+        spellcheck="false"
+        placeholder="owner@example.com"
+        data-om-email
+      />
+      <button class="btn om-btn" type="submit" data-om-start>{startText}</button>
+    </form>
+  </div>
+
+  {/* ── state: the challenge is published, waiting for the check ─ */}
+  <div class="om-state" data-om-state="challenge" hidden>
+    <p class="om-title-sm">{publishTitle}</p>
+    <p class="om-note">{publishDesc}</p>
+    <p class="om-note">{expiresText}</p>
+
+    <div class="snippet">
+      <div class="snippet-top">
+        <span class="kind mono">{challengeLabel}</span>
+        <button class="copy mono" type="button" data-om-copy data-label={copyLabel} data-done={copiedLabel}>
+          {copyLabel}
+        </button>
+      </div>
+      <textarea class="mono" readonly rows="1" spellcheck="false" aria-label={challengeLabel} data-om-f="challenge"></textarea>
+    </div>
+
+    <div class="snippet">
+      <div class="snippet-top">
+        <span class="kind mono">{dnsTypeLabel}</span>
+      </div>
+      <p class="om-plain mono" data-om-f="dns-type"></p>
+    </div>
+    <div class="snippet">
+      <div class="snippet-top">
+        <span class="kind mono">{dnsNameLabel}</span>
+        <button class="copy mono" type="button" data-om-copy data-label={copyLabel} data-done={copiedLabel}>
+          {copyLabel}
+        </button>
+      </div>
+      <textarea class="mono" readonly rows="1" spellcheck="false" aria-label={dnsNameLabel} data-om-f="dns-name"></textarea>
+    </div>
+    <div class="snippet">
+      <div class="snippet-top">
+        <span class="kind mono">{dnsValueLabel}</span>
+        <button class="copy mono" type="button" data-om-copy data-label={copyLabel} data-done={copiedLabel}>
+          {copyLabel}
+        </button>
+      </div>
+      <textarea class="mono" readonly rows="2" spellcheck="false" aria-label={dnsValueLabel} data-om-f="dns-value"></textarea>
+    </div>
+
+    <div class="snippet">
+      <div class="snippet-top">
+        <span class="kind mono">{fileUrlLabel}</span>
+        <button class="copy mono" type="button" data-om-copy data-label={copyLabel} data-done={copiedLabel}>
+          {copyLabel}
+        </button>
+      </div>
+      <textarea class="mono" readonly rows="2" spellcheck="false" aria-label={fileUrlLabel} data-om-f="file-url"></textarea>
+    </div>
+    <div class="snippet">
+      <div class="snippet-top">
+        <span class="kind mono">{fileContentLabel}</span>
+        <button class="copy mono" type="button" data-om-copy data-label={copyLabel} data-done={copiedLabel}>
+          {copyLabel}
+        </button>
+      </div>
+      <textarea class="mono" readonly rows="2" spellcheck="false" aria-label={fileContentLabel} data-om-f="file-content"></textarea>
+    </div>
+
+    <div class="snippet">
+      <div class="snippet-top">
+        <span class="kind mono">{metaNameLabel}</span>
+        <button class="copy mono" type="button" data-om-copy data-label={copyLabel} data-done={copiedLabel}>
+          {copyLabel}
+        </button>
+      </div>
+      <textarea class="mono" readonly rows="1" spellcheck="false" aria-label={metaNameLabel} data-om-f="meta-name"></textarea>
+    </div>
+    <div class="snippet">
+      <div class="snippet-top">
+        <span class="kind mono">{metaContentLabel}</span>
+        <button class="copy mono" type="button" data-om-copy data-label={copyLabel} data-done={copiedLabel}>
+          {copyLabel}
+        </button>
+      </div>
+      <textarea class="mono" readonly rows="2" spellcheck="false" aria-label={metaContentLabel} data-om-f="meta-content"></textarea>
+    </div>
+    <div class="snippet">
+      <div class="snippet-top">
+        <span class="kind mono">{metaTagLabel}</span>
+        <button class="copy mono" type="button" data-om-copy data-label={copyLabel} data-done={copiedLabel}>
+          {copyLabel}
+        </button>
+      </div>
+      <textarea class="mono" readonly rows="2" spellcheck="false" aria-label={metaTagLabel} data-om-f="meta-tag"></textarea>
+    </div>
+
+    <div class="om-actions">
+      <button class="btn om-btn" type="button" data-om-check>{checkText}</button>
+      <button class="btn btn-ghost om-btn" type="button" data-om-reset>{changeEmailText}</button>
+    </div>
+
+    {/* per-method report of the last check (the platform saw nothing yet) */}
+    <div class="om-checks" data-om-checks hidden>
+      <p class="om-title-sm">{checklistTitle}</p>
+      <ul class="om-check-list" data-om-check-list></ul>
+    </div>
+  </div>
+
+  {/* ── state: the mailbox is registered, waiting for the mail ─── */}
+  <div class="om-state" data-om-state="sent" hidden>
+    <p class="om-title-sm" data-om-sent-title data-sent={sentTitle} data-stored={storedTitle}>{sentTitle}</p>
+    <p class="om-note" data-om-sent-body data-sent={sentBody} data-stored={storedBody}>{sentBody}</p>
+    <p class="om-note">{tokenHelp}</p>
+    <a class="btn om-btn" data-om-verify-link hidden target="_blank" rel="noopener noreferrer">
+      {verifyLinkText}
+    </a>
+  </div>
+
+  {/* ── state: the mailbox is confirmed ────────────────────────── */}
+  <div class="om-state" data-om-state="verified" hidden>
+    <p class="om-title-sm">{verifiedTitle}</p>
+    <p class="om-masked">
+      <span class="om-masked-label">{maskedLabel}</span>
+      <span class="mono" data-om-masked></span>
+    </p>
+    <label class="om-switch">
+      <input type="checkbox" data-om-notify />
+      <span>{notifyLabel}</span>
+    </label>
+    <button class="btn btn-ghost om-btn" type="button" data-om-signout>{signOutText}</button>
+  </div>
+
+  {/* ── the human check (Cloudflare Turnstile) ─────────────────── */}
+  <div class="om-turnstile" data-om-turnstile>
+    <Turnstile action={ACTION} locale={loc} />
+  </div>
+
+  {/* ── recovery: paste a management token saved elsewhere ─────── */}
+  <details class="om-restore">
+    <summary class="om-summary">{restoreTitle}</summary>
+    <p class="om-note">{tokenHelp}</p>
+    <label class="om-label" for="om-token">{tokenLabel}</label>
+    <input
+      class="om-input mono"
+      id="om-token"
+      name="token"
+      type="text"
+      autocomplete="off"
+      spellcheck="false"
+      placeholder="manage-…"
+      data-om-token
+    />
+    <button class="btn btn-ghost om-btn" type="button" data-om-token-use>{tokenUseText}</button>
+  </details>
+
+  <p class="om-status mono" data-om-status role="status" aria-live="polite"></p>
+</section>
+
+<style>
+  .om {
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 14px;
+    display: grid;
+    gap: 10px;
+    scroll-margin-top: calc(var(--nav-h) + 20px);
+  }
+  .om-head h2 {
+    font-size: 15px;
+    margin: 0;
+  }
+  .om-desc,
+  .om-note {
+    margin: 0;
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: var(--text-2);
+  }
+  .om-note {
+    color: var(--text-3);
+  }
+  .om-title-sm {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-1);
+  }
+
+  .om-form {
+    display: grid;
+    gap: 6px;
+    justify-items: start;
+  }
+  .om-label {
+    font-size: 12.5px;
+    color: var(--text-2);
+  }
+  .om-input {
+    display: block;
+    width: 100%;
+    padding: 8px 10px;
+    background: var(--bg-ink);
+    border: 1px solid var(--line);
+    border-radius: var(--r-1);
+    color: var(--text-1);
+    font-family: var(--font-body);
+    font-size: 13.5px;
+    line-height: 1.5;
+    outline: none;
+    transition: border-color var(--t-micro) var(--ease);
+  }
+  .om-input.mono {
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+  .om-input:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: -1px;
+    border-color: var(--brand);
+  }
+  .om-btn {
+    justify-self: start;
+  }
+  .om-btn[disabled] {
+    cursor: not-allowed;
+    opacity: 0.85;
+  }
+
+  /* copyable value rows — same shape as the verification snippets */
+  .snippet {
+    border: 1px solid var(--line);
+    border-radius: var(--r-1);
+    overflow: hidden;
+  }
+  .snippet-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 5px 8px;
+    background: var(--bg-elevated);
+    border-bottom: 1px solid var(--line);
+  }
+  .kind {
+    font-size: 11px;
+    color: var(--text-3);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .copy {
+    padding: 3px 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-1);
+    font-size: 11.5px;
+    color: var(--text-1);
+    transition:
+      border-color var(--t-micro) var(--ease),
+      color var(--t-micro) var(--ease);
+  }
+  .copy:hover {
+    border-color: var(--brand);
+    color: var(--brand);
+  }
+  .copy[data-state='done'] {
+    border-color: var(--grade-a);
+    color: var(--grade-a);
+  }
+  textarea {
+    display: block;
+    width: 100%;
+    resize: vertical;
+    padding: 8px 10px;
+    background: var(--bg-ink);
+    border: none;
+    color: var(--text-1);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    line-height: 1.6;
+    outline: none;
+  }
+  textarea:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: -2px;
+  }
+  .om-plain {
+    margin: 0;
+    padding: 8px 10px;
+    background: var(--bg-ink);
+    color: var(--text-1);
+    font-size: 11.5px;
+    line-height: 1.6;
+  }
+
+  .om-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  /* per-method report of the last check */
+  .om-checks {
+    display: grid;
+    gap: 6px;
+  }
+  .om-checks[hidden] {
+    display: none;
+  }
+  .om-check-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 6px;
+  }
+  .om-check-list li {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 12.5px;
+    line-height: 1.5;
+  }
+  .om-dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    transform: translateY(-1px);
+    background: var(--grade-f);
+  }
+  .om-m {
+    font-size: 11.5px;
+    color: var(--text-1);
+    min-width: 44px;
+  }
+  .om-d {
+    color: var(--text-3);
+    font-size: 11.5px;
+    word-break: break-word;
+  }
+
+  .om-masked {
+    margin: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-size: 13px;
+  }
+  .om-masked-label {
+    font-size: 12px;
+    color: var(--text-3);
+  }
+  .om-switch {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12.5px;
+    color: var(--text-2);
+    cursor: pointer;
+  }
+  .om-switch input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--brand);
+  }
+
+  .om-turnstile[hidden] {
+    display: none;
+  }
+  .om-turnstile :global(.turnstile) {
+    margin-top: 0;
+  }
+
+  .om-restore {
+    border-top: 1px solid var(--line);
+    padding-top: 8px;
+  }
+  .om-summary {
+    font-size: 12.5px;
+    color: var(--text-2);
+    cursor: pointer;
+  }
+  .om-summary:hover {
+    color: var(--brand);
+  }
+  .om-restore[open] .om-summary {
+    margin-bottom: 8px;
+  }
+  .om-restore .om-label {
+    display: block;
+    margin: 8px 0 4px;
+  }
+  .om-restore .om-btn {
+    margin-top: 8px;
+  }
+
+  .om-status {
+    margin: 0;
+    min-height: 1.2em;
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: var(--text-3);
+  }
+  .om-status:empty {
+    display: none;
+  }
+  .om-status[data-tone='error'] {
+    color: var(--grade-f);
+  }
+  .om-status[data-tone='ok'] {
+    color: var(--grade-a);
+  }
+</style>
+
+<script>
+  // Owner mailbox — one state machine per panel:
+  //   idle → challenge → sent → verified (and back to idle from anywhere)
+  //
+  // The management token is the only credential and it is stored in
+  // localStorage under `afr-owner-mail-<domain>` — this browser only. A
+  // refresh therefore restores the confirmed state; an invalid token (401)
+  // drops the panel back to the start and says so.
+  //
+  // The human check (Cloudflare Turnstile) guards both write endpoints. Its
+  // token is single-use, so it is reset after every attempt and the owner
+  // solves the widget again for the next call.
+
+  type TurnstileApi = {
+    getToken?: (action?: string) => string;
+    hasWidget?: (action?: string) => boolean;
+    isFailed?: () => boolean;
+    reset?: (action?: string) => void;
+  };
+
+  function turnstileApi(): TurnstileApi | undefined {
+    return (window as unknown as { __afrTurnstile?: TurnstileApi }).__afrTurnstile;
+  }
+  function turnstileToken(action: string): string {
+    const api = turnstileApi();
+    return api && typeof api.getToken === 'function' ? api.getToken(action) : '';
+  }
+  function turnstileHas(action: string): boolean {
+    const api = turnstileApi();
+    return !!(api && typeof api.hasWidget === 'function' && api.hasWidget(action));
+  }
+  function turnstileUnavailable(): boolean {
+    const api = turnstileApi();
+    return !!(api && typeof api.isFailed === 'function' && api.isFailed());
+  }
+  function turnstileReset(action: string): void {
+    const api = turnstileApi();
+    if (api && typeof api.reset === 'function') api.reset(action);
+  }
+
+  function readJson(r: Response): Promise<any> {
+    return r.json().catch(() => null);
+  }
+
+  function fmtClock(ms: number): string {
+    const total = Math.max(0, Math.ceil(ms / 1000));
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    return h > 0 ? `${h}:${String(m).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`;
+  }
+
+  function toMs(v: unknown): number {
+    if (typeof v === 'number' && isFinite(v) && v > 0) return v > 1e12 ? v : v * 1000;
+    if (typeof v === 'string' && v) {
+      const asNum = Number(v);
+      if (isFinite(asNum) && asNum > 0 && /^\d+$/.test(v)) return asNum > 1e12 ? asNum : asNum * 1000;
+      const t = Date.parse(v);
+      if (!isNaN(t)) return t;
+    }
+    return 0;
+  }
+
+  for (const root of document.querySelectorAll<HTMLElement>('[data-owner-mailbox]')) {
+    const domain = root.dataset.domain ?? '';
+    const action = root.dataset.action ?? 'afr_owner_email';
+    const form = root.querySelector<HTMLFormElement>('[data-om-form]');
+    const emailInput = root.querySelector<HTMLInputElement>('[data-om-email]');
+    const startBtn = root.querySelector<HTMLButtonElement>('[data-om-start]');
+    const checkBtn = root.querySelector<HTMLButtonElement>('[data-om-check]');
+    const resetBtn = root.querySelector<HTMLButtonElement>('[data-om-reset]');
+    const signOutBtn = root.querySelector<HTMLButtonElement>('[data-om-signout]');
+    const tokenUseBtn = root.querySelector<HTMLButtonElement>('[data-om-token-use]');
+    const tokenInput = root.querySelector<HTMLInputElement>('[data-om-token]');
+    const notifyBox = root.querySelector<HTMLInputElement>('[data-om-notify]');
+    const maskedOut = root.querySelector<HTMLElement>('[data-om-masked]');
+    const verifyLink = root.querySelector<HTMLAnchorElement>('[data-om-verify-link]');
+    const sentTitle = root.querySelector<HTMLElement>('[data-om-sent-title]');
+    const sentBody = root.querySelector<HTMLElement>('[data-om-sent-body]');
+    const checksBox = root.querySelector<HTMLElement>('[data-om-checks]');
+    const checksList = root.querySelector<HTMLElement>('[data-om-check-list]');
+    const status = root.querySelector<HTMLElement>('[data-om-status]');
+    const turnstileBox = root.querySelector<HTMLElement>('[data-om-turnstile]');
+
+    const attr = (name: string) => root.getAttribute(name) ?? '';
+
+    /* the management token lives in this browser only */
+    const tokenKey = `afr-owner-mail-${domain}`;
+    let challenge = '';
+    let email = '';
+    let waitTimer = 0;
+
+    function loadToken(): string {
+      try {
+        return localStorage.getItem(tokenKey) ?? '';
+      } catch {
+        return '';
+      }
+    }
+    function saveToken(value: string): void {
+      try {
+        localStorage.setItem(tokenKey, value);
+      } catch {
+        /* storage unavailable — the token stays in this page only */
+      }
+    }
+    function dropToken(): void {
+      try {
+        localStorage.removeItem(tokenKey);
+      } catch {
+        /* nothing to remove */
+      }
+    }
+
+    function say(msg: string, tone?: string) {
+      if (!status) return;
+      status.textContent = msg;
+      if (tone) status.dataset.tone = tone;
+      else delete status.dataset.tone;
+    }
+
+    function setState(next: string) {
+      for (const el of root.querySelectorAll<HTMLElement>('[data-om-state]')) {
+        el.hidden = el.dataset.omState !== next;
+      }
+      /* the human check is only needed while a write is possible */
+      if (turnstileBox) turnstileBox.hidden = !(next === 'idle' || next === 'challenge');
+    }
+
+    function errorFor(code: string): string {
+      switch (code) {
+        case 'invalid_email':
+          return attr('data-err-invalid-email');
+        case 'invalid_domain':
+          return attr('data-err-invalid-domain');
+        case 'invalid_challenge':
+          return attr('data-err-invalid-challenge');
+        case 'challenge_not_found':
+          return attr('data-err-challenge-not-found');
+        case 'challenge_email_mismatch':
+          return attr('data-err-challenge-mismatch');
+        case 'domain_control_failed':
+          return attr('data-err-domain-control');
+        case 'unknown_domain':
+          return attr('data-err-unknown-domain');
+        case 'mailbox_already_verified':
+          return attr('data-err-mailbox-verified');
+        case 'rate_limited':
+          return attr('data-err-rate-limited');
+        case 'unauthorized':
+          return attr('data-err-unauthorized');
+        case 'turnstile_failed':
+          return attr('data-err-turnstile');
+        case 'email_not_configured':
+          return attr('data-err-not-configured');
+        default:
+          return attr('data-msg-error');
+      }
+    }
+
+    function rateCountdown(r: Response, body: any, onDone: () => void) {
+      const until =
+        toMs(body && body.nextAllowedAt) ||
+        (Number(body && body.retryAfter) > 0 ? Date.now() + Number(body.retryAfter) * 1000 : 0) ||
+        (() => {
+          const h = Number(r.headers.get('Retry-After'));
+          return h > 0 ? Date.now() + h * 1000 : Date.now() + 60000;
+        })();
+      if (waitTimer) clearInterval(waitTimer);
+      const paint = () => {
+        const left = until - Date.now();
+        if (left <= 0) {
+          if (waitTimer) clearInterval(waitTimer);
+          waitTimer = 0;
+          say('');
+          onDone();
+          return;
+        }
+        say(attr('data-tpl-rate').replace('{t}', fmtClock(left)));
+      };
+      paint();
+      waitTimer = window.setInterval(paint, 1000);
+    }
+
+    /* ── copy rows: "Copy" → "Copied ✓" → revert after 1.5s ── */
+    const copyTimers = new WeakMap<Element, number>();
+    for (const btn of root.querySelectorAll<HTMLButtonElement>('[data-om-copy]')) {
+      btn.addEventListener('click', async () => {
+        const box = btn.closest('.snippet')?.querySelector('textarea');
+        if (!box) return;
+        try {
+          await navigator.clipboard.writeText(box.value);
+        } catch {
+          box.select();
+          document.execCommand('copy');
+          window.getSelection()?.removeAllRanges();
+        }
+        btn.textContent = btn.dataset.done ?? 'Copied ✓';
+        btn.dataset.state = 'done';
+        const prev = copyTimers.get(btn);
+        if (prev) clearTimeout(prev);
+        copyTimers.set(
+          btn,
+          window.setTimeout(() => {
+            btn.textContent = btn.dataset.label ?? 'Copy';
+            delete btn.dataset.state;
+          }, 1500),
+        );
+      });
+    }
+
+    function fillMethods(m: any) {
+      const set = (key: string, v: string) => {
+        const box = root.querySelector<HTMLTextAreaElement>(`[data-om-f="${key}"]`);
+        if (box) box.value = v ?? '';
+      };
+      const setText = (key: string, v: string) => {
+        const el = root.querySelector<HTMLElement>(`[data-om-f="${key}"]`);
+        if (el) el.textContent = v ?? '';
+      };
+      const dns = m?.dns;
+      const file = m?.file;
+      const meta = m?.meta;
+      if (dns) {
+        setText('dns-type', String(dns.type ?? ''));
+        set('dns-name', String(dns.name ?? ''));
+        set('dns-value', String(dns.value ?? ''));
+      }
+      if (file) {
+        set('file-url', String(file.url ?? ''));
+        set('file-content', String(file.content ?? ''));
+      }
+      if (meta) {
+        const name = String(meta.name ?? '');
+        const content = String(meta.content ?? '');
+        set('meta-name', name);
+        set('meta-content', content);
+        set('meta-tag', `<meta name="${name}" content="${content}">`);
+      }
+    }
+
+    function renderChecks(checks: any[]) {
+      if (!checksList) return;
+      checksList.replaceChildren();
+      for (const c of checks ?? []) {
+        const li = document.createElement('li');
+        const dot = document.createElement('span');
+        dot.className = 'om-dot';
+        dot.setAttribute('aria-hidden', 'true');
+        const m = document.createElement('span');
+        m.className = 'om-m mono';
+        const method = String((c && c.method) || '').toLowerCase();
+        m.textContent =
+          method === 'file'
+            ? attr('data-method-file')
+            : method === 'meta'
+              ? attr('data-method-meta')
+              : method === 'dns'
+                ? attr('data-method-dns')
+                : method;
+        const d = document.createElement('span');
+        d.className = 'om-d';
+        d.textContent = String((c && c.detail) || '');
+        li.append(dot, m, d);
+        checksList.append(li);
+      }
+      if (checksBox) checksBox.hidden = false;
+    }
+
+    /* ── the confirmed state: read the mailbox with the token ── */
+    async function showMailbox(token: string): Promise<boolean> {
+      let res: Response;
+      try {
+        res = await fetch('/api/v1/owners/email?domain=' + encodeURIComponent(domain), {
+          headers: { accept: 'application/json', authorization: 'Bearer ' + token },
+        });
+      } catch {
+        say(attr('data-msg-error'), 'error');
+        setState('idle');
+        return false;
+      }
+      const body = await readJson(res);
+      if (res.status === 401) {
+        dropToken();
+        setState('idle');
+        say(attr('data-msg-token-invalid'), 'error');
+        return false;
+      }
+      if (!res.ok || !body) {
+        say(errorFor(String((body && body.error) || '')), 'error');
+        setState('idle');
+        return false;
+      }
+      if (maskedOut) maskedOut.textContent = String(body.email_masked ?? '');
+      if (notifyBox) notifyBox.checked = body.notify !== false;
+      setState('verified');
+      return true;
+    }
+
+    /* ── start: POST /api/v1/owners/email/start ── */
+    form?.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const value = (emailInput?.value ?? '').trim();
+      if (!value || value.indexOf('@') < 1) {
+        say(attr('data-err-invalid-email'), 'error');
+        emailInput?.focus();
+        return;
+      }
+      const token = turnstileToken(action);
+      if (turnstileHas(action) && !token) {
+        say(
+          turnstileUnavailable() ? attr('data-err-turnstile-unavailable') : attr('data-err-turnstile-required'),
+          'error',
+        );
+        return;
+      }
+      if (startBtn) {
+        startBtn.disabled = true;
+        startBtn.textContent = attr('data-label-busy');
+      }
+      say('');
+
+      fetch('/api/v1/owners/email/start', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify({ domain, email: value, turnstile_token: token }),
+      })
+        .then((r) => readJson(r).then((body) => ({ r, body })))
+        .then(({ r, body }) => {
+          if (r.status >= 200 && r.status < 300 && body && body.challenge) {
+            challenge = String(body.challenge);
+            email = value;
+            fillMethods(body.methods);
+            if (checksBox) checksBox.hidden = true;
+            setState('challenge');
+            say('');
+            checkBtn?.focus();
+            return;
+          }
+          if (r.status === 429) {
+            rateCountdown(r, body, () => {
+              if (startBtn) {
+                startBtn.disabled = false;
+                startBtn.textContent = attr('data-label-idle');
+              }
+            });
+            return;
+          }
+          if (startBtn) {
+            startBtn.disabled = false;
+            startBtn.textContent = attr('data-label-idle');
+          }
+          say(errorFor(String((body && body.error) || '')), 'error');
+        })
+        .catch(() => {
+          if (startBtn) {
+            startBtn.disabled = false;
+            startBtn.textContent = attr('data-label-idle');
+          }
+          say(attr('data-msg-error'), 'error');
+        })
+        .then(() => turnstileReset(action)); /* a token may only be used once */
+    });
+
+    /* ── check: POST /api/v1/owners/email ── */
+    checkBtn?.addEventListener('click', () => {
+      if (checkBtn.disabled) return;
+      if (!challenge) {
+        say(attr('data-err-invalid-challenge'), 'error');
+        return;
+      }
+      const token = turnstileToken(action);
+      if (turnstileHas(action) && !token) {
+        say(
+          turnstileUnavailable() ? attr('data-err-turnstile-unavailable') : attr('data-err-turnstile-required'),
+          'error',
+        );
+        return;
+      }
+      checkBtn.disabled = true;
+      checkBtn.textContent = attr('data-label-checking');
+      say('');
+
+      fetch('/api/v1/owners/email', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify({ domain, email, challenge, turnstile_token: token }),
+      })
+        .then((r) => readJson(r).then((body) => ({ r, body })))
+        .then(({ r, body }) => {
+          if (r.status >= 200 && r.status < 300) {
+            const emailed = body && body.emailed === true;
+            const url = body && typeof body.verifyUrl === 'string' ? body.verifyUrl : '';
+            /* the mail channel decides which wording the owner sees */
+            if (sentTitle) sentTitle.textContent = emailed ? sentTitle.dataset.sent ?? '' : sentTitle.dataset.stored ?? '';
+            if (sentBody) sentBody.textContent = emailed ? sentBody.dataset.sent ?? '' : sentBody.dataset.stored ?? '';
+            if (!emailed && url && verifyLink) {
+              verifyLink.hidden = false;
+              verifyLink.href = url;
+            } else if (verifyLink) {
+              verifyLink.hidden = true;
+            }
+            setState('sent');
+            say('');
+            return;
+          }
+          if (r.status === 403 && body && body.error === 'domain_control_failed') {
+            if (checksBox) checksBox.hidden = false;
+            renderChecks(Array.isArray(body.checks) ? body.checks : []);
+            say(attr('data-err-domain-control'), 'error');
+            checkBtn.disabled = false;
+            checkBtn.textContent = attr('data-label-check');
+            return;
+          }
+          if (r.status === 429) {
+            rateCountdown(r, body, () => {
+              checkBtn.disabled = false;
+              checkBtn.textContent = attr('data-label-check');
+            });
+            return;
+          }
+          checkBtn.disabled = false;
+          checkBtn.textContent = attr('data-label-check');
+          say(errorFor(String((body && body.error) || '')), 'error');
+        })
+        .catch(() => {
+          checkBtn.disabled = false;
+          checkBtn.textContent = attr('data-label-check');
+          say(attr('data-msg-error'), 'error');
+        })
+        .then(() => turnstileReset(action));
+    });
+
+    /* ── back to the start (another address) ── */
+    resetBtn?.addEventListener('click', () => {
+      challenge = '';
+      email = '';
+      if (checksBox) checksBox.hidden = true;
+      if (startBtn) {
+        startBtn.disabled = false;
+        startBtn.textContent = attr('data-label-idle');
+      }
+      setState('idle');
+      say('');
+      emailInput?.focus();
+    });
+
+    /* ── the confirmation link (only when the mail channel is down) ── */
+    verifyLink?.addEventListener('click', (event) => {
+      event.preventDefault();
+      const url = verifyLink.href;
+      if (!url) return;
+      fetch(url, { headers: { accept: 'application/json' } })
+        .then((r) => readJson(r).then((body) => ({ r, body })))
+        .then(({ r, body }) => {
+          if (r.ok && body && typeof body.manageToken === 'string' && body.manageToken) {
+            saveToken(body.manageToken);
+            say(attr('data-msg-token-saved'), 'ok');
+            showMailbox(body.manageToken);
+            return;
+          }
+          /* the browser can still open the link by hand */
+          window.open(url, '_blank', 'noopener');
+          say(attr('data-msg-token-invalid'), 'error');
+        })
+        .catch(() => {
+          window.open(url, '_blank', 'noopener');
+          say(attr('data-msg-token-invalid'), 'error');
+        });
+    });
+
+    /* ── the notification switch ── */
+    notifyBox?.addEventListener('change', () => {
+      const token = loadToken();
+      if (!token) {
+        say(attr('data-err-unauthorized'), 'error');
+        notifyBox.checked = !notifyBox.checked;
+        return;
+      }
+      const want = notifyBox.checked;
+      fetch('/api/v1/owners/notify', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json', authorization: 'Bearer ' + token },
+        body: JSON.stringify({ domain, notify: want }),
+      })
+        .then((r) => readJson(r).then((body) => ({ r, body })))
+        .then(({ r, body }) => {
+          if (r.status >= 200 && r.status < 300) {
+            say(attr('data-msg-notify-saved'), 'ok');
+            return;
+          }
+          notifyBox.checked = !want;
+          say(errorFor(String((body && body.error) || '')), 'error');
+        })
+        .catch(() => {
+          notifyBox.checked = !want;
+          say(attr('data-msg-error'), 'error');
+        });
+    });
+
+    /* ── sign out: the token leaves this browser ── */
+    signOutBtn?.addEventListener('click', () => {
+      dropToken();
+      challenge = '';
+      email = '';
+      if (notifyBox) notifyBox.checked = false;
+      if (maskedOut) maskedOut.textContent = '';
+      setState('idle');
+      say(attr('data-msg-signed-out'), 'ok');
+    });
+
+    /* ── recovery: paste a management token saved elsewhere ── */
+    tokenUseBtn?.addEventListener('click', () => {
+      const value = (tokenInput?.value ?? '').trim();
+      if (!value) {
+        say(attr('data-err-unauthorized'), 'error');
+        return;
+      }
+      saveToken(value);
+      if (tokenInput) tokenInput.value = '';
+      showMailbox(value).then((ok) => {
+        if (ok) say(attr('data-msg-token-saved'), 'ok');
+      });
+    });
+
+    /* ── restore on load: the token in this browser decides ── */
+    const saved = loadToken();
+    if (saved) {
+      /* "loading" hides every state block until the answer arrives */
+      setState('loading');
+      showMailbox(saved);
+    }
+  }
+</script>
