@@ -12,7 +12,7 @@ AFR.IM is a public directory of AI-friendliness ratings (AFR). This file tells a
 
 ## 2. Check one specific site — the most common task
 
-No API key. No authentication. All endpoints are `GET`/`POST` with JSON. Start with the lookup; it answers "is this site rated, and how" in one request.
+No API key for reading. All endpoints are `GET`/`POST` with JSON. Start with the lookup; it answers "is this site rated, and how" in one request. The two endpoints that queue a scan (§2.3) additionally ask for a human-verification token — read §2.3 before you call them.
 
 ### 2.1 Look up a rating
 
@@ -52,11 +52,14 @@ Also note `site.status == "delisted"` — the entry is retired on request or aft
 POST https://afr.im/api/v1/submissions
 Content-Type: application/json
 
-{ "domain": "example.com", "note": "optional free-text note" }
+{ "domain": "example.com", "note": "optional free-text note",
+  "turnstile_token": "<token minted by the widget on https://afr.im/submit>" }
 ```
 
 - The field is **`domain`** (a bare hostname). A full URL such as `"https://example.com"` is normalized, but a JSON key named `url` is **rejected** with `400 { "error": "invalid_domain", "message": "domain must be a string" }`.
 - Subdomains are refused (`400 subdomain_not_allowed`) — submit the registrable domain.
+- **A human check is part of the contract.** This endpoint is protected by Cloudflare Turnstile: the body must carry `"turnstile_token"`, a token minted by the widget on the AFR submit form (`https://afr.im/submit`). A missing, expired, or foreign token is answered `400 { "error": "turnstile_failed", "reason": "missing_token" | "invalid_token" | "wrong_action" | "verify_failed" }` — nothing is queued and no quota is spent. `wrong_action` means the token was minted for another AFR form (a submit token does not unlock the search endpoint).
+- **If you are an agent that cannot run a browser widget**, send the header `X-AFR-Agent-Key: <key>` instead. A key issued by AFR and not revoked skips the human check entirely — no `turnstile_token` needed. Keys are **not self-service yet**: ask AFR for one (see [§7](#7-contact)), and note that an unknown or revoked key unlocks nothing, the human check still applies.
 - Responses: `201 { "ok": true, "id": 1, "domain": "example.com", "status": "queued", "etaSeconds": 600, "dispatch": "scheduled" }` for a new entry; `200 { "ok": true, "status": "exists" }` when the domain is already rated; `200 { "ok": true, "status": "queued" }` when it is already waiting in the queue (idempotent — no quota burned).
 - Quota: 5 requests per IP per day. `429 { "error": "rate_limited" }` otherwise.
 
@@ -64,13 +67,15 @@ For a one-off "scan this now" request during an interactive session there is a s
 
 ```http
 POST https://afr.im/api/v1/search-scan
-{ "domain": "example.com" }
+{ "domain": "example.com", "turnstile_token": "<token from the widget on https://afr.im/search>" }
 → 200 { "status": "queued", "domain": "example.com", "etaSeconds": 180, "dispatch": "scheduled" }
 → 200 { "status": "exists" }   ← already rated (no dispatch field)
 → 200 { "status": "queued" }  ← already waiting in the queue (no dispatch field)
 ```
 
 10 scans per IP per day, 1 per domain per 30-minute window, 50 globally per day.
+
+- **The same human check applies here**: the body must carry `"turnstile_token"`, minted by the widget on the AFR search page (`https://afr.im/search`), otherwise `400 { "error": "turnstile_failed", "reason": "…" }`. The `X-AFR-Agent-Key` header skips it for agents that cannot run a browser widget (see §2.3).
 
 **`dispatch` field (new entries only):** `"scheduled"` means the scan pipeline was handed to the runtime and triggered in the background — normal, nothing to retry. `"deferred"` means the trigger did not fire (e.g. the pipeline token is unavailable); the entry is still queued and the nightly run drains it, so the scan still happens, just later (typically within 24 h). The idempotent `exists` / already-`queued` responses omit this field. `etaSeconds` is `600` for a new submission (scan plus rebuild) and `180` for an on-demand re-scan.
 
@@ -84,6 +89,8 @@ POST https://afr.im/api/v1/rescan
 ```
 
 The window is **30 minutes** per domain, and one device may trigger one re-scan of any domain per 30-minute window (anti-abuse). Use this after the owner changes `robots.txt`, adds `llms.txt`, or fixes the homepage. `nextAllowedAt` tells you when a retry becomes legitimate — do not poll faster than that.
+
+Re-scan is **not** behind the human check: it takes no `turnstile_token` and no key.
 
 ### 2.5 Watch the queue
 
@@ -130,7 +137,7 @@ An unknown domain is returned as a tool-level error, not a protocol error. Rate 
 - Prefer the JSON API over scraping HTML — it is cheaper for both sides and its shapes are stable.
 - Use conditional requests (`If-None-Match` / `If-Modified-Since`) where possible and cache responses; re-fetch only pages you detected as changed instead of polling. Static pages are served with `Cache-Control: max-age=60, stale-while-revalidate=600`; `/data/*` with `max-age=300, stale-while-revalidate=86400`; `/og/*`, `/icons/*`, `/fonts/*` are cacheable for a week.
 - Do not retry aggressively: one retry after a `5xx` or timeout, then back off. `4xx` responses are final (except `429`, where `Retry-After` / `nextAllowedAt` is authoritative).
-- POST endpoints are rate-limited as documented per endpoint; `GET` endpoints need no key.
+- POST endpoints are rate-limited as documented per endpoint; `GET` endpoints need no key. The two POST endpoints that queue a scan also need the human-verification token of §2.3 (`turnstile_token`, or the `X-AFR-Agent-Key` header for agents).
 
 ## 4. What you may reuse
 

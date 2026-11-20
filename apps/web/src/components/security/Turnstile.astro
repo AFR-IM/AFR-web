@@ -1,0 +1,299 @@
+---
+// Turnstile.astro — Cloudflare Turnstile widget (the human check) for the
+// public POST forms.
+//
+// Why a shared component: two pages post to endpoints that the worker now
+// gates (the submit form and the search-scan form). Both need the same
+// widget, the same script-loading rules and the same way to hand the token
+// over to their submit handler — so the rules live here, once.
+//
+// Token handover — the single contract the pages rely on:
+//   window.__afrTurnstile.getToken(action) → the current token for that
+//     action, or '' while the human has not solved the widget yet
+//   window.__afrTurnstile.hasWidget(action) → does this page render a widget
+//     for that action (i.e. is the server-side check active here?)
+//   window.__afrTurnstile.reset(action) → drop the token and ask Cloudflare
+//     for a new one (a Turnstile token is single-use)
+//   window.__afrTurnstile.isReady(action) → is a token available right now?
+//
+// The sitekey is the ONLY Turnstile value the browser ever sees; the secret
+// stays in the worker (TURNSTILE_SECRET binding) and is never shipped.
+
+import { getCatalog, toLocale } from '../../i18n/loader.ts';
+
+interface Props {
+  /** Widget site key. Defaults to the build-time PUBLIC_TURNSTILE_SITEKEY. */
+  sitekey?: string;
+  /** Action name — the worker compares it with the siteverify answer. */
+  action: string;
+  /** UI locale ('en' | 'zh-CN'). */
+  locale?: string;
+  /** Widget theme: light | dark | auto (auto follows the OS color scheme). */
+  theme?: 'light' | 'dark' | 'auto';
+}
+
+const { sitekey, action, locale: localeProp, theme = 'auto' } = Astro.props;
+
+// Astro exposes PUBLIC_* variables to the client bundle at build time. The
+// sitekey is public by design (it is visible in every page source anyway).
+const key = (sitekey ?? import.meta.env.PUBLIC_TURNSTILE_SITEKEY ?? '').trim();
+if (!key) {
+  // A build without the variable (local dev) must not break the page: no
+  // widget is rendered, and the worker skips the check too (no secret →
+  // fail-open). Only the build log carries the hint.
+  console.warn(
+    '[turnstile] PUBLIC_TURNSTILE_SITEKEY is not set — the human check is disabled in this build.',
+  );
+}
+
+const locale = toLocale(localeProp);
+const L = getCatalog(locale);
+const label = L.ui.turnstileLabel ?? 'Human verification';
+const hint = L.ui.turnstileHint ?? 'A quick check that you are human.';
+// Cloudflare renders the widget in the browser language on its own; only the
+// Chinese catalog needs an explicit hint.
+const language = locale === 'zh-CN' ? 'zh-cn' : undefined;
+---
+
+{
+  key && (
+    <div class="turnstile" data-afr-turnstile>
+      <span class="turnstile-label">{label}</span>
+      <div
+        class="cf-turnstile"
+        data-sitekey={key}
+        data-action={action}
+        data-theme={theme}
+        data-language={language}
+      />
+      <p class="turnstile-hint">{hint}</p>
+    </div>
+  )
+}
+
+<script>
+  // Turnstile bootstrap — one Cloudflare script per page, explicit rendering.
+  //
+  // Astro bundles and hoists this script, so it runs exactly once per page
+  // even when the component is used more than once. It:
+  //   1. injects Cloudflare's api.js (only once, and only when a widget
+  //      exists on the page),
+  //   2. renders every widget explicitly (render=explicit — implicit
+  //      rendering would fight with Astro's build-time DOM),
+  //   3. publishes the tokens through window.__afrTurnstile.
+
+  type TurnstileOptions = {
+    sitekey: string;
+    action?: string;
+    theme?: string;
+    language?: string;
+    callback?: (token: string) => void;
+    'expired-callback'?: () => void;
+    'error-callback'?: () => void;
+  };
+
+  type TurnstileApi = {
+    render: (container: HTMLElement, options: TurnstileOptions) => string;
+    reset: (widgetId?: string) => void;
+  };
+
+  const SCRIPT_URL =
+    'https://challenges.cloudflare.com/turnstile/v0/api.js?onload=__afrTurnstileOnload&render=explicit';
+
+  /** action -> { widgetId, token } */
+  const widgets = new Map<string, { widgetId: string; token: string }>();
+
+  /** Set when Cloudflare's script could not be loaded (blocked network, CSP,
+   * offline) — the visitor must be told that the check is unavailable
+   * instead of staring at an empty box. */
+  let scriptFailed = false;
+
+  function api(): TurnstileApi | undefined {
+    return (window as unknown as { turnstile?: TurnstileApi }).turnstile;
+  }
+
+  function containers(): HTMLElement[] {
+    return Array.from(document.querySelectorAll<HTMLElement>('.cf-turnstile[data-sitekey]'));
+  }
+
+  function isVisible(el: HTMLElement): boolean {
+    return el.getClientRects().length > 0;
+  }
+
+  function renderOne(el: HTMLElement): void {
+    const t = api();
+    if (!t) return;
+    if (el.getAttribute('data-afr-rendered') === '1') return;
+    const action = el.getAttribute('data-action') || '';
+    const sitekey = el.getAttribute('data-sitekey') || '';
+    const language = el.getAttribute('data-language') || '';
+    const theme = resolveTheme(el.getAttribute('data-theme') || 'auto');
+    let widgetId = '';
+    try {
+      widgetId = t.render(el, {
+        sitekey,
+        action,
+        theme,
+        ...(language ? { language } : {}),
+        callback: (token: string) => {
+          widgets.set(action, { widgetId, token });
+        },
+        // A token expires after a few minutes and Cloudflare reports widget
+        // errors itself — in both cases the stored token must go, otherwise a
+        // dead token would be sent with the next request.
+        'expired-callback': () => {
+          widgets.set(action, { widgetId, token: '' });
+        },
+        'error-callback': () => {
+          widgets.set(action, { widgetId, token: '' });
+        },
+      });
+    } catch {
+      return; // Turnstile refused to render here — the caller sees no token
+    }
+    el.setAttribute('data-afr-rendered', '1');
+    widgets.set(action, { widgetId, token: '' });
+  }
+
+  /** The site theme (light/dark) wins over "auto" when the visitor picked one. */
+  function resolveTheme(theme: string): string {
+    if (theme !== 'auto') return theme;
+    const site = document.documentElement.dataset.theme;
+    return site === 'light' || site === 'dark' ? site : 'auto';
+  }
+
+  function renderWhenVisible(el: HTMLElement): void {
+    if (isVisible(el)) {
+      renderOne(el);
+      return;
+    }
+    // A host page may keep the form hidden until it is needed (the search
+    // page only reveals its scan box for a bare-domain query). An
+    // IntersectionObserver fires as soon as the container gets a box.
+    if (typeof IntersectionObserver !== 'undefined') {
+      const io = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          io.disconnect();
+          renderOne(el);
+          return;
+        }
+      });
+      io.observe(el);
+      return;
+    }
+    let tries = 0;
+    const timer = setInterval(() => {
+      tries += 1;
+      if (isVisible(el)) {
+        clearInterval(timer);
+        renderOne(el);
+      } else if (tries > 60) {
+        clearInterval(timer);
+      }
+    }, 500);
+  }
+
+  function renderAll(): void {
+    for (const el of containers()) renderWhenVisible(el);
+  }
+
+  function markScriptFailed(): void {
+    if (scriptFailed) return;
+    scriptFailed = true;
+    for (const el of containers()) el.setAttribute('data-afr-turnstile-failed', '1');
+  }
+
+  function loadScript(): void {
+    if (api()) {
+      renderAll(); // already loaded by an earlier component instance
+      return;
+    }
+    const existing = document.querySelector('script[data-afr-turnstile]');
+    if (existing) {
+      existing.addEventListener('load', () => renderAll());
+      existing.addEventListener('error', () => markScriptFailed());
+      return;
+    }
+    const s = document.createElement('script');
+    s.src = SCRIPT_URL;
+    s.async = true;
+    s.defer = true;
+    s.setAttribute('data-afr-turnstile', '');
+    s.addEventListener('error', () => markScriptFailed());
+    document.head.appendChild(s);
+    // A blocked script never fires 'error' (the request simply hangs) — give
+    // up after a while so the page can say the check is unavailable.
+    setTimeout(() => {
+      if (!api()) markScriptFailed();
+    }, 12000);
+  }
+
+  // Cloudflare calls this global once its API is ready (the onload= hook of
+  // the script URL). It must exist before the script tag is appended.
+  (window as unknown as { __afrTurnstileOnload?: () => void }).__afrTurnstileOnload = () => {
+    renderAll();
+  };
+
+  (window as unknown as { __afrTurnstile?: unknown }).__afrTurnstile = {
+    getToken(action?: string): string {
+      if (action) return widgets.get(action)?.token ?? '';
+      let token = '';
+      for (const w of widgets.values()) if (w.token) token = w.token;
+      return token;
+    },
+    hasWidget(action?: string): boolean {
+      if (!action) return containers().length > 0;
+      return containers().some((el) => el.getAttribute('data-action') === action);
+    },
+    isReady(action?: string): boolean {
+      if (action) return !!widgets.get(action)?.token;
+      for (const w of widgets.values()) if (w.token) return true;
+      return false;
+    },
+    /** True when Cloudflare's script could not be loaded at all. */
+    isFailed(): boolean {
+      return scriptFailed;
+    },
+    reset(action?: string): void {
+      const t = api();
+      for (const [key, w] of widgets) {
+        if (action && key !== action) continue;
+        widgets.set(key, { widgetId: w.widgetId, token: '' });
+        try {
+          t?.reset(w.widgetId);
+        } catch {
+          /* the widget may be gone already — nothing to reset */
+        }
+      }
+    },
+  };
+
+  loadScript();
+</script>
+
+<style>
+  .turnstile {
+    display: grid;
+    gap: 8px;
+    margin-top: 18px;
+  }
+  .turnstile-label {
+    font-size: 12.5px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+  .turnstile-hint {
+    margin: 0;
+    font-size: 12.5px;
+    color: var(--text-3);
+  }
+  /* The widget is an iframe from Cloudflare — keep it from overflowing a
+     narrow form and let it inherit the page background. */
+  .cf-turnstile {
+    min-height: 65px;
+    max-width: 100%;
+    overflow: hidden;
+  }
+</style>

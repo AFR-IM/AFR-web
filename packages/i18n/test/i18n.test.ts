@@ -109,6 +109,8 @@ describe('catalog parity', () => {
       'historyEmpty', 'outOf100',
       'submitNoteLabel', 'submitNotePlaceholder', 'submitBusy', 'submitQueued',
       'submitRateLimited', 'submitError', 'badgeEmbedNote',
+      'turnstileLabel', 'turnstileHint', 'turnstileRequired', 'turnstileFailed',
+      'turnstileUnavailable',
       'backToDirectory', 'lastSync', 'cachedSites',
     ];
     for (const locale of LOCALES) {

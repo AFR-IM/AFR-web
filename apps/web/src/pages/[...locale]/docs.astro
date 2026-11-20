@@ -37,7 +37,10 @@ const PROSE = {
     ],
     rateTitle: 'Rate limits',
     rateBody:
-      'GET endpoints are free of keys and limits beyond normal politeness — identify yourself, keep to about one request per second, and cache responses (see /agents.md). POST /api/v1/submissions allows 5 requests per IP per day. Badge images are cached upstream for one hour.',
+      'GET endpoints are free of keys and limits beyond normal politeness — identify yourself, keep to about one request per second, and cache responses (see /agents.md). POST /api/v1/submissions allows 5 requests per IP per day; POST /api/v1/search-scan allows 10 per IP per day. Badge images are cached upstream for one hour.',
+    humanTitle: 'Human verification',
+    humanBody:
+      'The two POST endpoints above are protected by Cloudflare Turnstile: the request body must carry a "turnstile_token" that a browser widget minted on the AFR forms. A missing, expired or foreign token is answered 400 { "error": "turnstile_failed" } — no scan is queued and no rate-limit budget is spent. The widget is rendered by the site itself (afr.im/submit and the search page); the secret never leaves the server. An AI agent that cannot run a browser widget can instead send the "X-AFR-Agent-Key" request header: a key issued by AFR and not revoked skips the human check (self-service issuance is not open yet — ask for one).',
     backToMethod: 'Read the AFR standard',
     botLink: 'What our own scanner fetches',
   },
@@ -60,7 +63,10 @@ const PROSE = {
     ],
     rateTitle: '速率限制',
     rateBody:
-      'GET 端点无需密钥，除常规礼貌性要求外无限制——标明身份、约每秒一次、缓存响应（见 /agents.md）。POST /api/v1/submissions 为每 IP 每天 5 次。徽章图片上游缓存 1 小时。',
+      'GET 端点无需密钥，除常规礼貌性要求外无限制——标明身份、约每秒一次、缓存响应（见 /agents.md）。POST /api/v1/submissions 为每 IP 每天 5 次；POST /api/v1/search-scan 为每 IP 每天 10 次。徽章图片上游缓存 1 小时。',
+    humanTitle: '人机校验',
+    humanBody:
+      '上述两个 POST 端点由 Cloudflare Turnstile 保护：请求体必须携带由 AFR 表单上的浏览器组件生成的 "turnstile_token"。缺少、过期或不对应的 token 返回 400 { "error": "turnstile_failed" }——不入队，也不消耗限额。组件由本站自身渲染（afr.im/submit 与搜索页），secret 不会离开服务器。无法运行浏览器组件的 AI agent 可改用 "X-AFR-Agent-Key" 请求头：由 AFR 签发且未撤销的 key 可跳过人机校验（暂未开放自助签发，需向 AFR 申请）。',
     backToMethod: '阅读 AFR 标准',
     botLink: '我们自己的扫描器抓取什么',
   },
@@ -172,8 +178,8 @@ const endpoints: Endpoint[] = [
     method: 'POST',
     path: '/api/v1/submissions',
     desc: T(
-      'Request a scan of a site. Body: { "domain": "example.com", "note": "optional" } — the key is domain, not url. Limited to 5 per IP per day. New entries return etaSeconds 600 and dispatch scheduled | ok | deferred.',
-      '申请扫描一个站点。请求体：{ "domain": "example.com", "note": "可选" }——字段名是 domain，不是 url。每 IP 每天 5 次。',
+      'Request a scan of a site. Body: { "domain": "example.com", "note": "optional" } — the key is domain, not url. Limited to 5 per IP per day. New entries return etaSeconds 600 and dispatch scheduled | ok | deferred. A human check is part of the contract: the body must also carry { "turnstile_token": "…" } (a Cloudflare Turnstile token, minted by the widget on the AFR submit form). A missing or invalid token is answered 400 { "error": "turnstile_failed" }. An agent that cannot run the widget may send the "X-AFR-Agent-Key" header instead (a key issued by AFR, not self-service yet).',
+      '申请扫描一个站点。请求体：{ "domain": "example.com", "note": "可选" }——字段名是 domain，不是 url。每 IP 每天 5 次。提交还包含人机校验：请求体必须携带 { "turnstile_token": "…" }（Cloudflare Turnstile token，由 AFR 提交表单上的组件生成）。缺少或无效的 token 返回 400 { "error": "turnstile_failed" }。无法运行组件的 agent 可改用 "X-AFR-Agent-Key" 请求头（由 AFR 签发的 key，暂未开放自助签发）。',
     ),
     example: submitExample,
   },
@@ -181,8 +187,8 @@ const endpoints: Endpoint[] = [
     method: 'POST',
     path: '/api/v1/search-scan',
     desc: T(
-      'On-demand scan for an interactive session. Body: { "domain": "example.com" }. 10 per IP per day, 1 per domain per 30-minute window, 50 globally per day. dispatch is "scheduled" when the pipeline was triggered in the background ("deferred" means the nightly run collects it — still queued).',
-      '交互场景的即时扫描。请求体：{ "domain": "example.com" }。每 IP 每天 10 次、每域名 30 分钟 1 次、全局每天 50 次。dispatch 为 "scheduled" 表示已在后台触发流水线（"deferred" 表示由夜间任务兜底，仍在队列中）。',
+      'On-demand scan for an interactive session. Body: { "domain": "example.com" }. 10 per IP per day, 1 per domain per 30-minute window, 50 globally per day. dispatch is "scheduled" when the pipeline was triggered in the background ("deferred" means the nightly run collects it — still queued). Like the submission endpoint it needs a human check: body field { "turnstile_token": "…" }, otherwise 400 { "error": "turnstile_failed" }. The same "X-AFR-Agent-Key" header skips it for agents.',
+      '交互场景的即时扫描。请求体：{ "domain": "example.com" }。每 IP 每天 10 次、每域名 30 分钟 1 次、全局每天 50 次。dispatch 为 "scheduled" 表示已在后台触发流水线（"deferred" 表示由夜间任务兜底，仍在队列中）。与提交接口一样需要人机校验：请求体字段 { "turnstile_token": "…" }，否则返回 400 { "error": "turnstile_failed" }。agent 可用同样的 "X-AFR-Agent-Key" 请求头跳过校验。',
     ),
     example: `{ "status": "queued", "domain": "example.com",
   "etaSeconds": 180, "dispatch": "scheduled" }`,
@@ -273,6 +279,12 @@ const endpoints: Endpoint[] = [
     <section class="sec">
       <h2>{P.rateTitle}</h2>
       <p class="body">{P.rateBody}</p>
+    </section>
+
+    <section class="sec">
+      <h2>{P.humanTitle}</h2>
+      <p class="body">{P.humanBody}</p>
+      <pre class="mono"><code>{`{ "error": "turnstile_failed", "reason": "missing_token" }`}</code></pre>
     </section>
 
     <section class="sec">

@@ -8,6 +8,7 @@
 // input.
 
 import Base from '../../layouts/Base.astro';
+import Turnstile from '../../components/security/Turnstile.astro';
 import { getCatalog, pathFor, toLocale } from '../../i18n/loader.ts';
 import { uiText } from '../../components/home/fallbacks.ts';
 
@@ -45,6 +46,13 @@ const existsTpl = uiText(L.ui, 'submitExists', locale);
 const deferredTpl = uiText(L.ui, 'submitQueuedDeferred', locale);
 const politeText = uiText(L.ui, 'submitPoliteNote', locale);
 const botLabel = L.ui.navBot ?? 'For Bots';
+// Human check (Cloudflare Turnstile) — the worker rejects a submission whose
+// turnstile_token is missing or invalid.
+const turnstileRequiredText =
+  L.ui.turnstileRequired ?? 'Please complete the human verification, then try again.';
+const turnstileFailedText = L.ui.turnstileFailed ?? 'Human verification failed — please try again.';
+const turnstileUnavailableText =
+  L.ui.turnstileUnavailable ?? 'The human check could not be loaded — check your connection and try again.';
 ---
 
 <Base title={title} description={L.ui.submitDisclaimer ?? L.ui.tagline}>
@@ -72,6 +80,9 @@ const botLabel = L.ui.navBot ?? 'For Bots';
       data-site-base={href('/site/')}
       data-eta-default="600"
       data-locale={locale}
+      data-turnstile-required={turnstileRequiredText}
+      data-turnstile-failed={turnstileFailedText}
+      data-turnstile-unavailable={turnstileUnavailableText}
       novalidate
     >
       <label class="field-label" for="domain">{domainLabel}</label>
@@ -91,6 +102,9 @@ const botLabel = L.ui.navBot ?? 'For Bots';
       </div>
       <p class="field-err" data-err role="alert" hidden></p>
       <p class="field-hint" id="domain-hint">{L.ui.submitDisclaimer}</p>
+
+      {/* human check — the worker gates POST /api/v1/submissions on it */}
+      <Turnstile action="afr_submit" locale={locale} />
 
       <label class="field-label note-label" for="note">{noteLabel}</label>
       <textarea
@@ -225,6 +239,25 @@ const botLabel = L.ui.navBot ?? 'For Bots';
         btn.disabled = false;
         btn.textContent = idleLabel;
       }
+      /* human check (Turnstile): the worker gates the POST on a valid token.
+         The token is single-use, so it is reset after every attempt and a
+         fresh one is minted for the next try. */
+      function turnstileToken(action) {
+        var api = window.__afrTurnstile;
+        return api && typeof api.getToken === 'function' ? api.getToken(action) : '';
+      }
+      function turnstileHas(action) {
+        var api = window.__afrTurnstile;
+        return !!(api && typeof api.hasWidget === 'function' && api.hasWidget(action));
+      }
+      function turnstileUnavailable() {
+        var api = window.__afrTurnstile;
+        return !!(api && typeof api.isFailed === 'function' && api.isFailed());
+      }
+      function turnstileReset(action) {
+        var api = window.__afrTurnstile;
+        if (api && typeof api.reset === 'function') api.reset(action);
+      }
 
       form.addEventListener('submit', function (e) {
         e.preventDefault();
@@ -270,6 +303,19 @@ const botLabel = L.ui.navBot ?? 'For Bots';
         var n = note && note.value ? note.value.trim() : '';
         if (n) payload.note = n; /* optional — omitted when empty */
 
+        var token = turnstileToken('afr_submit');
+        if (turnstileHas('afr_submit') && !token) {
+          /* the widget is on the page but not solved yet — no request */
+          showErr(
+            turnstileUnavailable()
+              ? attr('data-turnstile-unavailable')
+              : attr('data-turnstile-required'),
+          );
+          restoreBtn();
+          return;
+        }
+        payload.turnstile_token = token;
+
         fetch('/api/v1/submissions', {
           method: 'POST',
           headers: { 'content-type': 'application/json', accept: 'application/json' },
@@ -295,9 +341,11 @@ const botLabel = L.ui.navBot ?? 'For Bots';
                   showErr(msgOf(body, attr('data-rate')));
                 } else if (r.status === 400) {
                   showErr(
-                    body && body.error === 'subdomain_not_allowed'
-                      ? attr('data-sub')
-                      : msgOf(body, attr('data-invalid')),
+                    body && body.error === 'turnstile_failed'
+                      ? attr('data-turnstile-failed')
+                      : body && body.error === 'subdomain_not_allowed'
+                        ? attr('data-sub')
+                        : msgOf(body, attr('data-invalid')),
                   );
                 } else {
                   showErr(msgOf(body, attr('data-error')));
@@ -307,7 +355,10 @@ const botLabel = L.ui.navBot ?? 'For Bots';
           .catch(function () {
             showErr(attr('data-error'));
           })
-          .then(restoreBtn);
+          .then(function () {
+            turnstileReset('afr_submit'); /* a token may only be used once */
+            restoreBtn();
+          });
       });
     })();
   </script>

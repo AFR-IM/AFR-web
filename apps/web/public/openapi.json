@@ -485,7 +485,18 @@
     "/api/v1/submissions": {
       "post": {
         "summary": "Request a scan of a site",
-        "description": "Fully automatic inclusion. Registered domains only (eTLD+1 heuristic): subdomains like blog.example.com are rejected with error subdomain_not_allowed, www is stripped. Already-listed domains return status 'exists' (open the detail page); already-queued domains return status 'queued' (idempotent, no quota burned). New submissions are queued AND immediately dispatch the scan workflow, so a typical listing is searchable within ~10 minutes (etaSeconds covers scan + rebuild); if dispatch is deferred the next daily scan (02:00 UTC) collects it. Rate-limited to 5 new submissions per IP per day. New entries carry etaSeconds 600 (scan plus rebuild) and dispatch 'scheduled' | 'ok' | 'deferred'; the idempotent 'exists'/'queued' responses omit dispatch.",
+        "description": "Fully automatic inclusion. Registered domains only (eTLD+1 heuristic): subdomains like blog.example.com are rejected with error subdomain_not_allowed, www is stripped. Already-listed domains return status 'exists' (open the detail page); already-queued domains return status 'queued' (idempotent, no quota burned). New submissions are queued AND immediately dispatch the scan workflow, so a typical listing is searchable within ~10 minutes (etaSeconds covers scan + rebuild); if dispatch is deferred the next daily scan (02:00 UTC) collects it. Rate-limited to 5 new submissions per IP per day. New entries carry etaSeconds 600 (scan plus rebuild) and dispatch 'scheduled' | 'ok' | 'deferred'; the idempotent 'exists'/'queued' responses omit dispatch. The request is gated by a human check: the body field 'turnstile_token' carries a Cloudflare Turnstile token minted by the widget on the AFR submit form (action 'afr_submit'). Without a valid token the endpoint answers 400 { \"error\": \"turnstile_failed\", \"reason\": \"missing_token\" | \"invalid_token\" | \"wrong_action\" | \"verify_failed\" } and nothing is queued. AI agents and scripts that cannot run a browser widget may send the 'X-AFR-Agent-Key' request header instead: a key issued by AFR and not revoked skips the human check (self-service issuance is not open yet).",
+        "parameters": [
+          {
+            "name": "X-AFR-Agent-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Agent key issued by AFR. When present and valid — the key's SHA-256 hash is in the api_keys table and not revoked — the human check is skipped and turnstile_token is not required. Self-service issuance is not open yet: ask AFR for a key."
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -504,12 +515,17 @@
                     "type": "string",
                     "maxLength": 500,
                     "description": "Optional note for the reviewers"
+                  },
+                  "turnstile_token": {
+                    "type": "string",
+                    "description": "Human-verification token: a Cloudflare Turnstile token (action 'afr_submit') minted by the widget on the AFR submit form. Optional in the schema, required in practice — a request without a valid token is answered 400 turnstile_failed — unless the caller sends a valid 'X-AFR-Agent-Key' header, which skips the human check."
                   }
                 }
               },
               "example": {
                 "domain": "example.com",
-                "note": "We ship a public llms.txt and API."
+                "note": "We ship a public llms.txt and API.",
+                "turnstile_token": "0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d"
               }
             }
           }
@@ -549,7 +565,37 @@
             }
           },
           "400": {
-            "$ref": "#/components/responses/BadRequest"
+            "description": "Invalid parameter (invalid_domain, subdomain_not_allowed, invalid_note) or a failed human check. A failed human check answers { \"error\": \"turnstile_failed\", \"reason\": \"missing_token\" | \"invalid_token\" | \"wrong_action\" | \"verify_failed\" } — reason 'missing_token' means the body carried no turnstile_token, 'wrong_action' means the token was minted for another AFR form. Nothing is queued and no rate-limit budget is spent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "turnstile_failed"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "enum": [
+                        "missing_token",
+                        "invalid_token",
+                        "wrong_action",
+                        "verify_failed"
+                      ],
+                      "description": "Only present when error is turnstile_failed: why the human check failed."
+                    }
+                  }
+                },
+                "example": {
+                  "error": "turnstile_failed",
+                  "reason": "missing_token"
+                }
+              }
+            }
           },
           "429": {
             "description": "Rate limited",
@@ -601,7 +647,18 @@
     "/api/v1/search-scan": {
       "post": {
         "summary": "Request an on-demand scan of a domain",
-        "description": "Interactive-session variant of a submission: looser quota tiers (10 per IP per day, 1 per domain per 30-minute window, 50 globally per day). Already-listed domains return status 'exists' and already-queued domains return status 'queued' with no quota burned - both omit the dispatch field. The scan workflow is dispatched in the background, so the response never waits for GitHub: 'scheduled' means triggered, 'deferred' means the nightly run will pick it up (still queued, not lost).",
+        "description": "Interactive-session variant of a submission: looser quota tiers (10 per IP per day, 1 per domain per 30-minute window, 50 globally per day). Already-listed domains return status 'exists' and already-queued domains return status 'queued' with no quota burned - both omit the dispatch field. The scan workflow is dispatched in the background, so the response never waits for GitHub: 'scheduled' means triggered, 'deferred' means the nightly run will pick it up (still queued, not lost). The same human check as the submission endpoint applies: the body field 'turnstile_token' carries a Cloudflare Turnstile token minted by the widget on the AFR search page (action 'afr_search_scan'), and a missing or invalid token is answered 400 { \"error\": \"turnstile_failed\", \"reason\": \"missing_token\" | \"invalid_token\" | \"wrong_action\" | \"verify_failed\" }. AI agents and scripts that cannot run a browser widget may send the 'X-AFR-Agent-Key' request header instead: a key issued by AFR and not revoked skips the human check (self-service issuance is not open yet).",
+        "parameters": [
+          {
+            "name": "X-AFR-Agent-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Agent key issued by AFR. When present and valid — the key's SHA-256 hash is in the api_keys table and not revoked — the human check is skipped and turnstile_token is not required. Self-service issuance is not open yet: ask AFR for a key."
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -615,11 +672,16 @@
                   "domain": {
                     "type": "string",
                     "description": "Bare registered domain, e.g. example.com"
+                  },
+                  "turnstile_token": {
+                    "type": "string",
+                    "description": "Human-verification token: a Cloudflare Turnstile token (action 'afr_search_scan') minted by the widget on the AFR search page. Optional in the schema, required in practice — a request without a valid token is answered 400 turnstile_failed — unless the caller sends a valid 'X-AFR-Agent-Key' header, which skips the human check."
                   }
                 }
               },
               "example": {
-                "domain": "example.com"
+                "domain": "example.com",
+                "turnstile_token": "0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d"
               }
             }
           }
@@ -642,7 +704,37 @@
             }
           },
           "400": {
-            "$ref": "#/components/responses/BadRequest"
+            "description": "Invalid parameter (invalid_domain, subdomain_not_allowed) or a failed human check. A failed human check answers { \"error\": \"turnstile_failed\", \"reason\": \"missing_token\" | \"invalid_token\" | \"wrong_action\" | \"verify_failed\" } — reason 'missing_token' means the body carried no turnstile_token, 'wrong_action' means the token was minted for another AFR form. Nothing is queued and no rate-limit budget is spent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "turnstile_failed"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "enum": [
+                        "missing_token",
+                        "invalid_token",
+                        "wrong_action",
+                        "verify_failed"
+                      ],
+                      "description": "Only present when error is turnstile_failed: why the human check failed."
+                    }
+                  }
+                },
+                "example": {
+                  "error": "turnstile_failed",
+                  "reason": "missing_token"
+                }
+              }
+            }
           },
           "429": {
             "description": "One of the three daily tiers is exhausted",

@@ -229,6 +229,13 @@ const en: Catalog = {
     submitTimelineBody:
       'Submitting dispatches the scan queue right away: about 3 minutes to scan, then about 5 minutes to rebuild and publish — typically searchable within 10 minutes. If auto-dispatch is unavailable, the next daily scan (02:00 UTC) picks it up. Each IP may submit 5 registered domains per day.',
 
+    // human check (Cloudflare Turnstile) — submit form + search-scan form
+    turnstileLabel: 'Human verification',
+    turnstileHint: 'A quick check that you are human — required before submitting.',
+    turnstileRequired: 'Please complete the human verification, then try again.',
+    turnstileFailed: 'Human verification failed — please try again.',
+    turnstileUnavailable: 'The human check could not be loaded — check your connection and try again.',
+
     // P5 method page
     methodTitle: 'The AFR standard',
     methodIntro: 'AFR scores every site 0–100 across three layers: reachability, legibility, actionability.',
@@ -563,6 +570,13 @@ const zhCN: Catalog = {
     submitTimelineTitle: '多久收录？',
     submitTimelineBody:
       '提交后立即触发扫描队列：扫描约 3 分钟，随后重建发布约 5 分钟——通常 10 分钟内即可搜索到。若自动触发暂不可用，最迟由次日 02:00 UTC 的每日扫描收录。每个 IP 每日限提交 5 个注册域名。',
+
+    // human check (Cloudflare Turnstile) — submit form + search-scan form
+    turnstileLabel: '人机验证',
+    turnstileHint: '快速确认你是真人——提交前需要完成。',
+    turnstileRequired: '请先完成人机验证，然后重试。',
+    turnstileFailed: '人机验证失败——请重试。',
+    turnstileUnavailable: '人机验证组件加载失败——请检查网络后重试。',
 
     // P5 method page
     methodTitle: 'AFR 标准全文',

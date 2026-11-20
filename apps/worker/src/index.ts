@@ -24,6 +24,11 @@ import {
   VERIFY_TOKEN_TTL_MS,
 } from './verification.ts';
 import {
+  API_KEY_HEADER,
+  isValidApiKey,
+} from './api-key.ts';
+import { pruneMailArtifacts } from './mail-gc.ts';
+import {
   buildMagicToken,
   buildMailChallenge,
   buildManageToken,
@@ -58,6 +63,11 @@ import {
   type MailQuotaLimits,
   type QuotaDecision,
 } from './mail-quota.ts';
+import {
+  TURNSTILE_ACTIONS,
+  verifyTurnstile,
+  type TurnstileCheck,
+} from './turnstile.ts';
 
 /** Cloudflare bindings (wrangler.toml) */
 export interface WorkerEnv {
@@ -98,6 +108,11 @@ export interface WorkerEnv {
   SMTP_REPLY_TO?: string;
   /** Public site base URL used in magic links and report links */
   PUBLIC_SITE_URL?: string;
+  /** Worker secret: Cloudflare Turnstile siteverify secret (the sitekey is
+   * public and lives in the front-end build). Missing → the human check is
+   * skipped (fail-open) so local dev keeps working; PRODUCTION MUST set it
+   * (`wrangler secret put TURNSTILE_SECRET`). */
+  TURNSTILE_SECRET?: string;
 }
 
 type AppEnv = { Bindings: WorkerEnv };
@@ -118,6 +133,9 @@ export interface AppOverrides {
   emailLimits?: EmailRateLimits;
   /** Injected fetch for the GitHub dispatch (tests pass a fake) */
   fetchImpl?: typeof fetch;
+  /** Injected fetch for the Turnstile siteverify call (tests pass a fake);
+   * keeps the siteverify traffic out of the real network. */
+  turnstileFetch?: typeof fetch;
 }
 
 /** 5 submissions per IP per day */
@@ -172,6 +190,59 @@ function clientIp(c: Context<AppEnv>): string {
   const forwarded = c.req.header('x-forwarded-for');
   if (forwarded) return forwarded.split(',')[0]?.trim() || 'unknown';
   return c.req.header('x-real-ip') ?? 'unknown';
+}
+
+/**
+ * Human-verification gate for the public POST endpoints.
+ *
+ * The token is read from the request body field `turnstile_token` and checked
+ * against Cloudflare's siteverify API. When the worker has no Turnstile
+ * secret the check is skipped (fail-open, see TURNSTILE_FAIL_OPEN) so that
+ * local development and preview deployments keep working; the deployment
+ * itself never learns whether the gate was active.
+ *
+ * `action` binds a token to one endpoint: a token minted for the search form
+ * cannot unlock the submit endpoint.
+ *
+ * Usage inside a route:
+ *   const check = await requireTurnstile(c, { action: TURNSTILE_ACTIONS.submit });
+ *   if (!check.ok) return c.json({ error: 'turnstile_failed', reason: check.reason }, 400);
+ */
+async function requireTurnstile(
+  c: Context<AppEnv>,
+  opts: { action: string; payload?: unknown; fetchImpl?: typeof fetch },
+): Promise<TurnstileCheck> {
+  // A machine client (AI agent, script) cannot run a browser widget, so it
+  // presents an API key instead. The key is the authorisation, the captcha is
+  // only there for humans.
+  const apiKey = c.req.header(API_KEY_HEADER) ?? null;
+  if (apiKey && (await isValidApiKey(dbOf(c, overrides), apiKey))) {
+    return { ok: true };
+  }
+  let payload = opts.payload;
+  if (payload === undefined) {
+    try {
+      payload = await c.req.json();
+    } catch {
+      // An unreadable body simply carries no token.
+      payload = undefined;
+    }
+  }
+  const raw =
+    payload && typeof payload === 'object'
+      ? (payload as { turnstile_token?: unknown }).turnstile_token
+      : undefined;
+  const token = typeof raw === 'string' ? raw : null;
+  const ip = clientIp(c);
+  return verifyTurnstile({
+    token,
+    secret: c.env?.TURNSTILE_SECRET,
+    // 'unknown' is clientIp()'s placeholder when no proxy header is present;
+    // sending it would make Cloudflare reject an honest token.
+    remoteIp: ip && ip !== 'unknown' ? ip : null,
+    expectedAction: opts.action,
+    fetchImpl: opts.fetchImpl,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1389,6 +1460,19 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
       return c.json({ error: 'invalid_note', message: 'note must be a string' }, 400);
     }
 
+    // Human check (Turnstile). It runs after the payload validation (a
+    // malformed request must not spend a siteverify call) and before any
+    // write, quota consumption or dispatch — a request without a valid
+    // human-verification token changes nothing.
+    const turnstile = await requireTurnstile(c, {
+      action: TURNSTILE_ACTIONS.submit,
+      payload,
+      fetchImpl: overrides.turnstileFetch,
+    });
+    if (!turnstile.ok) {
+      return c.json({ error: 'turnstile_failed', reason: turnstile.reason }, 400);
+    }
+
     const db = dbOf(c, overrides);
 
     // Already listed → the submit page sends the visitor to the detail page
@@ -1477,6 +1561,17 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
         },
         400,
       );
+    }
+
+    // Human check (Turnstile) — an on-demand scan is the most expensive
+    // public action, so it is gated before any quota is consumed.
+    const turnstile = await requireTurnstile(c, {
+      action: TURNSTILE_ACTIONS.searchScan,
+      payload,
+      fetchImpl: overrides.turnstileFetch,
+    });
+    if (!turnstile.ok) {
+      return c.json({ error: 'turnstile_failed', reason: turnstile.reason }, 400);
     }
 
     const db = dbOf(c, overrides);
@@ -2506,6 +2601,18 @@ export default {
         // Score-change mails for the owners who asked for them (no-op when
         // the mail subsystem is not configured).
         await runOwnerNotifications(db, env, fetch);
+        // Housekeeping: expired challenges, read inbox mail, delivered
+        // notifications and stale cooldown rows would otherwise pile up and
+        // eat the daily row-write budget.
+        const pruned = await pruneMailArtifacts(db);
+        const removed =
+          pruned.challenges + pruned.inboundMail + pruned.inboundActions + pruned.outbox + pruned.cooldown;
+        if (removed > 0) {
+          console.log(
+            `mail gc: ${pruned.challenges} challenges, ${pruned.inboundMail} inbound, ` +
+              `${pruned.inboundActions} actions, ${pruned.outbox} notifications, ${pruned.cooldown} cooldowns`,
+          );
+        }
       })(),
     );
   },
