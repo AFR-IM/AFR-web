@@ -46,6 +46,22 @@ const SEARCH_TITLE_MAX = 48;
 const SEARCH_INDEX_WIRE_BUDGET = 160 * 1024;
 const SEARCH_INDEX_RAW_PER_ENTRY = 96; // ~20% headroom over the measured 79 B/entry
 const SEARCH_INDEX_BR_RATIO = 0.26; // measured 2026-11-17: 230 KB raw → 59.6 KB br
+const STATS_API_URL = process.env.AFR_STATS_API_URL ?? 'https://afr.im/api/v1/stats';
+
+async function readPublicStats() {
+  try {
+    const response = await fetch(STATS_API_URL, { signal: AbortSignal.timeout(8000) });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const stats = await response.json();
+    if (!Number.isSafeInteger(stats.verified) || !Number.isSafeInteger(stats.total_views)) {
+      throw new Error('unexpected stats payload');
+    }
+    return stats;
+  } catch (error) {
+    console.warn(`Public stats snapshot unavailable; continuing without runtime stats: ${error.message}`);
+    return null;
+  }
+}
 // Entries retired from public listings (kept in git history / detail pages,
 // excluded from every ranking, category, and search payload).
 const DELISTED = JSON.parse(
@@ -343,12 +359,18 @@ async function main() {
     .filter((c) => c.count > 0)
     .sort((a, b) => b.count - a.count || a.slug.localeCompare(b.slug));
 
+  const stats = await readPublicStats();
   const home = {
     generatedAt: latestScannedAt,
     total: scored.length,
     avgScore: scored.length > 0 ? Math.round((scoreSum / scored.length) * 10) / 10 : 0,
     distribution,
     pendingCount: pending.length,
+    ...(stats ? {
+      verifiedCount: stats.verified,
+      totalViews: stats.total_views,
+      statsCapturedAt: new Date().toISOString(),
+    } : {}),
     categories,
     leaderboard: scoredCards.slice(0, LEADERBOARD_SIZE),
     latest: [...scoredCards].sort(byScanDesc).slice(0, LATEST_SIZE),

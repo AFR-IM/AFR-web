@@ -44,6 +44,10 @@ export interface HomeData {
   distribution: Distribution;
   /** sites scanned but not ratable (no readable homepage/robots) — excluded from total */
   pendingCount?: number;
+  /** Runtime directory totals captured from the public stats API at build time. */
+  verifiedCount?: number;
+  totalViews?: number;
+  statsCapturedAt?: string;
   categories: CategoryCount[];
   /** top sites by score — natural ranking, pure AFR desc (red line) */
   leaderboard: SiteCard[];

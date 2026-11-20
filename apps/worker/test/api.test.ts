@@ -142,13 +142,16 @@ describe('GET /api/v1/sites/:domain/history', () => {
 });
 
 describe('GET /api/v1/stats', () => {
-  it('reports totals, grade distribution and average score', async () => {
-    const res = await app().request('/api/v1/stats');
+  it('reports totals, grade distribution, average score and lifetime views', async () => {
+    const seeded = openSeededDb();
+    seeded.raw.prepare("INSERT INTO page_views (domain, views, today_views, counted_on) VALUES ('example.com', 12, 3, '2026-11-18')").run();
+    const res = await createApp({ db: seeded.db }).request('/api/v1/stats');
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.equal(body.total, 5);
     assert.equal(body.verified, 1);
     assert.equal(body.pending, 1); // unratable site counted separately
+    assert.equal(body.total_views, 12); // lifetime total across page-view rows
     // (92 + 78 + 55 + 10) / 4 = 58.75 → 58.8 (Pending has no score)
     assert.equal(body.avg_score, 58.8);
     assert.deepEqual(body.grades, { A: 1, B: 1, C: 1, D: 0, F: 1 });

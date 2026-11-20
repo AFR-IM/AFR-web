@@ -15,6 +15,10 @@ export const COPY = {
   siteCount: { en: '{n} sites', zh: '{n} 个站点' },
   // homepage hero stats
   avgScore: { en: 'avg score', zh: '平均分' },
+  pendingCount: { en: 'pending', zh: '待评定' },
+  verifiedCount: { en: 'verified', zh: '已验证' },
+  totalViews: { en: 'total site views', zh: '站点总浏览量' },
+  statsAsOf: { en: 'stats as of', zh: '统计截至' },
   // search page
   searchTitle: { en: 'Search', zh: '搜索' },
   // category page

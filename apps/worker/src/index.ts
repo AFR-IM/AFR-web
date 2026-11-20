@@ -1219,6 +1219,9 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
          WHERE status = 'active' AND grade IS NOT NULL GROUP BY grade`,
       )
       .all<{ grade: string; n: number }>();
+    const views = await db
+      .prepare('SELECT COALESCE(SUM(views), 0) AS total_views FROM page_views')
+      .get<{ total_views: number }>();
 
     // Grade distribution covers the five real grades only; Pending is reported
     // as its own counter (it is a scan state, not a grade — spec §3.5).
@@ -1230,6 +1233,7 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
       total: totals?.total ?? 0,
       verified: totals?.verified ?? 0,
       pending: totals?.pending ?? 0,
+      total_views: views?.total_views ?? 0,
       avg_score: avg === null || avg === undefined ? null : Math.round(avg * 10) / 10,
       grades,
     });

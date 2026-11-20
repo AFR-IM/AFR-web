@@ -16,6 +16,9 @@ export const FIXTURE_HOME: HomeData = {
   total: 8,
   avgScore: 58,
   distribution: { A: 1, B: 2, C: 2, D: 2, F: 1 },
+  pendingCount: 0,
+  verifiedCount: 0,
+  totalViews: 0,
   categories: FIXTURE_CATEGORIES,
   leaderboard: [
     { domain: 'github.com', title: 'GitHub · Where software is built', score: 91, grade: 'A', strategyTag: 'AI-Open', category: 'dev-tools', rankSource: 4, verified: true, scannedAt: '2026-11-10T11:40:00Z' },

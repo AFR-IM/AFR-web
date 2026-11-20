@@ -56,7 +56,7 @@ jobs:
 
       # Build-time JSON payloads; the data repo is the single source of truth.
       # Script-relative paths, so it runs fine from the repo root.
-      - name: Generate site data from the latest scans
+      - name: Generate site data from the latest scans and public stats snapshot
         run: node apps/web/scripts/fetch-data.mjs --data-dir "${GITHUB_WORKSPACE}/data/scans"
 
       # Reads src/data/generated/details written by fetch-data -> must run after it.
