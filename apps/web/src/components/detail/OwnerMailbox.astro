@@ -68,6 +68,21 @@ const metaTagLabel = t('ownerMailMetaTag', 'Meta tag', 'Meta 标签');
 const checkText = t('ownerMailCheck', 'I published it — check now', '我已发布，立即检查');
 const checkingText = t('ownerMailChecking', 'Checking…', '正在检查…');
 const changeEmailText = t('ownerMailChangeEmail', 'Use another email', '换个邮箱');
+// replacing the mailbox of a confirmed domain
+const changeTitle = t('ownerMailChangeTitle', 'Change the mailbox', '更换邮箱');
+const changeDesc = t(
+  'ownerMailChangeDesc',
+  'The old address stops receiving notifications right away — a mail that is already on its way cannot be recalled. To keep it, register it again.',
+  '旧地址会立即停止接收通知——已在途的邮件无法追回。若想继续使用它，请重新登记。',
+);
+const changeLabel = t('ownerMailChangeLabel', 'New email address', '新的邮箱地址');
+const changeSubmitText = t('ownerMailChangeSubmit', 'Change the mailbox', '确认更换');
+const changeBusyText = t('ownerMailChangeBusy', 'Changing…', '正在更换…');
+const changeDoneText = t(
+  'ownerMailChangeDone',
+  'The new address has to be confirmed — the old management token is already void. Paste the new token below once the mail arrived.',
+  '新地址需要确认——旧管理令牌已立即失效。收到确认信后，请把新令牌粘贴到下方。',
+);
 const checklistTitle = t('ownerMailChecklistTitle', 'What AFR saw on your domain', 'AFR 在你的域名上看到的情况');
 const sentTitle = t('ownerMailSentTitle', 'Confirmation mail sent', '确认信已寄出');
 const sentBody = t(
@@ -119,6 +134,7 @@ const errChallengeMismatch = t('ownerMailErrChallengeMismatch', 'This challenge 
 const errDomainControl = t('ownerMailErrDomainControl', 'AFR does not see the challenge on your domain yet — publish it and try again.', 'AFR 还没在你的域名上看到挑战码——发布后再试。');
 const errUnknownDomain = t('ownerMailErrUnknownDomain', 'This domain is not listed in AFR yet.', '该域名尚未被 AFR 收录。');
 const errMailboxVerified = t('ownerMailErrMailboxVerified', 'This domain already has a confirmed mailbox.', '该域名已有确认过的邮箱。');
+const errSameEmail = t('ownerMailErrSameEmail', 'This is already the registered mailbox.', '这已经是当前登记的邮箱。');
 const errRateLimited = t('ownerMailErrRateLimited', 'Too many attempts — try again later.', '尝试次数过多——请稍后再试。');
 const errUnauthorized = t('ownerMailErrUnauthorized', 'The management token is not valid — confirm the mailbox again.', '管理令牌无效——请重新确认邮箱。');
 const errTurnstile = t('ownerMailErrTurnstile', 'Human verification failed — please try again.', '人机验证失败——请重试。');
@@ -134,6 +150,8 @@ const errNotConfigured = t('ownerMailErrNotConfigured', 'The owner-mail feature 
   data-action={ACTION}
   data-label-idle={startText}
   data-label-busy={busyText}
+  data-label-change-submit={changeSubmitText}
+  data-label-change-busy={changeBusyText}
   data-label-check={checkText}
   data-label-checking={checkingText}
   data-msg-error={errorText}
@@ -155,6 +173,7 @@ const errNotConfigured = t('ownerMailErrNotConfigured', 'The owner-mail feature 
   data-err-domain-control={errDomainControl}
   data-err-unknown-domain={errUnknownDomain}
   data-err-mailbox-verified={errMailboxVerified}
+  data-err-same-email={errSameEmail}
   data-err-rate-limited={errRateLimited}
   data-err-unauthorized={errUnauthorized}
   data-err-turnstile={errTurnstile}
@@ -291,6 +310,7 @@ const errNotConfigured = t('ownerMailErrNotConfigured', 'The owner-mail feature 
   <div class="om-state" data-om-state="sent" hidden>
     <p class="om-title-sm" data-om-sent-title data-sent={sentTitle} data-stored={storedTitle}>{sentTitle}</p>
     <p class="om-note" data-om-sent-body data-sent={sentBody} data-stored={storedBody}>{sentBody}</p>
+    <p class="om-note" data-om-change-note hidden>{changeDoneText}</p>
     <p class="om-note">{tokenHelp}</p>
     <a class="btn om-btn" data-om-verify-link hidden target="_blank" rel="noopener noreferrer">
       {verifyLinkText}
@@ -308,6 +328,26 @@ const errNotConfigured = t('ownerMailErrNotConfigured', 'The owner-mail feature 
       <input type="checkbox" data-om-notify />
       <span>{notifyLabel}</span>
     </label>
+    {/* ── replacing the mailbox (POST /api/v1/owners/email/change) ── */}
+    <details class="om-change" data-om-change-box>
+      <summary class="om-summary">{changeTitle}</summary>
+      <p class="om-note">{changeDesc}</p>
+      <form class="om-form" data-om-change-form novalidate>
+        <label class="om-label" for="om-change-email">{changeLabel}</label>
+        <input
+          class="om-input"
+          id="om-change-email"
+          name="email"
+          type="email"
+          inputmode="email"
+          autocomplete="email"
+          spellcheck="false"
+          placeholder="owner@example.com"
+          data-om-change-email
+        />
+        <button class="btn om-btn" type="submit" data-om-change-submit>{changeSubmitText}</button>
+      </form>
+    </details>
     <button class="btn btn-ghost om-btn" type="button" data-om-signout>{signOutText}</button>
   </div>
 
@@ -576,6 +616,22 @@ const errNotConfigured = t('ownerMailErrNotConfigured', 'The owner-mail feature 
     margin-top: 8px;
   }
 
+  /* replacing the mailbox of a confirmed domain */
+  .om-change {
+    border-top: 1px solid var(--line);
+    padding-top: 8px;
+  }
+  .om-change[open] .om-summary {
+    margin-bottom: 8px;
+  }
+  .om-change .om-label {
+    display: block;
+    margin: 8px 0 4px;
+  }
+  .om-change .om-btn {
+    margin-top: 8px;
+  }
+
   .om-status {
     margin: 0;
     min-height: 1.2em;
@@ -669,6 +725,11 @@ const errNotConfigured = t('ownerMailErrNotConfigured', 'The owner-mail feature 
     const tokenUseBtn = root.querySelector<HTMLButtonElement>('[data-om-token-use]');
     const tokenInput = root.querySelector<HTMLInputElement>('[data-om-token]');
     const notifyBox = root.querySelector<HTMLInputElement>('[data-om-notify]');
+    const changeBox = root.querySelector<HTMLDetailsElement>('[data-om-change-box]');
+    const changeForm = root.querySelector<HTMLFormElement>('[data-om-change-form]');
+    const changeEmailInput = root.querySelector<HTMLInputElement>('[data-om-change-email]');
+    const changeSubmitBtn = root.querySelector<HTMLButtonElement>('[data-om-change-submit]');
+    const changeNote = root.querySelector<HTMLElement>('[data-om-change-note]');
     const maskedOut = root.querySelector<HTMLElement>('[data-om-masked]');
     const verifyLink = root.querySelector<HTMLAnchorElement>('[data-om-verify-link]');
     const sentTitle = root.querySelector<HTMLElement>('[data-om-sent-title]');
@@ -685,6 +746,10 @@ const errNotConfigured = t('ownerMailErrNotConfigured', 'The owner-mail feature 
     let challenge = '';
     let email = '';
     let waitTimer = 0;
+    /* the visible state of the panel + whether the change form is open
+     * (the human check has to be visible while a write is possible) */
+    let state = 'idle';
+    let changeOpen = false;
 
     function loadToken(): string {
       try {
@@ -716,11 +781,16 @@ const errNotConfigured = t('ownerMailErrNotConfigured', 'The owner-mail feature 
     }
 
     function setState(next: string) {
+      state = next;
       for (const el of root.querySelectorAll<HTMLElement>('[data-om-state]')) {
         el.hidden = el.dataset.omState !== next;
       }
       /* the human check is only needed while a write is possible */
-      if (turnstileBox) turnstileBox.hidden = !(next === 'idle' || next === 'challenge');
+      if (turnstileBox) {
+        turnstileBox.hidden = !(
+          next === 'idle' || next === 'challenge' || (next === 'verified' && changeOpen)
+        );
+      }
     }
 
     function errorFor(code: string): string {
@@ -741,6 +811,8 @@ const errNotConfigured = t('ownerMailErrNotConfigured', 'The owner-mail feature 
           return attr('data-err-unknown-domain');
         case 'mailbox_already_verified':
           return attr('data-err-mailbox-verified');
+        case 'same_email':
+          return attr('data-err-same-email');
         case 'rate_limited':
           return attr('data-err-rate-limited');
         case 'unauthorized':
@@ -1025,6 +1097,108 @@ const errNotConfigured = t('ownerMailErrNotConfigured', 'The owner-mail feature 
           say(attr('data-msg-error'), 'error');
         })
         .then(() => turnstileReset(action));
+    });
+
+    /* ── change the mailbox: POST /api/v1/owners/email/change ──
+     *
+     * The management token is the lock here: it proves that this browser
+     * owns the confirmed mailbox. The change voids that token at once, so
+     * the local copy is dropped immediately — the new token arrives with
+     * the confirmation of the new address. */
+    changeForm?.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const value = (changeEmailInput?.value ?? '').trim();
+      if (!value || value.indexOf('@') < 1) {
+        say(attr('data-err-invalid-email'), 'error');
+        changeEmailInput?.focus();
+        return;
+      }
+      const token = loadToken();
+      if (!token) {
+        say(attr('data-err-unauthorized'), 'error');
+        setState('idle');
+        return;
+      }
+      const human = turnstileToken(action);
+      if (turnstileHas(action) && !human) {
+        say(
+          turnstileUnavailable() ? attr('data-err-turnstile-unavailable') : attr('data-err-turnstile-required'),
+          'error',
+        );
+        return;
+      }
+      if (changeSubmitBtn) {
+        changeSubmitBtn.disabled = true;
+        changeSubmitBtn.textContent = attr('data-label-change-busy');
+      }
+      say('');
+
+      fetch('/api/v1/owners/email/change', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json',
+          authorization: 'Bearer ' + token,
+        },
+        body: JSON.stringify({ domain, email: value, turnstile_token: human }),
+      })
+        .then((r) => readJson(r).then((body) => ({ r, body })))
+        .then(({ r, body }) => {
+          const restoreBtn = () => {
+            if (changeSubmitBtn) {
+              changeSubmitBtn.disabled = false;
+              changeSubmitBtn.textContent = attr('data-label-change-submit');
+            }
+          };
+          if (r.status >= 200 && r.status < 300) {
+            const emailed = body && body.emailed === true;
+            const url = body && typeof body.verifyUrl === 'string' ? body.verifyUrl : '';
+            /* the old token is void from now on — it must not stay behind */
+            dropToken();
+            if (sentTitle) sentTitle.textContent = emailed ? sentTitle.dataset.sent ?? '' : sentTitle.dataset.stored ?? '';
+            if (sentBody) sentBody.textContent = emailed ? sentBody.dataset.sent ?? '' : sentBody.dataset.stored ?? '';
+            if (!emailed && url && verifyLink) {
+              verifyLink.hidden = false;
+              verifyLink.href = url;
+            } else if (verifyLink) {
+              verifyLink.hidden = true;
+            }
+            /* the change needs one more step than a registration: the new
+             * address has to be confirmed, and only then is there a new
+             * management token */
+            if (changeNote) changeNote.hidden = false;
+            restoreBtn();
+            setState('sent');
+            say('');
+            return;
+          }
+          if (r.status === 429) {
+            rateCountdown(r, body, restoreBtn);
+            return;
+          }
+          restoreBtn();
+          if (r.status === 401) {
+            dropToken();
+            setState('idle');
+            say(attr('data-msg-token-invalid'), 'error');
+            return;
+          }
+          say(errorFor(String((body && body.error) || '')), 'error');
+        })
+        .catch(() => {
+          if (changeSubmitBtn) {
+            changeSubmitBtn.disabled = false;
+            changeSubmitBtn.textContent = attr('data-label-change-submit');
+          }
+          say(attr('data-msg-error'), 'error');
+        })
+        .then(() => turnstileReset(action)); /* a token may only be used once */
+    });
+
+    /* the human check appears while the change form is open */
+    changeBox?.addEventListener('toggle', () => {
+      changeOpen = !!changeBox && changeBox.open;
+      setState(state);
     });
 
     /* ── back to the start (another address) ── */

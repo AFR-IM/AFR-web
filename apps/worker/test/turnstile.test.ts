@@ -254,6 +254,22 @@ describe('protected POST endpoints', () => {
     assert.equal(body.reason, 'missing_token');
   });
 
+  it('POST /api/v1/owners/email/change rejects a request without a token', async () => {
+    const res = await gatedApp().request(
+      '/api/v1/owners/email/change',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ domain: 'example.com', email: 'new@example.com' }),
+      },
+      { TURNSTILE_SECRET: 'test-secret' },
+    );
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.equal(body.error, 'turnstile_failed');
+    assert.equal(body.reason, 'missing_token');
+  });
+
   it('lets a machine client through the owner-mail endpoints with an API key', async () => {
     const seeded = openSeededDb();
     const key = 'owner-mail-agent-key';
@@ -299,5 +315,35 @@ describe('protected POST endpoints', () => {
     );
     assert.equal(registered.status, 403);
     assert.equal((await registered.json()).error, 'challenge_not_found');
+  });
+
+  it('lets a machine client through the mailbox change with an API key', async () => {
+    const seeded = openSeededDb();
+    const key = 'owner-mail-agent-key';
+    seeded.raw
+      .prepare(
+        'INSERT INTO api_keys (key_hash, domain_contact, tier, created_at, revoked_at) VALUES (?, ?, ?, ?, NULL)',
+      )
+      .run(await hashApiKey(key), null, 'free', new Date().toISOString());
+
+    const app = createApp({
+      db: seeded.db,
+      turnstileFetch: (async () => jsonResponse({ success: true })) as typeof fetch,
+    });
+    const env = { TURNSTILE_SECRET: 'test-secret', EMAIL_ENC_KEY: btoa('a'.repeat(32)) };
+
+    // The gate let the request through — it now fails on the management
+    // token, which is the next check of that endpoint.
+    const res = await app.request(
+      '/api/v1/owners/email/change',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', [API_KEY_HEADER]: key },
+        body: JSON.stringify({ domain: 'example.com', email: 'new@example.com' }),
+      },
+      env,
+    );
+    assert.equal(res.status, 401, 'an API key replaces the human check');
+    assert.equal((await res.json()).error, 'unauthorized');
   });
 });

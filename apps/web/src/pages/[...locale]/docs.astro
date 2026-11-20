@@ -286,6 +286,16 @@ const endpoints: Endpoint[] = [
     ),
     example: `{ "domain": "example.com", "notify": false }`,
   },
+  {
+    method: 'POST',
+    path: '/api/v1/owners/email/change',
+    desc: T(
+      'Replace the mailbox of an already confirmed domain. Body: { "domain": "example.com", "email": "new@example.com" } with the Authorization: Bearer manage-… header of that confirmed mailbox — without it, with a wrong token or with the token of another domain the answer is 401 unauthorized. The old address stops receiving notifications immediately and its management token is void from now on; the new address has to be confirmed once more, so the answer is { "status": "sent", "emailed": true } (the confirmation mail went out) or { "status": "stored", "emailed": false, "verifyUrl": "…" } (no mail provider configured — that link finishes the confirmation and hands out the new management token, exactly once). The same human check applies (turnstile_token, action afr_owner_email; X-AFR-Agent-Key skips it). Errors: 400 invalid_email | invalid_domain | turnstile_failed, 401 unauthorized, 409 same_email (the address is already registered), 429 rate_limited (3 mailbox writes per domain per day, 5 per IP per hour).',
+      '更换已确认域名的邮箱。请求体：{ "domain": "example.com", "email": "new@example.com" }，并带上该已确认邮箱的 Authorization: Bearer manage-… 头——缺少、错误或属于其他域名时返回 401 unauthorized。旧地址立即停止接收通知，其管理令牌当场失效；新地址需重新确认一次，因此返回 { "status": "sent", "emailed": true }（确认信已寄出）或 { "status": "stored", "emailed": false, "verifyUrl": "…" }（未配置邮件通道——该链接完成确认，并一次性给出新的管理令牌）。同样需要人机校验（turnstile_token，action afr_owner_email；X-AFR-Agent-Key 可跳过）。错误：400 invalid_email | invalid_domain | turnstile_failed，401 unauthorized，409 same_email（与已登记地址相同），429 rate_limited（每域名每天 3 次写入、每 IP 每小时 5 次）。',
+    ),
+    params: 'domain · email · Authorization: Bearer <manageToken>',
+    example: `{ "status": "sent", "emailed": true }`,
+  },
 ];
 ---
 

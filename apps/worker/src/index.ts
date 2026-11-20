@@ -761,6 +761,37 @@ async function managedMailbox(
   return row ?? null;
 }
 
+/** The confirmed mailbox a management token is allowed to act on — plus the
+ * lookup hash of its address.
+ *
+ * Same lock as managedMailbox(); the extra column is what the mailbox-change
+ * route needs to tell "same address" from "new address" without decrypting
+ * the stored ciphertext. */
+async function managedMailboxWithHash(
+  db: Db,
+  domain: string,
+  token: string | null,
+): Promise<{
+  email_cipher: string;
+  email_hash: string;
+  verified_at: string | null;
+  notify: number | null;
+} | null> {
+  if (!token) return null;
+  const row = await db
+    .prepare(
+      `SELECT email_cipher, email_hash, verified_at, notify FROM owner_emails
+       WHERE domain = ? AND manage_token_hash = ? AND verified_at IS NOT NULL`,
+    )
+    .get<{
+      email_cipher: string;
+      email_hash: string;
+      verified_at: string | null;
+      notify: number | null;
+    }>(domain, await hashToken(token));
+  return row ?? null;
+}
+
 /** Fallback MCP limiter (per-isolate memory — degraded but serviceable) */
 const fallbackMcpLimiter = new RateLimiter(memoryStore(), MCP_RATE_LIMIT, MCP_RATE_WINDOW_MS, 'mcp');
 
@@ -2279,14 +2310,27 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
       );
     }
 
-    // A confirmed mailbox is never overwritten: the confirmed address owns
-    // the management token, and replacing it would hand the notification
-    // channel to whoever published a challenge last.
+    // A confirmed mailbox is never overwritten by a stranger: the confirmed
+    // address owns the management token, and replacing it would hand the
+    // notification channel to whoever published a challenge last.
+    //
+    // The holder of that token may re-confirm the mailbox (the "re-confirm"
+    // path): the write below resets the mailbox to the unconfirmed state,
+    // voids the old token and mails a fresh confirmation link. The token is
+    // compared by hash — only the hash is stored.
     const existing = await db
-      .prepare('SELECT verified_at FROM owner_emails WHERE domain = ?')
-      .get<{ verified_at: string | null }>(canonical);
+      .prepare('SELECT verified_at, manage_token_hash FROM owner_emails WHERE domain = ?')
+      .get<{ verified_at: string | null; manage_token_hash: string | null }>(canonical);
     if (existing?.verified_at) {
-      return c.json({ error: 'mailbox_already_verified' }, 409);
+      const token = bearerToken(c);
+      const ownsMailbox = Boolean(
+        token &&
+          existing.manage_token_hash &&
+          existing.manage_token_hash === (await hashToken(token)),
+      );
+      if (!ownsMailbox) {
+        return c.json({ error: 'mailbox_already_verified' }, 409);
+      }
     }
 
     // 3 registrations per domain per day + 5 per IP per hour (a bucket of its
@@ -2376,6 +2420,158 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
       // The mailbox is stored; the confirmation mail did not go out. The error
       // is redacted by sendEmailViaResend (no key, no full address).
       console.warn(`owner email: confirmation mail failed (${sent.error ?? 'unknown error'})`);
+      return c.json({ status: 'stored', emailed: false, verifyUrl });
+    }
+    return c.json({ status: 'sent', emailed: true });
+  });
+
+  // POST /api/v1/owners/email/change {domain, email} — replace the mailbox
+  // of an already confirmed domain.
+  //
+  // The lock here is the management token of the confirmed mailbox: it proves
+  // that the requester is the owner who confirmed the current address. The
+  // domain-control challenge is not needed again — the domain was proven
+  // when the mailbox was registered — but the new address has to prove
+  // mailbox control once more, through the confirmation mail.
+  //
+  // What the change does to the old address:
+  //   - its management token dies immediately (manage_token_hash = NULL), so
+  //     nobody can read or toggle the mailbox with it any more,
+  //   - the mailbox goes back to the unconfirmed state (verified_at = NULL),
+  //     and the score-change notifications stop for it: both the enqueue and
+  //     the drain require a confirmed mailbox, so the old address receives
+  //     nothing from now on,
+  //   - the notification preference (notify) is kept, so the new address
+  //     starts with the same setting once it is confirmed.
+  //
+  // Order matters: validation → configuration → human check → lock →
+  // same address → rate limit → write. Every check that can fail runs
+  // before the limiter is consumed, so a refused request never burns the
+  // domain or IP budget.
+  app.post('/api/v1/owners/email/change', async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: 'invalid_json' }, 400);
+    }
+    const payload = (body ?? {}) as { domain?: unknown; email?: unknown };
+    if (typeof payload.domain !== 'string') {
+      return c.json({ error: 'invalid_domain', message: 'domain must be a string' }, 400);
+    }
+    const domain = normalizeDomain(payload.domain);
+    if (!domain) {
+      return c.json({ error: 'invalid_domain', message: 'expected a bare domain like example.com' }, 400);
+    }
+    const email = normalizeEmail(payload.email);
+    if (!email) {
+      return c.json({ error: 'invalid_email', message: 'expected an email address like owner@example.com' }, 400);
+    }
+    // The mailbox row is keyed by the registered domain — the same key the
+    // registration used.
+    const canonical = directoryDomain(domain);
+
+    // Human check (Turnstile) — the same action and the same API-key
+    // exemption as the other owner-mail writes. It runs before the mailbox
+    // is read, so an unverified request never touches the token store and
+    // never reaches the rate limiter.
+    const turnstile = await requireTurnstile(c, {
+      action: TURNSTILE_ACTIONS.ownerEmail,
+      payload,
+      fetchImpl: overrides.turnstileFetch,
+      db: dbOf(c, overrides),
+    });
+    if (!turnstile.ok) {
+      return c.json({ error: 'turnstile_failed', reason: turnstile.reason }, 400);
+    }
+
+    const db = dbOf(c, overrides);
+    // Without the encryption secret the mailbox cannot be stored at all.
+    const secret = c.env?.EMAIL_ENC_KEY;
+    if (!secret) return c.json({ error: 'email_not_configured' }, 503);
+
+    // The lock: the management token of the confirmed mailbox. A missing
+    // token, a wrong token and the token of another domain are
+    // indistinguishable from the outside — all of them are 401.
+    const current = await managedMailboxWithHash(db, canonical, bearerToken(c));
+    if (!current) return c.json({ error: 'unauthorized' }, 401);
+
+    // Replacing the address with itself would burn the old token and the
+    // confirmation mail for nothing.
+    if (current.email_hash === (await emailHash(email, secret))) {
+      return c.json({ error: 'same_email' }, 409);
+    }
+
+    // 3 mailbox writes per domain per day + 5 per IP per hour — the same
+    // bucket as a registration (a change is a mailbox write). Both tiers
+    // are pre-checked before either is consumed, so a refused request never
+    // burns the other tier's budget.
+    const limits = emailLimitsOf(c, overrides);
+    const tiers: [string, RateLimiter][] = [
+      [canonical, limits.dailyDomain],
+      [clientIp(c), limits.hourlyIp],
+    ];
+    for (const [key, limiter] of tiers) {
+      const decision = await limiter.check(key);
+      if (!decision.allowed) {
+        const { retryAfter, nextAllowedAt } = retryPayload(limiter);
+        return c.json(
+          { error: 'rate_limited', retryAfter, nextAllowedAt },
+          429,
+          { 'Retry-After': String(retryAfter) },
+        );
+      }
+    }
+
+    const now = new Date();
+    // A fresh confirmation token for the new address; the old management
+    // token dies with the write.
+    const token = buildMagicToken();
+    const expiresAt = new Date(now.getTime() + EMAIL_VERIFY_TTL_MS).toISOString();
+    const { cipher, hash } = await encryptEmail(email, secret);
+
+    await db
+      .prepare(
+        `UPDATE owner_emails
+         SET email_cipher = ?, email_hash = ?, verified_at = NULL,
+             verify_token_hash = ?, verify_expires_at = ?, manage_token_hash = NULL,
+             updated_at = ?
+         WHERE domain = ?`,
+      )
+      .run(cipher, hash, await hashToken(token), expiresAt, now.toISOString(), canonical);
+
+    for (const [key, limiter] of tiers) await limiter.consume(key);
+
+    // The magic link is the second lock again: only the holder of the NEW
+    // mailbox can confirm it and receive the new management token.
+    const verifyUrl = magicLinkUrl(baseUrlOf(c), token);
+    const resendKey = c.env?.RESEND_API_KEY;
+    if (!resendKey) {
+      // Without a mail provider the mailbox is still stored — the link is
+      // handed back to the caller so the flow can still be completed (same
+      // convention as the domain-verification token).
+      return c.json({ status: 'stored', emailed: false, verifyUrl });
+    }
+
+    const mail = renderVerificationEmail({ domain: canonical, verifyUrl });
+    const sent = await sendEmailViaResend(
+      {
+        apiKey: resendKey,
+        from: fromOf(c),
+        to: email,
+        subject: mail.subject,
+        text: mail.text,
+        html: mail.html,
+        // The token is part of the key: a retried change mails a new link,
+        // the same change never mails twice.
+        idempotencyKey: `email-verify:${canonical}:${token}`,
+      },
+      overrides.fetchImpl ?? fetch,
+    );
+    if (!sent.ok) {
+      // The mailbox is stored; the confirmation mail did not go out. The error
+      // is redacted by sendEmailViaResend (no key, no full address).
+      console.warn(`owner email: change confirmation mail failed (${sent.error ?? 'unknown error'})`);
       return c.json({ status: 'stored', emailed: false, verifyUrl });
     }
     return c.json({ status: 'sent', emailed: true });

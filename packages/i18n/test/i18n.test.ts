@@ -121,6 +121,8 @@ describe('catalog parity', () => {
       'ownerMailFileContent', 'ownerMailMetaName', 'ownerMailMetaContent', 'ownerMailMetaTag',
       'ownerMailCheck',
       'ownerMailChecking', 'ownerMailChangeEmail', 'ownerMailChecklistTitle', 'ownerMailSentTitle',
+      'ownerMailChangeTitle', 'ownerMailChangeDesc', 'ownerMailChangeLabel', 'ownerMailChangeSubmit',
+      'ownerMailChangeBusy', 'ownerMailChangeDone', 'ownerMailErrSameEmail',
       'ownerMailSentBody', 'ownerMailStoredTitle', 'ownerMailStoredBody', 'ownerMailVerifyLink',
       'ownerMailTokenLabel', 'ownerMailTokenHelp', 'ownerMailTokenUse', 'ownerMailTokenSaved',
       'ownerMailTokenInvalid', 'ownerMailVerifiedTitle', 'ownerMailMaskedLabel', 'ownerMailNotifyLabel',

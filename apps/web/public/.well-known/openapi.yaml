@@ -613,6 +613,95 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
               example: { error: unauthorized }
+  /api/v1/owners/email/change:
+    post:
+      summary: Replace the mailbox of an already confirmed domain
+      description: >-
+        Changes the mailbox of a domain whose mailbox is already confirmed.
+        The management token of that mailbox must be sent as 'Authorization:
+        Bearer <token>' — without it, with a wrong token or with the token of
+        another domain the answer is 401 unauthorized. The change voids the
+        old management token at once (it can no longer read or toggle the
+        mailbox), the mailbox goes back to the unconfirmed state — so the old
+        address stops receiving the score-change mails — and the new address
+        gets its own confirmation mail. The notification preference (notify)
+        is kept. The answer is { "status": "sent", "emailed": true } when the
+        confirmation mail went out, or { "status": "stored", "emailed": false,
+        "verifyUrl": "…" } when no mail provider is configured — that link
+        confirms the new address and hands out the new management token
+        exactly once. A human check is part of the contract: the body must
+        also carry { "turnstile_token": "…" } (action 'afr_owner_email'); the
+        'X-AFR-Agent-Key' header skips it for agents. Errors: 400 invalid_domain
+        | invalid_email | turnstile_failed, 401 unauthorized, 409 same_email
+        (the address is already registered), 429 rate_limited (3 mailbox writes
+        per domain per day, 5 per IP per hour).
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          schema: { type: string }
+          description: "Bearer token of the confirmed mailbox, e.g. 'Bearer manage-0123456789abcdef0123456789abcdef'"
+        - name: X-AFR-Agent-Key
+          in: header
+          required: false
+          schema: { type: string }
+          description: >-
+            Agent key issued by AFR. When present and valid — the SHA-256 hash
+            of the key is in the api_keys table and not revoked — the human
+            check is skipped and turnstile_token is not required. Self-service
+            issuance is not open yet: ask AFR for a key.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [domain, email]
+              properties:
+                domain: { type: string, description: 'Bare registered domain, e.g. example.com' }
+                email: { type: string, format: email, description: 'The new address — it has to be confirmed once more' }
+                turnstile_token: { type: string, description: 'Human-verification token — a Cloudflare Turnstile token (action afr_owner_email) minted by the widget on the AFR site detail page. Optional in the schema, required in practice: without a valid token the request is answered 400 turnstile_failed — unless the caller sends a valid X-AFR-Agent-Key header, which skips the human check.' }
+            example: { domain: example.com, email: 'new-owner@example.com', turnstile_token: '0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d' }
+      responses:
+        '200':
+          description: The new address is stored and waits for its confirmation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OwnerMailboxChange'
+              example: { status: sent, emailed: true }
+        '400':
+          description: >-
+            Invalid parameter (invalid_domain, invalid_email) or a failed human
+            check — { "error": "turnstile_failed", "reason": "missing_token" |
+            "invalid_token" | "wrong_action" | "verify_failed" }. Nothing is
+            stored and no rate-limit budget is spent.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: turnstile_failed, reason: missing_token }
+        '401':
+          description: unauthorized — the management token is missing, wrong or belongs to another domain
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: unauthorized }
+        '409':
+          description: same_email — the address is already the registered mailbox
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: same_email }
+        '429':
+          description: Rate limited — 3 mailbox writes per domain per day, 5 per IP per hour
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: rate_limited, retryAfter: 3600 }
   /api/v1/owners/email/verify:
     get:
       summary: Confirm the mailbox and collect the management token
@@ -857,6 +946,13 @@ components:
         email_masked: { type: string, description: 'The address, masked — the plaintext never leaves the database', example: 'o***@example.com' }
         verified: { type: boolean }
         notify: { type: boolean, description: Whether score-change mails are sent }
+    OwnerMailboxChange:
+      type: object
+      description: The result of a mailbox change — the new address waits for its confirmation
+      properties:
+        status: { type: string, enum: [sent, stored], description: "'sent' = the confirmation mail went out, 'stored' = the link is handed back instead" }
+        emailed: { type: boolean, description: Whether a confirmation mail was actually sent }
+        verifyUrl: { type: string, description: 'Present when no mail provider is configured: the one-time confirmation link — it hands out the new management token' }
     Error:
       type: object
       properties:

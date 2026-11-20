@@ -259,6 +259,16 @@ const en: Catalog = {
     ownerMailCheck: 'I published it — check now',
     ownerMailChecking: 'Checking…',
     ownerMailChangeEmail: 'Use another email',
+    // replacing the mailbox of a confirmed domain (POST /api/v1/owners/email/change)
+    ownerMailChangeTitle: 'Change the mailbox',
+    ownerMailChangeDesc:
+      'The old address stops receiving notifications right away — a mail that is already on its way cannot be recalled. To keep it, register it again.',
+    ownerMailChangeLabel: 'New email address',
+    ownerMailChangeSubmit: 'Change the mailbox',
+    ownerMailChangeBusy: 'Changing…',
+    ownerMailChangeDone:
+      'The new address has to be confirmed — the old management token is already void. Paste the new token below once the mail arrived.',
+    ownerMailErrSameEmail: 'This is already the registered mailbox.',
     ownerMailChecklistTitle: 'What AFR saw on your domain',
     ownerMailSentTitle: 'Confirmation mail sent',
     ownerMailSentBody:
@@ -668,6 +678,14 @@ const zhCN: Catalog = {
     ownerMailCheck: '我已发布，立即检查',
     ownerMailChecking: '正在检查…',
     ownerMailChangeEmail: '换个邮箱',
+    // 更换已确认域名的邮箱（POST /api/v1/owners/email/change）
+    ownerMailChangeTitle: '更换邮箱',
+    ownerMailChangeDesc: '旧地址会立即停止接收通知——已在途的邮件无法追回。若想继续使用它，请重新登记。',
+    ownerMailChangeLabel: '新的邮箱地址',
+    ownerMailChangeSubmit: '确认更换',
+    ownerMailChangeBusy: '正在更换…',
+    ownerMailChangeDone: '新地址需要确认——旧管理令牌已立即失效。收到确认信后，请把新令牌粘贴到下方。',
+    ownerMailErrSameEmail: '这已经是当前登记的邮箱。',
     ownerMailChecklistTitle: 'AFR 在你的域名上看到的情况',
     ownerMailSentTitle: '确认信已寄出',
     ownerMailSentBody: '打开邮件中的链接。它会一次性显示管理令牌——请立即保存。',

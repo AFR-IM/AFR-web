@@ -188,10 +188,34 @@ Authorization: Bearer manage-…
 → 200 { "domain": "example.com", "notify": false }
 ```
 
-- **A human check is part of the contract**: both write endpoints (`/api/v1/owners/email/start`, `/api/v1/owners/email`) need `"turnstile_token"` (action `afr_owner_email`), otherwise `400 { "error": "turnstile_failed", "reason": "missing_token" | "invalid_token" | "wrong_action" | "verify_failed" }`. The `X-AFR-Agent-Key` header skips the check for agents that cannot run a browser widget.
+- **A human check is part of the contract**: both write endpoints (`/api/v1/owners/email/start`, `/api/v1/owners/email`) need `"turnstile_token"` (action `afr_owner_email`), otherwise `400 { "error": "turnstile_failed", "reason": "missing_token" | "invalid_token" | "wrong_action" | "verify_failed" }`. The `X-AFR-Agent-Key` header skips the check for agents that cannot run a browser widget. The mailbox change of §2.10 is gated the same way.
 - Limits: 3 challenges and 3 registrations per domain per day, 5 per IP per hour.
 - The address is stored encrypted and is only ever reported masked (`o***@example.com`) — AFR never returns the plaintext address.
 - The AFR panel keeps the management token in the browser you used (localStorage). Moving to another machine means pasting the token back into the panel; a lost token means confirming the mailbox again.
+
+### 2.10 Replace the mailbox of a confirmed domain
+
+A registered mailbox can be replaced later. The management token of the confirmed mailbox is the lock — no new domain-control challenge is needed (the domain was proven when the mailbox was registered), but the new address has to be confirmed once more, because only the holder of the new mailbox may take the notification channel over.
+
+```http
+POST https://afr.im/api/v1/owners/email/change
+Authorization: Bearer manage-…
+{ "domain": "example.com", "email": "new-owner@example.com",
+  "turnstile_token": "<token minted by the widget on https://afr.im/site/example.com/>" }
+→ 200 { "status": "sent", "emailed": true }
+→ 200 { "status": "stored", "emailed": false, "verifyUrl": "https://afr.im/api/v1/owners/email/verify?token=…" }
+→ 401 { "error": "unauthorized" }   // no token, a wrong token, or the token of another domain
+→ 409 { "error": "same_email" }     // the address is already the registered mailbox
+```
+
+What the change does:
+
+- **The old management token dies immediately** — it can no longer read the mailbox or toggle its notifications. Confirming the new address hands out a *new* management token, exactly once, like the first confirmation.
+- **The old address stops receiving the score-change mails right away** — the mailbox is unconfirmed until the new address confirms itself, and only a confirmed mailbox is served by the notification pipeline. A mail that was already on its way to the old address cannot be recalled.
+- **The notification preference is kept** — the new address starts with the same `notify` setting once it is confirmed.
+- **The old address has to be registered again** if you want to keep it.
+
+Limits: 3 mailbox writes per domain per day, 5 per IP per hour (the same bucket as a registration). The human check applies as well — `turnstile_token` (action `afr_owner_email`), or the `X-AFR-Agent-Key` header for agents.
 
 ## 3. Fetch budget and politeness
 
@@ -201,7 +225,7 @@ Authorization: Bearer manage-…
 - Use conditional requests (`If-None-Match` / `If-Modified-Since`) where possible and cache responses; re-fetch only pages you detected as changed instead of polling. Static pages are served with `Cache-Control: max-age=60, stale-while-revalidate=600`; `/data/*` with `max-age=300, stale-while-revalidate=86400`; `/og/*`, `/icons/*`, `/fonts/*` are cacheable for a week.
 - Do not retry aggressively: one retry after a `5xx` or timeout, then back off. `4xx` responses are final (except `429`, where `Retry-After` / `nextAllowedAt` is authoritative).
 - POST endpoints are rate-limited as documented per endpoint; `GET` endpoints need no key. The two POST endpoints that queue a scan also need the human-verification token of §2.3 (`turnstile_token`, or the `X-AFR-Agent-Key` header for agents).
-- The owner-mailbox write endpoints (`/api/v1/owners/email/start`, `/api/v1/owners/email`) carry the same human-verification token — `turnstile_token` (action `afr_owner_email`), or the `X-AFR-Agent-Key` header for agents. See §2.9.
+- The owner-mailbox write endpoints (`/api/v1/owners/email/start`, `/api/v1/owners/email`, `/api/v1/owners/email/change`) carry the same human-verification token — `turnstile_token` (action `afr_owner_email`), or the `X-AFR-Agent-Key` header for agents. See §2.9.
 
 ## 4. What you may reuse
 
