@@ -72,6 +72,11 @@ export const NOTIFY_MAX_ATTEMPTS = 5;
 /** Rows drained per run — the free-tier Worker has a subrequest budget, so a
  * drain must stay small. */
 export const NOTIFY_DRAIN_LIMIT = 20;
+/** Cooldown after a failed delivery. The sync endpoint runs once per page of
+ * the data set (dozens of times per rebuild), so without a cooldown a single
+ * provider outage would burn all five attempts within one rebuild and park
+ * the event as failed before the provider recovered. */
+export const NOTIFY_RETRY_COOLDOWN_MS = 60 * 60 * 1000;
 
 // ---------------------------------------------------------------------------
 // Small helpers
@@ -787,10 +792,12 @@ export async function drainNotifyOutbox(
   const rows = await db
     .prepare(
       `SELECT id, domain, event_key, grade, score_total, prev_grade, prev_score, attempts
-       FROM notify_outbox WHERE status = 'pending' AND attempts < ?
+       FROM notify_outbox
+       WHERE status = 'pending' AND attempts < ?
+         AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
        ORDER BY id LIMIT ?`,
     )
-    .all<Row>(NOTIFY_MAX_ATTEMPTS, limit);
+    .all<Row>(NOTIFY_MAX_ATTEMPTS, now.toISOString(), limit);
 
   for (const row of rows) {
     const id = Number(row.id);
@@ -855,11 +862,18 @@ export async function drainNotifyOutbox(
     } else {
       const attempts = Number(row.attempts ?? 0) + 1;
       const status = attempts >= NOTIFY_MAX_ATTEMPTS ? 'failed' : 'pending';
+      // Cool down before the next try: a provider outage must not burn all
+      // attempts inside one rebuild (the sync endpoint runs per page).
+      const nextAttemptAt = new Date(
+        now.getTime() + NOTIFY_RETRY_COOLDOWN_MS * attempts,
+      ).toISOString();
       await db
         .prepare(
-          `UPDATE notify_outbox SET attempts = ?, status = ?, last_error = ? WHERE id = ?`,
+          `UPDATE notify_outbox
+           SET attempts = ?, status = ?, last_error = ?, next_attempt_at = ?
+           WHERE id = ?`,
         )
-        .run(attempts, status, truncate(sent.error ?? 'unknown error', 200), id);
+        .run(attempts, status, truncate(sent.error ?? 'unknown error', 200), nextAttemptAt, id);
       result.failed += 1;
     }
   }

@@ -606,6 +606,74 @@ async function runOwnerNotifications(
   }
 }
 
+/** Enqueue the score-change events without sending anything.
+ *
+ * The enqueue is a few small D1 statements, so it stays on the request path:
+ * the event is recorded the moment the sync that changed the score finished.
+ * The delivery itself (network calls to the mail provider) is deferred — see
+ * `scheduleOwnerNotificationDrain`. */
+async function enqueueOwnerNotifications(
+  db: Db,
+  env: WorkerEnv,
+): Promise<number | null> {
+  if (!env?.EMAIL_ENC_KEY) return null;
+  try {
+    return await enqueueScoreChangeNotifications(db, {});
+  } catch (err) {
+    console.warn(
+      `owner notification enqueue failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return null;
+  }
+}
+
+/** Deliver the queued owner mails off the request path.
+ *
+ * The sync endpoint runs once per page of the data set, so a rebuild fires
+ * dozens of requests in a row. Awaiting the delivery inline would keep each
+ * of them open for the length of the provider round-trips (and the CI caller
+ * gives up after 240 s). The delivery therefore runs in `waitUntil`: the
+ * response returns immediately and the mail is still sent. */
+function scheduleOwnerNotificationDrain(
+  c: Context<AppEnv>,
+  db: Db,
+  env: WorkerEnv,
+  fetchImpl: typeof fetch,
+): void {
+  const secret = env?.EMAIL_ENC_KEY;
+  if (!secret) return;
+  const task = (async () => {
+    try {
+      const drained = await drainNotifyOutbox(
+        db,
+        {
+          secretB64: secret,
+          resendApiKey: env.RESEND_API_KEY,
+          from: env.EMAIL_FROM,
+          baseUrl: env.PUBLIC_SITE_URL,
+        },
+        fetchImpl,
+      );
+      if (drained.sent || drained.failed) {
+        console.log(
+          `owner notifications: ${drained.sent} sent, ${drained.failed} failed, ${drained.skipped} skipped`,
+        );
+      }
+    } catch (err) {
+      console.warn(
+        `owner notification drain failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  })();
+  try {
+    c.executionCtx.waitUntil(task);
+  } catch {
+    // No ExecutionContext (unit tests, or a runtime that does not expose
+    // it): await so the outcome stays observable.
+    void task;
+  }
+}
+
 /** Edge-cacheable read endpoints and their TTL in seconds (T4).
  * Only responses that are safe to serve slightly stale for a few minutes:
  * aggregates and per-site lookups. Anything with a write side effect, a
@@ -1346,9 +1414,12 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
       );
       if (!result) return c.json({ ok: true, date: null, nextOffset: null, note: 'no_snapshot_date' });
       // Owner notifications run after a successful sync: the sync may have
-      // moved the grade of a site and the owner wants to know. The helper
-      // never throws — a mail problem must not fail the sync.
-      await runOwnerNotifications(dbOf(c, overrides), c.env, overrides.fetchImpl ?? fetch);
+      // moved the grade of a site and the owner wants to know. The event is
+      // recorded here (cheap, local); the mail itself is delivered off the
+      // request path so a rebuild's paging calls stay fast.
+      const db = dbOf(c, overrides);
+      await enqueueOwnerNotifications(db, c.env);
+      scheduleOwnerNotificationDrain(c, db, c.env, overrides.fetchImpl ?? fetch);
       return c.json({
         ok: true,
         date: result.date,

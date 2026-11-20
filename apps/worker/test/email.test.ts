@@ -1126,6 +1126,7 @@ interface OutboxRow {
   status: string;
   attempts: number;
   last_error: string | null;
+  next_attempt_at: string | null;
   sent_at: string | null;
 }
 
@@ -1299,6 +1300,39 @@ describe('drainNotifyOutbox', () => {
     const row = raw.prepare('SELECT * FROM notify_outbox WHERE id = 1').get() as unknown as OutboxRow;
     assert.equal(row.attempts, 5);
     assert.equal(row.status, 'failed');
+  });
+
+  it('waits for the cooldown before the next delivery attempt', async () => {
+    // The sync endpoint drains once per page, so a provider outage must not
+    // burn every attempt inside one rebuild.
+    const { db, raw } = openSeededDb();
+    await seedOwner(raw, 'example.com');
+    await enqueueScoreChangeNotifications(db, {});
+
+    const { calls, impl } = fakeResend({ status: 500, body: { message: 'provider is down' } });
+    await drainNotifyOutbox(db, { secretB64: SECRET, resendApiKey: API_KEY }, impl);
+
+    const failed = raw.prepare('SELECT * FROM notify_outbox WHERE id = 1').get() as unknown as OutboxRow;
+    assert.equal(failed.attempts, 1);
+    assert.equal(failed.status, 'pending');
+    assert.ok(failed.next_attempt_at, 'a cooldown is scheduled');
+    assert.ok(
+      Date.parse(failed.next_attempt_at) > Date.now(),
+      'the next attempt is in the future, not immediately',
+    );
+
+    // A second drain right away must not touch the event again.
+    await drainNotifyOutbox(db, { secretB64: SECRET, resendApiKey: API_KEY }, impl);
+    const again = raw.prepare('SELECT * FROM notify_outbox WHERE id = 1').get() as unknown as OutboxRow;
+    assert.equal(again.attempts, 1, 'the cooldown blocked the second attempt');
+    assert.equal(calls.length, 1, 'no second provider call inside the cooldown');
+
+    // Once the cooldown has passed, the event is retried.
+    raw.prepare("UPDATE notify_outbox SET next_attempt_at = '2020-01-01T00:00:00.000Z' WHERE id = 1").run();
+    await drainNotifyOutbox(db, { secretB64: SECRET, resendApiKey: API_KEY }, impl);
+    const retried = raw.prepare('SELECT * FROM notify_outbox WHERE id = 1').get() as unknown as OutboxRow;
+    assert.equal(retried.attempts, 2);
+    assert.equal(calls.length, 2);
   });
 
   it('is a no-op without a mail provider', async () => {

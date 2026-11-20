@@ -236,7 +236,10 @@ CREATE TABLE IF NOT EXISTS notify_outbox (
   status TEXT DEFAULT 'pending',      -- pending | sent | failed
   attempts INTEGER DEFAULT 0,
   last_error TEXT,
+  next_attempt_at TEXT,              -- cooldown until the next delivery attempt
   created_at TEXT,
   sent_at TEXT
 );
+-- existing DBs (table already created):
+--   wrangler d1 execute aiapp --command "ALTER TABLE notify_outbox ADD COLUMN next_attempt_at TEXT" --remote
 CREATE INDEX IF NOT EXISTS idx_notify_outbox_status ON notify_outbox(status, id);
