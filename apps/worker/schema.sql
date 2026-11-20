@@ -184,3 +184,59 @@ WHERE snapshot_path IS NOT NULL
                  GROUP BY snapshot_path);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_scans_snapshot ON scans(snapshot_path);
+
+-- ---------------------------------------------------------------------------
+-- Owner contact mailbox (added with the owner-email subsystem).
+-- Apply together with the statements above via:
+--   wrangler d1 execute aiapp --file schema.sql --remote
+-- ---------------------------------------------------------------------------
+
+-- Owner contact mailbox (encrypted at rest; plaintext never stored)
+CREATE TABLE IF NOT EXISTS owner_emails (
+  domain TEXT PRIMARY KEY,
+  email_cipher TEXT NOT NULL,        -- base64 AES-256-GCM ciphertext
+  email_hash TEXT NOT NULL,          -- hex HMAC-SHA256 of the normalized address (lookup/dedupe only)
+  verified_at TEXT,                  -- set when the emailed magic link is clicked
+  verify_token_hash TEXT,            -- hex SHA-256 of the pending magic token
+  verify_expires_at TEXT,
+  manage_token_hash TEXT,            -- hex SHA-256 of the management token handed out by the
+                                      -- confirmation; required by every later read/toggle
+  notify INTEGER DEFAULT 1,          -- 0 = owner opted out of score-change mail
+  created_at TEXT,
+  updated_at TEXT
+);
+-- existing DBs (table already created):
+--   wrangler d1 execute aiapp --command "ALTER TABLE owner_emails ADD COLUMN manage_token_hash TEXT" --remote
+
+-- Pending owner-mailbox registration: the challenge proves domain control,
+-- the magic link proves mailbox control. Only hashes are stored.
+-- Expired rows can be pruned (a cron statement):
+--   DELETE FROM email_challenges WHERE expires_at < '2026-01-01T00:00:00.000Z';
+CREATE TABLE IF NOT EXISTS email_challenges (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  domain TEXT NOT NULL,
+  challenge_hash TEXT NOT NULL,      -- hex SHA-256 of the published challenge value
+  email_cipher TEXT NOT NULL,        -- base64 AES-256-GCM ciphertext of the mailbox
+  email_hash TEXT NOT NULL,          -- keyed HMAC of the normalized address
+  expires_at TEXT NOT NULL,
+  used_at TEXT,
+  created_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_email_challenges_domain ON email_challenges(domain);
+
+-- Score-change notification outbox (one row per event; UNIQUE key makes retries idempotent)
+CREATE TABLE IF NOT EXISTS notify_outbox (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  domain TEXT NOT NULL,
+  event_key TEXT NOT NULL UNIQUE,    -- idempotency key: domain|snapshot_path|grade|score
+  grade TEXT,
+  score_total INTEGER,
+  prev_grade TEXT,
+  prev_score INTEGER,
+  status TEXT DEFAULT 'pending',      -- pending | sent | failed
+  attempts INTEGER DEFAULT 0,
+  last_error TEXT,
+  created_at TEXT,
+  sent_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_notify_outbox_status ON notify_outbox(status, id);

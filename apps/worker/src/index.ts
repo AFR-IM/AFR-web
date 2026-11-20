@@ -23,6 +23,27 @@ import {
   probeAll,
   VERIFY_TOKEN_TTL_MS,
 } from './verification.ts';
+import {
+  buildMagicToken,
+  buildMailChallenge,
+  buildManageToken,
+  decryptEmail,
+  drainNotifyOutbox,
+  emailHash,
+  enqueueScoreChangeNotifications,
+  encryptEmail,
+  hashToken,
+  magicLinkUrl,
+  maskEmail,
+  normalizeEmail,
+  probeMailChallengeAll,
+  renderVerificationEmail,
+  sendEmailViaResend,
+  DEFAULT_BASE_URL,
+  DEFAULT_FROM,
+  EMAIL_CHALLENGE_TTL_MS,
+  EMAIL_VERIFY_TTL_MS,
+} from './email.ts';
 
 /** Cloudflare bindings (wrangler.toml) */
 export interface WorkerEnv {
@@ -35,6 +56,17 @@ export interface WorkerEnv {
   GITHUB_DISPATCH_TOKEN?: string;
   /** Worker secret: shared token required by POST /api/v1/queue/:domain/done */
   QUEUE_TOKEN?: string;
+  /** Worker secret: base64 secret (32 bytes in production) used to derive the
+   * AES-GCM / HMAC keys of the owner mailbox store. Missing → the owner
+   * email endpoints answer 503 (email_not_configured). */
+  EMAIL_ENC_KEY?: string;
+  /** Worker secret: Resend API key for outbound owner mail. Missing → the
+   * mailbox is still stored, only no mail is sent. */
+  RESEND_API_KEY?: string;
+  /** Sender address of owner mail (defaults to notifications@afr.im) */
+  EMAIL_FROM?: string;
+  /** Public site base URL used in magic links and report links */
+  PUBLIC_SITE_URL?: string;
 }
 
 type AppEnv = { Bindings: WorkerEnv };
@@ -51,6 +83,8 @@ export interface AppOverrides {
   claimLimits?: ClaimRateLimits;
   /** Injected MCP rate limiter (default: 60 requests/IP/minute) */
   mcpLimit?: RateLimiter;
+  /** Injected owner-email rate limiters (tests use isolated in-memory stores) */
+  emailLimits?: EmailRateLimits;
   /** Injected fetch for the GitHub dispatch (tests pass a fake) */
   fetchImpl?: typeof fetch;
 }
@@ -81,6 +115,13 @@ export const QUEUE_LIST_LIMIT = 50;
 export const VERIFY_START_DOMAIN_LIMIT = 3; // verify/start per domain per UTC day
 export const VERIFY_IP_LIMIT = 10; // verify/start + verify/check per IP per hour (shared)
 export const CLAIMS_DOMAIN_LIMIT = 5; // claims per domain per UTC day
+
+// Owner email subsystem limits
+export const EMAIL_DOMAIN_LIMIT = 3; // mailbox registrations per domain per UTC day
+export const EMAIL_IP_LIMIT = 5; // mailbox registrations per IP per hour
+export const EMAIL_VERIFY_IP_LIMIT = 20; // magic-link verifications per IP per hour
+export const EMAIL_START_DOMAIN_LIMIT = 3; // domain-control challenges per domain per UTC day
+export const EMAIL_START_IP_LIMIT = 5; // domain-control challenges per IP per hour
 
 // PV pixel: daily D1 write budget, enforced inside the count upsert
 export const PV_DAILY_WRITE_CAP = 20_000; // leave headroom for scans + sync inside the 100k/day free tier
@@ -273,6 +314,23 @@ export interface ClaimRateLimits {
   domain: RateLimiter;
 }
 
+/** Owner email tiers: registrations per domain/day + per IP/hour, plus the
+ * magic-link verification budget per IP/hour.
+ *
+ * The challenge tier (start) is metered separately from the registration
+ * tier: publishing a challenge and registering the mailbox are two different
+ * steps, and one must not exhaust the budget of the other. The two start
+ * limiters are optional — without them the registration tiers are reused. */
+export interface EmailRateLimits {
+  dailyDomain: RateLimiter;
+  hourlyIp: RateLimiter;
+  verifyIp: RateLimiter;
+  /** domain-control challenges per domain per day */
+  startDomain?: RateLimiter;
+  /** domain-control challenges per IP per hour */
+  startIp?: RateLimiter;
+}
+
 /** Fallback scan limiters (per-isolate memory — degraded but serviceable) */
 const fallbackScanLimits: ScanRateLimits = {
   ip: new RateLimiter(memoryStore(), SCAN_IP_LIMIT, DAY_MS, 'scan-ip'),
@@ -315,6 +373,15 @@ const fallbackClaimLimits: ClaimRateLimits = {
   domain: new RateLimiter(memoryStore(), CLAIMS_DOMAIN_LIMIT, DAY_MS, 'claim-domain'),
 };
 
+/** Fallback owner-email limiters (per-isolate memory — degraded but serviceable) */
+const fallbackEmailLimits: EmailRateLimits = {
+  dailyDomain: new RateLimiter(memoryStore(), EMAIL_DOMAIN_LIMIT, DAY_MS, 'email-domain'),
+  hourlyIp: new RateLimiter(memoryStore(), EMAIL_IP_LIMIT, HOUR_MS, 'email-ip'),
+  verifyIp: new RateLimiter(memoryStore(), EMAIL_VERIFY_IP_LIMIT, HOUR_MS, 'email-verify-ip'),
+  startDomain: new RateLimiter(memoryStore(), EMAIL_START_DOMAIN_LIMIT, DAY_MS, 'email-start-domain'),
+  startIp: new RateLimiter(memoryStore(), EMAIL_START_IP_LIMIT, HOUR_MS, 'email-start-ip'),
+};
+
 function verifyLimitsOf(c: Context<AppEnv>, overrides: AppOverrides): VerifyRateLimits {
   if (overrides.verifyLimits) return overrides.verifyLimits;
   if (c.env?.KV) {
@@ -333,6 +400,75 @@ function claimLimitsOf(c: Context<AppEnv>, overrides: AppOverrides): ClaimRateLi
     return { domain: new RateLimiter(kvStore(c.env.KV), CLAIMS_DOMAIN_LIMIT, DAY_MS, 'claim-domain') };
   }
   return fallbackClaimLimits;
+}
+
+function emailLimitsOf(c: Context<AppEnv>, overrides: AppOverrides): EmailRateLimits {
+  if (overrides.emailLimits) return overrides.emailLimits;
+  if (c.env?.KV) {
+    const store = kvStore(c.env.KV);
+    return {
+      dailyDomain: new RateLimiter(store, EMAIL_DOMAIN_LIMIT, DAY_MS, 'email-domain'),
+      hourlyIp: new RateLimiter(store, EMAIL_IP_LIMIT, HOUR_MS, 'email-ip'),
+      verifyIp: new RateLimiter(store, EMAIL_VERIFY_IP_LIMIT, HOUR_MS, 'email-verify-ip'),
+      startDomain: new RateLimiter(store, EMAIL_START_DOMAIN_LIMIT, DAY_MS, 'email-start-domain'),
+      startIp: new RateLimiter(store, EMAIL_START_IP_LIMIT, HOUR_MS, 'email-start-ip'),
+    };
+  }
+  return fallbackEmailLimits;
+}
+
+/** Public base URL used in magic links and report links */
+function baseUrlOf(c: Context<AppEnv>): string {
+  return (c.env?.PUBLIC_SITE_URL ?? DEFAULT_BASE_URL).replace(/\/+$/, '');
+}
+
+/** Sender address of owner mail */
+function fromOf(c: Context<AppEnv>): string {
+  return c.env?.EMAIL_FROM ?? DEFAULT_FROM;
+}
+
+/** Canonical key of a domain inside the directory: the registered domain when
+ * the input is a subdomain of one, the domain itself otherwise.
+ *
+ * The challenge and the mailbox must always be keyed by the same value, so
+ * both routes resolve the input through this helper — an owner who types
+ * "www.example.com" in one request and "example.com" in the next still hits
+ * the same row. */
+function directoryDomain(domain: string): string {
+  return registrableDomain(domain) ?? domain;
+}
+
+/** Bearer token from the Authorization header. The scheme name is
+ * case-insensitive (RFC 7235); a missing or malformed header yields null and
+ * the caller answers 401 without telling why. */
+function bearerToken(c: Context<AppEnv>): string | null {
+  const header = c.req.header('authorization') ?? '';
+  const match = /^bearer\s+(.+)$/i.exec(header.trim());
+  const token = match?.[1]?.trim();
+  return token ? token : null;
+}
+
+/** The mailbox row a management token is allowed to act on.
+ *
+ * The token is compared by hash (only the hash is stored) and the mailbox has
+ * to be confirmed. A missing token, a wrong token and the token of another
+ * domain are indistinguishable from the outside: all of them return null. */
+async function managedMailbox(
+  db: Db,
+  domain: string,
+  token: string | null,
+): Promise<{ email_cipher: string; verified_at: string | null; notify: number | null } | null> {
+  if (!token) return null;
+  const row = await db
+    .prepare(
+      `SELECT email_cipher, verified_at, notify FROM owner_emails
+       WHERE domain = ? AND manage_token_hash = ? AND verified_at IS NOT NULL`,
+    )
+    .get<{ email_cipher: string; verified_at: string | null; notify: number | null }>(
+      domain,
+      await hashToken(token),
+    );
+  return row ?? null;
 }
 
 /** Fallback MCP limiter (per-isolate memory — degraded but serviceable) */
@@ -433,6 +569,40 @@ async function dispatchScanQueue(
       `search-scan: dispatch error (${err instanceof Error ? err.message : String(err)}), deferred`,
     );
     return 'deferred';
+  }
+}
+
+/** Owner-notification pipeline: enqueue the score-change events of verified
+ * mailboxes, then drain the outbox through Resend.
+ *
+ * Never throws — a mail failure must not break the sync or the cron. The
+ * helper also stays quiet when the mail subsystem is not configured: a
+ * deployment without an encryption key simply skips the whole pipeline. */
+async function runOwnerNotifications(
+  db: Db,
+  env: WorkerEnv,
+  fetchImpl: typeof fetch,
+): Promise<{ enqueued: number; sent: number; failed: number; skipped: number } | null> {
+  const secret = env?.EMAIL_ENC_KEY;
+  if (!secret) return null;
+  try {
+    const enqueued = await enqueueScoreChangeNotifications(db, {});
+    const drained = await drainNotifyOutbox(
+      db,
+      {
+        secretB64: secret,
+        resendApiKey: env.RESEND_API_KEY,
+        from: env.EMAIL_FROM,
+        baseUrl: env.PUBLIC_SITE_URL,
+      },
+      fetchImpl,
+    );
+    return { enqueued, ...drained };
+  } catch (err) {
+    console.warn(
+      `owner notifications failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return null;
   }
 }
 
@@ -1175,6 +1345,10 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
         { date: body.date, offset: body.offset, limit: body.limit },
       );
       if (!result) return c.json({ ok: true, date: null, nextOffset: null, note: 'no_snapshot_date' });
+      // Owner notifications run after a successful sync: the sync may have
+      // moved the grade of a site and the owner wants to know. The helper
+      // never throws — a mail problem must not fail the sync.
+      await runOwnerNotifications(dbOf(c, overrides), c.env, overrides.fetchImpl ?? fetch);
       return c.json({
         ok: true,
         date: result.date,
@@ -1502,6 +1676,405 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     return c.json({ statement: row.statement, publishedAt: row.created_at });
   });
 
+  // -------------------------------------------------------------------------
+  // Owner mailbox + score-change notifications
+  //
+  // Three locks guard the owner mailbox:
+  //   1. domain control — the requester publishes a challenge on the domain
+  //      itself (DNS TXT / well-known file / homepage meta) and the platform
+  //      has to observe it there,
+  //   2. mailbox control — the owner confirms the magic link sent to the
+  //      mailbox,
+  //   3. the management token handed out by that confirmation, which every
+  //      later read/toggle of the mailbox must present.
+  // Without them anybody could take over a stranger's mailbox (and use AFR
+  // as a spam relay), read other owners' addresses or mute their mails.
+  // -------------------------------------------------------------------------
+
+  // POST /api/v1/owners/email/start {domain, email} — issue a domain-control
+  // challenge. The requester publishes the challenge on the domain; the
+  // registration endpoint only accepts the mailbox once the platform sees
+  // the challenge there. The challenge is bound to the mailbox, so it cannot
+  // be used later to register a different address.
+  app.post('/api/v1/owners/email/start', async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: 'invalid_json' }, 400);
+    }
+    const payload = (body ?? {}) as { domain?: unknown; email?: unknown };
+    if (typeof payload.domain !== 'string') {
+      return c.json({ error: 'invalid_domain', message: 'domain must be a string' }, 400);
+    }
+    const normalized = normalizeDomain(payload.domain);
+    if (!normalized) {
+      return c.json({ error: 'invalid_domain', message: 'expected a bare domain like example.com' }, 400);
+    }
+    const email = normalizeEmail(payload.email);
+    if (!email) {
+      return c.json({ error: 'invalid_email', message: 'expected an email address like owner@example.com' }, 400);
+    }
+
+    const db = dbOf(c, overrides);
+    // Owners often type the www form; the directory stores the registered
+    // domain, so fall back to it before answering "unknown domain".
+    const registrable = directoryDomain(normalized);
+    const site = await db
+      .prepare('SELECT domain FROM sites WHERE domain = ?')
+      .get<{ domain: string }>(registrable);
+    // Only a domain AFR lists can be claimed — otherwise anybody could mint
+    // challenges for domains AFR has never seen.
+    if (!site) return c.json({ error: 'unknown_domain' }, 404);
+    const domain = site.domain;
+
+    // The challenge row stores the mailbox encrypted (it is bound to the
+    // challenge), so the encryption secret is required already here.
+    const secret = c.env?.EMAIL_ENC_KEY;
+    if (!secret) return c.json({ error: 'email_not_configured' }, 503);
+
+    // Limits: 3 challenges per domain per day + 5 per IP per hour. The
+    // challenge tier is its own bucket, independent of the registration
+    // tier — publishing a challenge and registering the mailbox are two
+    // steps and must not share one budget.
+    const limits = emailLimitsOf(c, overrides);
+    const tiers: [string, RateLimiter][] = [
+      [domain, limits.startDomain ?? limits.dailyDomain],
+      [clientIp(c), limits.startIp ?? limits.hourlyIp],
+    ];
+    for (const [key, limiter] of tiers) {
+      const decision = await limiter.check(key);
+      if (!decision.allowed) {
+        const { retryAfter, nextAllowedAt } = retryPayload(limiter);
+        return c.json(
+          { error: 'rate_limited', retryAfter, nextAllowedAt },
+          429,
+          { 'Retry-After': String(retryAfter) },
+        );
+      }
+    }
+
+    const challenge = buildMailChallenge();
+    const { cipher, hash } = await encryptEmail(email, secret);
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + EMAIL_CHALLENGE_TTL_MS).toISOString();
+    await db
+      .prepare(
+        `INSERT INTO email_challenges
+           (domain, challenge_hash, email_cipher, email_hash, expires_at, used_at, created_at)
+         VALUES (?, ?, ?, ?, ?, NULL, ?)`,
+      )
+      .run(domain, await hashToken(challenge), cipher, hash, expiresAt, now.toISOString());
+
+    // The quota is spent only by a stored challenge: a rejected request (or a
+    // failed insert) must not burn the budget of the domain or the IP.
+    for (const [key, limiter] of tiers) await limiter.consume(key);
+
+    return c.json({
+      challenge,
+      methods: {
+        dns: { type: 'TXT', name: domain, value: `afr-mail=${challenge}` },
+        file: { url: `https://${domain}/.well-known/afr-mail.txt`, content: challenge },
+        meta: { name: 'afr-mail-verification', content: challenge },
+      },
+      expiresAt,
+    });
+  });
+
+  // POST /api/v1/owners/email {domain, email, challenge} — register the
+  // contact mailbox of a site owner. The address is stored encrypted
+  // (AES-256-GCM); the challenge proves that the requester controls the
+  // domain, the magic link proves that the requester controls the mailbox.
+  //
+  // Order matters: validation → configuration → challenge → domain proof →
+  // existing mailbox → rate limit → write. Every check that can fail runs
+  // before the limiter is consumed, so a rejected request never burns the
+  // domain or IP budget.
+  app.post('/api/v1/owners/email', async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: 'invalid_json' }, 400);
+    }
+    const payload = (body ?? {}) as { domain?: unknown; email?: unknown; challenge?: unknown };
+    if (typeof payload.domain !== 'string') {
+      return c.json({ error: 'invalid_domain', message: 'domain must be a string' }, 400);
+    }
+    const domain = normalizeDomain(payload.domain);
+    if (!domain) {
+      return c.json({ error: 'invalid_domain', message: 'expected a bare domain like example.com' }, 400);
+    }
+    const email = normalizeEmail(payload.email);
+    if (!email) {
+      return c.json({ error: 'invalid_email', message: 'expected an email address like owner@example.com' }, 400);
+    }
+    if (typeof payload.challenge !== 'string' || !payload.challenge.trim()) {
+      return c.json({ error: 'invalid_challenge', message: 'challenge is required' }, 400);
+    }
+    const challenge = payload.challenge.trim();
+    // The challenge was issued for the directory key of the domain — the
+    // lookup below uses the very same value.
+    const canonical = directoryDomain(domain);
+
+    const db = dbOf(c, overrides);
+    // Without the encryption secret the mailbox cannot be stored at all.
+    const secret = c.env?.EMAIL_ENC_KEY;
+    if (!secret) return c.json({ error: 'email_not_configured' }, 503);
+
+    const now = new Date();
+    // The challenge must exist for this domain, be unused and still valid.
+    const pending = await db
+      .prepare(
+        `SELECT id, email_hash FROM email_challenges
+         WHERE domain = ? AND challenge_hash = ? AND used_at IS NULL AND expires_at > ?
+         ORDER BY id DESC LIMIT 1`,
+      )
+      .get<{ id: number; email_hash: string }>(
+        canonical,
+        await hashToken(challenge),
+        now.toISOString(),
+      );
+    if (!pending) return c.json({ error: 'challenge_not_found' }, 403);
+
+    // The challenge is bound to one mailbox: a challenge issued for another
+    // address cannot be spent on this one.
+    if ((await emailHash(email, secret)) !== pending.email_hash) {
+      return c.json({ error: 'challenge_email_mismatch' }, 403);
+    }
+
+    // The proof of domain control: the platform has to observe the challenge
+    // on the domain itself. A network error counts as "not observed" — the
+    // requester simply publishes the challenge and tries again.
+    const checks = await probeMailChallengeAll(canonical, challenge, overrides.fetchImpl ?? fetch);
+    const passed = checks.find((check) => check.ok);
+    if (!passed) {
+      return c.json(
+        {
+          error: 'domain_control_failed',
+          checks: checks.map((check) => ({ method: check.method, detail: check.detail })),
+        },
+        403,
+      );
+    }
+
+    // A confirmed mailbox is never overwritten: the confirmed address owns
+    // the management token, and replacing it would hand the notification
+    // channel to whoever published a challenge last.
+    const existing = await db
+      .prepare('SELECT verified_at FROM owner_emails WHERE domain = ?')
+      .get<{ verified_at: string | null }>(canonical);
+    if (existing?.verified_at) {
+      return c.json({ error: 'mailbox_already_verified' }, 409);
+    }
+
+    // 3 registrations per domain per day + 5 per IP per hour (a bucket of its
+    // own, independent of the challenge tier). Both tiers are pre-checked
+    // before either is consumed, so a rejected request never burns the other
+    // tier's budget.
+    const limits = emailLimitsOf(c, overrides);
+    const tiers: [string, RateLimiter][] = [
+      [canonical, limits.dailyDomain],
+      [clientIp(c), limits.hourlyIp],
+    ];
+    for (const [key, limiter] of tiers) {
+      const decision = await limiter.check(key);
+      if (!decision.allowed) {
+        const { retryAfter, nextAllowedAt } = retryPayload(limiter);
+        return c.json(
+          { error: 'rate_limited', retryAfter, nextAllowedAt },
+          429,
+          { 'Retry-After': String(retryAfter) },
+        );
+      }
+    }
+
+    // Fresh token per registration: a new address must be confirmed again.
+    const token = buildMagicToken();
+    const expiresAt = new Date(now.getTime() + EMAIL_VERIFY_TTL_MS).toISOString();
+    const { cipher, hash } = await encryptEmail(email, secret);
+
+    // The challenge is single-use: it is consumed together with the mailbox
+    // write, so it cannot be replayed for a second registration.
+    await db
+      .prepare('UPDATE email_challenges SET used_at = ? WHERE id = ?')
+      .run(now.toISOString(), pending.id);
+    await db
+      .prepare(
+        `INSERT INTO owner_emails
+           (domain, email_cipher, email_hash, verified_at, verify_token_hash, verify_expires_at, manage_token_hash, notify, created_at, updated_at)
+         VALUES (?, ?, ?, NULL, ?, ?, NULL, 1, ?, ?)
+         ON CONFLICT(domain) DO UPDATE SET
+           email_cipher = excluded.email_cipher,
+           email_hash = excluded.email_hash,
+           verified_at = NULL,
+           verify_token_hash = excluded.verify_token_hash,
+           verify_expires_at = excluded.verify_expires_at,
+           manage_token_hash = NULL,
+           updated_at = excluded.updated_at`,
+      )
+      .run(
+        canonical,
+        cipher,
+        hash,
+        await hashToken(token),
+        expiresAt,
+        now.toISOString(),
+        now.toISOString(),
+      );
+
+    for (const [key, limiter] of tiers) await limiter.consume(key);
+
+    // The magic link is the second lock: only the holder of the mailbox can
+    // confirm it and receive the management token.
+    const verifyUrl = magicLinkUrl(baseUrlOf(c), token);
+    const resendKey = c.env?.RESEND_API_KEY;
+    if (!resendKey) {
+      // Without a mail provider the mailbox is still stored — the link is
+      // handed back to the caller so the flow can still be completed (same
+      // convention as the domain-verification token).
+      return c.json({ status: 'stored', emailed: false, verifyUrl });
+    }
+
+    const mail = renderVerificationEmail({ domain: canonical, verifyUrl });
+    const sent = await sendEmailViaResend(
+      {
+        apiKey: resendKey,
+        from: fromOf(c),
+        to: email,
+        subject: mail.subject,
+        text: mail.text,
+        html: mail.html,
+        // The token is part of the key: a retried registration mails a new
+        // link, the same registration never mails twice.
+        idempotencyKey: `email-verify:${canonical}:${token}`,
+      },
+      overrides.fetchImpl ?? fetch,
+    );
+    if (!sent.ok) {
+      // The mailbox is stored; the confirmation mail did not go out. The error
+      // is redacted by sendEmailViaResend (no key, no full address).
+      console.warn(`owner email: confirmation mail failed (${sent.error ?? 'unknown error'})`);
+      return c.json({ status: 'stored', emailed: false, verifyUrl });
+    }
+    return c.json({ status: 'sent', emailed: true });
+  });
+
+  // GET /api/v1/owners/email/verify?token= — consume the magic link.
+  // The token is single-use: a successful verification clears the stored
+  // hash, so replaying the link fails. The confirmation also hands out the
+  // management token, which every later read/toggle of this mailbox needs.
+  app.get('/api/v1/owners/email/verify', async (c) => {
+    // 20 verifications per IP per hour. The quota is spent on every attempt
+    // (like verify/check): a free token-guessing oracle is worth more than
+    // the missed quota.
+    const limits = emailLimitsOf(c, overrides);
+    const decision = await limits.verifyIp.check(clientIp(c));
+    if (!decision.allowed) {
+      const { retryAfter, nextAllowedAt } = retryPayload(limits.verifyIp);
+      return c.json(
+        { error: 'rate_limited', retryAfter, nextAllowedAt },
+        429,
+        { 'Retry-After': String(retryAfter) },
+      );
+    }
+    await limits.verifyIp.consume(clientIp(c));
+
+    const token = c.req.query('token') ?? '';
+    if (!token) return c.json({ error: 'invalid_or_expired_token' }, 400);
+
+    const db = dbOf(c, overrides);
+    const now = new Date();
+    const row = await db
+      .prepare(
+        `SELECT domain FROM owner_emails
+         WHERE verify_token_hash = ? AND verify_expires_at IS NOT NULL AND verify_expires_at > ?
+         LIMIT 1`,
+      )
+      .get<{ domain: string }>(await hashToken(token), now.toISOString());
+    if (!row) return c.json({ error: 'invalid_or_expired_token' }, 400);
+
+    // The management token is shown exactly once — only its hash is kept.
+    const manageToken = buildManageToken();
+    await db
+      .prepare(
+        `UPDATE owner_emails
+         SET verified_at = ?, verify_token_hash = NULL, verify_expires_at = NULL,
+             manage_token_hash = ?, updated_at = ?
+         WHERE domain = ?`,
+      )
+      .run(now.toISOString(), await hashToken(manageToken), now.toISOString(), row.domain);
+    return c.json({ verified: true, domain: row.domain, manageToken });
+  });
+
+  // GET /api/v1/owners/email?domain= — mailbox status of a domain. The
+  // address is only ever reported masked: the plaintext never leaves D1.
+  // The management token is required — without it nobody learns even the
+  // masked address of another owner's mailbox.
+  app.get('/api/v1/owners/email', async (c) => {
+    const domain = normalizeDomain(c.req.query('domain') ?? '');
+    if (!domain) {
+      return c.json({ error: 'invalid_domain', message: 'expected a bare domain like example.com' }, 400);
+    }
+    const db = dbOf(c, overrides);
+    const row = await managedMailbox(db, domain, bearerToken(c));
+    if (!row) return c.json({ error: 'unauthorized' }, 401);
+
+    const secret = c.env?.EMAIL_ENC_KEY;
+    if (!secret) return c.json({ error: 'email_not_configured' }, 503);
+
+    let masked = '***';
+    try {
+      masked = maskEmail(await decryptEmail(row.email_cipher, secret));
+    } catch (err) {
+      // A wrong key or a damaged row must not expose anything — report an
+      // opaque mask instead.
+      console.warn(
+        `owner email: cannot decrypt mailbox for ${domain} (${err instanceof Error ? err.message : String(err)})`,
+      );
+    }
+    return c.json({
+      domain,
+      email_masked: masked,
+      verified: Boolean(row.verified_at),
+      notify: row.notify !== 0,
+    });
+  });
+
+  // POST /api/v1/owners/notify {domain, notify} — owner toggles the
+  // score-change mails. The management token of the confirmed mailbox is
+  // required; the token stays valid across the toggle.
+  app.post('/api/v1/owners/notify', async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: 'invalid_json' }, 400);
+    }
+    const payload = (body ?? {}) as { domain?: unknown; notify?: unknown };
+    if (typeof payload.domain !== 'string') {
+      return c.json({ error: 'invalid_domain', message: 'domain must be a string' }, 400);
+    }
+    const domain = normalizeDomain(payload.domain);
+    if (!domain) {
+      return c.json({ error: 'invalid_domain', message: 'expected a bare domain like example.com' }, 400);
+    }
+    if (typeof payload.notify !== 'boolean') {
+      return c.json({ error: 'invalid_notify', message: 'notify must be a boolean' }, 400);
+    }
+
+    const db = dbOf(c, overrides);
+    // Only the holder of the management token of a confirmed mailbox may
+    // change the notification flag.
+    const row = await managedMailbox(db, domain, bearerToken(c));
+    if (!row) return c.json({ error: 'unauthorized' }, 401);
+
+    await db
+      .prepare('UPDATE owner_emails SET notify = ?, updated_at = ? WHERE domain = ?')
+      .run(payload.notify ? 1 : 0, new Date().toISOString(), domain);
+    return c.json({ domain, notify: payload.notify });
+  });
+
   // GET/POST /api/v1/pv?site=<domain> — counts a detail-page view. Always
   // answers 204 (the pixel must never fail visibly); only domains listed in
   // sites are counted, and the daily write budget is enforced inside the upsert — once
@@ -1592,7 +2165,13 @@ export default {
    * GitHub Actions (scan.yml), which reports back via /api/v1/queue/:domain/done. */
   async scheduled(_controller: ScheduledController, env: WorkerEnv, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(
-      runDailySync({ db: createD1Db(env.DB), fetchImpl: githubAuthedFetch(env.GITHUB_DISPATCH_TOKEN, fetch) }),
+      (async () => {
+        const db = createD1Db(env.DB);
+        await runDailySync({ db, fetchImpl: githubAuthedFetch(env.GITHUB_DISPATCH_TOKEN, fetch) });
+        // Score-change mails for the owners who asked for them (no-op when
+        // the mail subsystem is not configured).
+        await runOwnerNotifications(db, env, fetch);
+      })(),
     );
   },
 };
