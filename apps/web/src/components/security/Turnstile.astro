@@ -36,7 +36,11 @@ const { sitekey, action, locale: localeProp, theme = 'auto' } = Astro.props;
 
 // Astro exposes PUBLIC_* variables to the client bundle at build time. The
 // sitekey is public by design (it is visible in every page source anyway).
-const key = (sitekey ?? import.meta.env.PUBLIC_TURNSTILE_SITEKEY ?? '').trim();
+// The default below is the production widget of afr.im; a build can override
+// it with PUBLIC_TURNSTILE_SITEKEY, and a preview build that wants no
+// widget at all can pass an empty value explicitly.
+const DEFAULT_SITEKEY = '0x4AAAAAAGKC_rlmZBiQvGfz';
+const key = (sitekey ?? import.meta.env.PUBLIC_TURNSTILE_SITEKEY ?? DEFAULT_SITEKEY).trim();
 if (!key) {
   // A build without the variable (local dev) must not break the page: no
   // widget is rendered, and the worker skips the check too (no secret →
