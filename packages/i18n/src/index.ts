@@ -259,6 +259,12 @@ const en: Catalog = {
     backToDirectory: 'Back to the directory',
     lastSync: 'Last sync',
     cachedSites: 'Cached sites',
+
+    // PWA install prompt (InstallBanner.astro)
+    installPrompt: 'Install AFR for faster browsing and offline access.',
+    installCta: 'Install',
+    installLater: 'Later',
+    installDismiss: 'Dismiss the install prompt',
   },
 
   // Engine check ids (packages/afr/src/l1.ts, l2.ts, l3.ts) — EN values = `name` in source
@@ -600,6 +606,12 @@ const zhCN: Catalog = {
     backToDirectory: '返回目录',
     lastSync: '上次同步',
     cachedSites: '已缓存站点',
+
+    // PWA 安装引导（InstallBanner.astro）
+    installPrompt: '安装 AFR，浏览更快，离线也能看。',
+    installCta: '安装',
+    installLater: '稍后再说',
+    installDismiss: '关闭安装提示',
   },
 
   // Engine check ids (packages/afr/src/l1.ts, l2.ts, l3.ts) — ZH = faithful translation,

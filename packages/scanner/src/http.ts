@@ -3,7 +3,10 @@
 // · Transparent UA, 15s timeout, 1 retry on network error (robots/homepage only), capped response bodies
 // · The request counter is visible throughout, so the "polite budget" can be asserted not to be exceeded
 
-export const SCANNER_VERSION = 'scanner-0.1.0';
+// scanner-0.2.0: the in-site AI feature signals are extracted structurally
+// (markup, not raw text), so snapshots taken with this scanner are not
+// comparable with scanner-0.1.0 snapshots.
+export const SCANNER_VERSION = 'scanner-0.2.0';
 
 /** Transparent UA: identifies who we are + homepage (webmasters can block us anytime and get in touch) */
 export const USER_AGENT = 'afrScanner/0.1 (+https://afr.im/bot; AI-friendliness research crawler)';

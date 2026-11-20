@@ -7,6 +7,7 @@
 import { alternatePath, getCatalog, pathFor, toLocale, type Locale } from '../i18n/loader.ts';
 import { AFR_METHOD } from '../../../../packages/i18n/src/method.ts';
 import Logo from '../components/brand/Logo.astro';
+import InstallBanner from '../components/InstallBanner.astro';
 import '../styles/tokens.css';
 import '../styles/global.css';
 
@@ -185,6 +186,9 @@ const ldJson = (obj: unknown) => JSON.stringify(obj).replace(/</g, '\\u003c');
         <a href={otherHref}>{otherLabel}</a>
       </div>
     </header>
+
+    {/* PWA install prompt — hidden until the browser offers an install. */}
+    <InstallBanner locale={locale} />
 
     <main>
       <slot />

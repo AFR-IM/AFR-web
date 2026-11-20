@@ -1,0 +1,249 @@
+---
+// InstallBanner.astro — in-app PWA install prompt.
+//
+// The browser fires `beforeinstallprompt` when the site meets the install
+// criteria (manifest + service worker + secure context). We keep that event,
+// show a dismissible banner and forward the click to the native install
+// dialog — without it the only install affordance is the address-bar icon.
+//
+// Graceful degradation is the contract:
+//   - browsers that never fire the event (Safari, Firefox) → the banner stays
+//     hidden, nothing else on the page changes
+//   - the banner ships `hidden` in the SSR markup → without JS there is no
+//     banner and no empty box in the layout
+//   - the visitor's choice is remembered in localStorage ('afr-install-dismissed')
+//   - `appinstalled` (installed) or a declined native dialog hides it for good
+//
+// Copy lives in the i18n catalog (en + zh-CN), like every other string.
+
+import { getCatalog, toLocale } from '../i18n/loader.ts';
+
+interface Props {
+  /** UI locale ('en' | 'zh-CN'). */
+  locale?: string;
+}
+
+const { locale: localeProp } = Astro.props;
+const loc = toLocale(localeProp);
+const L = getCatalog(loc);
+const text = L.ui.installPrompt ?? 'Install AFR for faster browsing and offline access.';
+const cta = L.ui.installCta ?? 'Install';
+const later = L.ui.installLater ?? 'Later';
+const dismiss = L.ui.installDismiss ?? 'Dismiss the install prompt';
+---
+
+<div class="install-banner" data-install-banner role="status" aria-live="polite" hidden>
+  <div class="install-inner">
+    <span class="install-icon" aria-hidden="true">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 3v11" />
+        <path d="M7.5 10.5L12 15l4.5-4.5" />
+        <path d="M4 19h16" />
+      </svg>
+    </span>
+
+    <p class="install-text">{text}</p>
+
+    <div class="install-actions">
+      <button class="btn install-accept" type="button" data-install-accept>{cta}</button>
+      <button class="btn-ghost install-later" type="button" data-install-later>{later}</button>
+      <button class="install-close" type="button" data-install-dismiss aria-label={dismiss} title={dismiss}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M6 6l12 12M18 6L6 18" />
+        </svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<style>
+  /* A floating card, bottom-right on desktop and a full-width sheet on
+     phones — same surface language as the rest of the site (--bg-surface,
+     --line, --radius, --brand). */
+  .install-banner {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    z-index: 60;
+    display: grid;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--bg-surface);
+    box-shadow: 0 10px 30px rgb(0 0 0 / 30%);
+  }
+  /* the class sets `display: grid`, which would beat the UA [hidden] rule */
+  .install-banner[hidden] {
+    display: none;
+  }
+  .install-inner {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: 10px 12px;
+    padding: 12px 14px;
+  }
+  .install-icon {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border-radius: var(--r-2);
+    background: color-mix(in srgb, var(--brand) 14%, transparent);
+    color: var(--brand);
+    flex: none;
+  }
+  .install-text {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-2);
+  }
+  .install-actions {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .install-accept {
+    padding: 7px 14px;
+    font-size: 13px;
+  }
+  .install-later {
+    padding: 7px 14px;
+    font-size: 13px;
+  }
+  .install-close {
+    margin-left: auto;
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--r-2);
+    color: var(--text-3);
+    transition:
+      color var(--t-micro) var(--ease),
+      background var(--t-micro) var(--ease);
+  }
+  .install-close:hover {
+    color: var(--text-1);
+    background: var(--bg-elevated);
+  }
+  .install-close:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+
+  @media (min-width: 768px) {
+    .install-banner {
+      left: auto;
+      right: 24px;
+      bottom: 24px;
+      width: min(420px, calc(100vw - 48px));
+    }
+    .install-inner {
+      grid-template-columns: auto 1fr auto;
+      gap: 12px;
+    }
+    .install-actions {
+      grid-column: auto;
+    }
+    .install-close {
+      margin-left: 0;
+    }
+  }
+</style>
+
+<script>
+  // Install prompt — keep the `beforeinstallprompt` event, reveal the banner
+  // and forward the click to the native install dialog.
+  //
+  // Opt-in by design: the banner ships hidden and only ever appears when the
+  // browser actually offers an install (Chrome/Edge, desktop and Android).
+  // Safari and Firefox never fire the event → the banner stays hidden, no
+  // error, no empty box.
+
+  interface BeforeInstallPromptEvent extends Event {
+    prompt(): Promise<void>;
+    userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+  }
+
+  const DISMISS_KEY = 'afr-install-dismissed';
+
+  const banner = document.querySelector<HTMLElement>('[data-install-banner]');
+  if (banner) {
+    const acceptBtn = banner.querySelector<HTMLButtonElement>('[data-install-accept]');
+    const laterBtn = banner.querySelector<HTMLButtonElement>('[data-install-later]');
+    const closeBtn = banner.querySelector<HTMLButtonElement>('[data-install-dismiss]');
+
+    /** The kept event — null once it has been used or the banner closed. */
+    let deferred: BeforeInstallPromptEvent | null = null;
+
+    const readDismissed = (): boolean => {
+      try {
+        return localStorage.getItem(DISMISS_KEY) === '1';
+      } catch {
+        return false; // private mode / storage disabled
+      }
+    };
+    const rememberDismissed = (): void => {
+      try {
+        localStorage.setItem(DISMISS_KEY, '1');
+      } catch {
+        /* storage disabled — the banner simply comes back next visit */
+      }
+    };
+    const hide = (): void => {
+      banner.hidden = true;
+    };
+
+    // Already running as an installed app → there is nothing to offer.
+    const standalone =
+      (typeof matchMedia === 'function' && matchMedia('(display-mode: standalone)').matches) ||
+      (navigator as unknown as { standalone?: boolean }).standalone === true;
+
+    if (!standalone && !readDismissed()) {
+      addEventListener('beforeinstallprompt', (event) => {
+        // Keep the event: without preventDefault() the browser would show
+        // its own mini-infobar and the event would be unusable.
+        event.preventDefault();
+        deferred = event as BeforeInstallPromptEvent;
+        banner.hidden = false;
+      });
+    }
+
+    // Installed (or the user accepted the native dialog) → never ask again.
+    addEventListener('appinstalled', () => {
+      deferred = null;
+      rememberDismissed();
+      hide();
+    });
+
+    acceptBtn?.addEventListener('click', async () => {
+      const event = deferred;
+      deferred = null;
+      if (!event) {
+        hide();
+        return;
+      }
+      try {
+        await event.prompt();
+        const choice = await event.userChoice;
+        // 'dismissed' → the visitor declined the native dialog.
+        if (choice && choice.outcome === 'dismissed') rememberDismissed();
+      } catch {
+        /* the browser refused the dialog (already shown, page not focused) */
+      }
+      hide();
+    });
+
+    // "Later" and the close button: remember the choice and stay quiet.
+    for (const btn of [laterBtn, closeBtn]) {
+      btn?.addEventListener('click', () => {
+        deferred = null;
+        rememberDismissed();
+        hide();
+      });
+    }
+  }
+</script>

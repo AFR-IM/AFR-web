@@ -17,6 +17,7 @@
 
 import type { AiFeatures, ScanSignals } from '../../shared/src/index.ts';
 import { normalizeDomain, politeGet, RequestCounter, SCANNER_VERSION, sleep, type FetchImpl } from './http.ts';
+import { detectAiSearch, detectChatWidget, detectDeveloperConsole, parseMarkup } from './markup.ts';
 
 export interface ScanOptions {
   fetchImpl?: FetchImpl;
@@ -40,19 +41,23 @@ export function extractLinks(html: string, pattern: RegExp): string[] {
   return [...out];
 }
 
-/** In-site AI feature heuristics (tunable after distribution calibration) */
+/**
+ * In-site AI feature heuristics (tunable after distribution calibration).
+ *
+ * Structural, not textual: a signal only counts when the markup carries it —
+ * a chat script/iframe/link or a chat container element for the assistant, a
+ * control/endpoint that names the search for AI search, a real link target
+ * for the developer console. Prose and embedded JSON payloads (site catalogs
+ * often list product names such as "Discord - Group Chat") are never chat
+ * evidence — matching raw text there handed out points nobody earned.
+ */
 export function detectAiFeatures(html: string): AiFeatures {
-  const chat =
-    /intercom|crisp(-frame|_container)?|tidio|drift\.js|zendesk|hubspot.*chat|chatbot|chat-widget|chatscope|botpress|typebot|voiceflow|landbot|tawk\.to|purechat|watson|dialogflow|sendbird|userlike|olark|jivochat|gobot|chatra|livechat|whatsapp\.com\/wa|customerchat|fb-customerchat|<script[^>]+["'][^"']*\/chat[^"']*["']/i.test(html);
-  const aiSearch =
-    /ai[- ]search|ask ai\b|semantic search|vector search|powered by (openai|gpt|claude|gemini)|generative search|gpt-[34]|llm[- ]based/i.test(
-      html,
-    );
-  const console_ =
-    /(?:href|action)\s*=\s*["'][^"']*\/(console|developers?|dev\/|api\/keys|account\/api|dashboard[^"']*api)[^"']*["']/i.test(
-      html,
-    );
-  return { chatWidget: chat, aiSearch, developerConsole: console_ };
+  const markup = parseMarkup(html);
+  return {
+    chatWidget: detectChatWidget(markup),
+    aiSearch: detectAiSearch(markup),
+    developerConsole: detectDeveloperConsole(markup),
+  };
 }
 
 function statusOk(r: { status?: number }): boolean {

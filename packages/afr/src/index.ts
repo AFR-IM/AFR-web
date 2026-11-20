@@ -18,7 +18,10 @@ import { scoreL3 } from './l3.ts';
 import { evaluateRobotsPolicy, parseRobots, type RobotsTxt } from './robots.ts';
 
 // Score logic change = minor bump per spec §4.4.
-export const ENGINE_VERSION = 'afr-1.4.0';
+// afr-1.5.0: the in-site AI feature signals are now derived from markup
+// structure (no text matching), so scores computed by this engine can differ
+// from afr-1.4.0 on the very same scan signals.
+export const ENGINE_VERSION = 'afr-1.5.0';
 
 export function gradeFor(score: number): Grade {
   for (const t of GRADE_THRESHOLDS) {

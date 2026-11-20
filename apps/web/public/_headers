@@ -16,8 +16,25 @@
   Cache-Control: public, max-age=3600
 
 # --- MCP discovery document (served as JSON, see public/.well-known/mcp) ---
+# The .well-known/* rule below carries the same TTL, so a request that matches
+# both rules still ends up with max-age=3600 (and the JSON content type).
 /.well-known/mcp
   Content-Type: application/json
+  Cache-Control: public, max-age=3600
+/.well-known/*
+  Cache-Control: public, max-age=3600
+
+# --- Agent-facing documents (machine consumers, rarely changing) ---
+# These are served to crawlers and agents, not to browsers: a one-hour TTL
+# keeps them out of the revalidation path without pinning a stale copy.
+# The service worker caches the same paths (cache-first) for offline use.
+/llms.txt
+  Cache-Control: public, max-age=3600
+/agents.md
+  Cache-Control: public, max-age=3600
+/ai.txt
+  Cache-Control: public, max-age=3600
+/openapi.json
   Cache-Control: public, max-age=3600
 
 # --- Daily-built data payload: brief TTL + long background revalidate ---

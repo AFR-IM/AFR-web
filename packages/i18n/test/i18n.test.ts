@@ -112,6 +112,8 @@ describe('catalog parity', () => {
       'turnstileLabel', 'turnstileHint', 'turnstileRequired', 'turnstileFailed',
       'turnstileUnavailable',
       'backToDirectory', 'lastSync', 'cachedSites',
+      // PWA install prompt (InstallBanner.astro)
+      'installPrompt', 'installCta', 'installLater', 'installDismiss',
     ];
     for (const locale of LOCALES) {
       for (const key of required) {
