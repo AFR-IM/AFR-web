@@ -16,16 +16,24 @@
 //   src/data/generated/home.json         HomeData — scored sites only + pendingCount
 //   src/data/generated/categories.json   {slug: SiteCard[]} — scored, score desc
 //   src/data/generated/details/<domain>.json  SiteDetail, scored AND pending
-//   public/data/search-index.json        compact [{d,s,g,c,t}] client search payload
+//   public/data/search-index.json        compact [{d,s,c?,t?}] client search payload
 //
 // Pending sites (grade 'Pending': neither homepage nor robots readable) are
 // excluded from every card list / distribution / average, but do get a detail
-// page and an entry in the search index.
+// page. They are not in the search index either: the browser dropped them
+// from the results anyway, so they only cost wire bytes.
 
 import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { brotliCompressSync, constants } from 'node:zlib';
 import { CATEGORY_SLUGS, categorize } from '../src/data/categorize.mjs';
+import {
+  SEARCH_INDEX_RAW_PER_ENTRY,
+  SEARCH_INDEX_WIRE_BUDGET,
+  buildSearchEntry,
+  gradeFor,
+} from './search-index-contract.mjs';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = path.resolve(SCRIPT_DIR, '..'); // apps/web
@@ -35,18 +43,22 @@ const PUBLIC_DATA_DIR = path.join(WEB_DIR, 'public', 'data');
 
 const LEADERBOARD_SIZE = 50;
 const LATEST_SIZE = 24;
-const SEARCH_TITLE_MAX = 40;
 // The index is served with brotli by Cloudflare, so the cost a visitor pays is
 // the wire size, not the raw JSON. Budgets (SSOT §7b/T7):
-//  - wire budget: 160 KB compressed (measured ~0.26 ratio for this payload);
-//  - raw guard: 96 B/entry (measured 79 B) — linear headroom, not a
-//    fixed ceiling, so growth does not warn before it actually matters.
+//  - wire budget: 160 KB compressed — measured with brotli, not estimated;
+//  - raw guard: 96 B/entry — linear headroom, not a fixed ceiling, so growth
+//    does not warn before it actually matters.
 // Re-shard before 10k sites regardless (SSOT item 20: on-demand detail pages
 // + sitemap sharding make the client index a leaderboard/search slice only).
-const SEARCH_INDEX_WIRE_BUDGET = 160 * 1024;
-const SEARCH_INDEX_RAW_PER_ENTRY = 96; // ~20% headroom over the measured 79 B/entry
-const SEARCH_INDEX_BR_RATIO = 0.26; // measured 2026-11-17: 230 KB raw → 59.6 KB br
+// The payload rules themselves live in scripts/search-index-contract.mjs.
 const STATS_API_URL = process.env.AFR_STATS_API_URL ?? 'https://afr.im/api/v1/stats';
+
+/** Brotli-compressed size of a payload — what the browser actually downloads. */
+function brotliBytes(text) {
+  return brotliCompressSync(Buffer.from(text, 'utf8'), {
+    params: { [constants.BROTLI_PARAM_QUALITY]: 4 },
+  }).length;
+}
 
 async function readPublicStats() {
   try {
@@ -382,19 +394,42 @@ async function main() {
   for (const c of scoredCards) (grouped[c.category] ??= []).push(c);
   for (const list of Object.values(grouped)) list.sort(byScoreDesc);
 
-  // ── search index (everything, compact keys) ──────────────────────────────
-  const searchIndex = sites.filter((s) => !DELISTED[s.afr.domain ?? ''])
-    .map((s) => {
-      const entry = {
-        d: s.afr.domain,
-        s: s.afr.score,
-        g: s.afr.grade,
-        c: s.category,
-      };
-      if (s.title) entry.t = s.title.slice(0, SEARCH_TITLE_MAX);
-      return entry;
-    })
-    .sort((a, b) => b.s - a.s || a.d.localeCompare(b.d));
+  // ── search index (rated sites, compact keys) ─────────────────────────────
+  // The client search payload. The rules live in
+  // scripts/search-index-contract.mjs:
+  //   · pending (unratable) sites are not listed — the browser filtered them
+  //     out of the results anyway, so they only cost wire bytes;
+  //   · the grade is not carried — the browser derives it from the score with
+  //     the engine's own thresholds (packages/shared GRADE_THRESHOLDS), which
+  //     the page serializes into the DOM;
+  //   · 'other' renders no chip, so the category key is omitted;
+  //   · the title is cut on a word boundary (SEARCH_TITLE_MAX characters).
+  //
+  // The grade rule is checked here, at build time: if the thresholds moved
+  // after a snapshot was taken, the derived grade and the snapshot grade
+  // disagree and the build stops instead of publishing a card that says
+  // something else than the site's own report.
+  const searchIndex = [];
+  for (const s of scored) {
+    const grade = gradeFor(s.afr.score);
+    if (grade !== s.afr.grade) {
+      console.error(
+        `REFUSING to build: ${s.afr.domain} scored ${s.afr.score} → grade ${grade}, ` +
+          `but its snapshot says ${s.afr.grade}. The grade thresholds changed after ` +
+          `this snapshot was taken — re-scan the site before publishing it.`,
+      );
+      process.exit(1);
+    }
+    searchIndex.push(
+      buildSearchEntry({
+        domain: s.afr.domain,
+        score: s.afr.score,
+        category: s.category,
+        title: s.title,
+      }),
+    );
+  }
+  searchIndex.sort((a, b) => b.s - a.s || a.d.localeCompare(b.d));
 
   // ── write outputs ────────────────────────────────────────────────────────
   await rm(GENERATED_DIR, { recursive: true, force: true });
@@ -416,7 +451,11 @@ async function main() {
     detailBytes += await writeJson(path.join(DETAILS_DIR, `${s.afr.domain}.json`), detailOf(s));
   }
 
-  const searchBytes = await writeJson(path.join(PUBLIC_DATA_DIR, 'search-index.json'), searchIndex);
+  const searchJson = `${JSON.stringify(searchIndex)}\n`;
+  await writeFile(path.join(PUBLIC_DATA_DIR, 'search-index.json'), searchJson, 'utf8');
+  const searchBytes = Buffer.byteLength(searchJson, 'utf8');
+  // The browser pays the compressed size — measure it, do not estimate it.
+  const wireBytes = brotliBytes(searchJson);
 
   // ── summary ───────────────────────────────────────────────────────────────
   const mapped = sites.filter((s) => s.category !== 'other').length;
@@ -433,7 +472,6 @@ async function main() {
   console.log(`categories : ${categories.length} non-empty, coverage ${mapped}/${sites.length} (${coverage}%) by keyword/TLD, rest → other`);
   console.log(`written    : src/data/generated/index.json, home.json, categories.json, details/*.json (${(detailBytes / 1024).toFixed(0)} KB)`);
   console.log(`             home.json ${(homeBytes / 1024).toFixed(1)} KB · categories.json ${(catBytes / 1024).toFixed(1)} KB`);
-  const wireBytes = Math.round(searchBytes * SEARCH_INDEX_BR_RATIO);
   const rawBudget = searchIndex.length * SEARCH_INDEX_RAW_PER_ENTRY;
   const wireOk = wireBytes <= SEARCH_INDEX_WIRE_BUDGET;
   const rawOk = searchBytes <= rawBudget;
@@ -441,7 +479,7 @@ async function main() {
   console.log(
     `search idx : public/data/search-index.json raw ${(searchBytes / 1024).toFixed(1)} KB ` +
       `(budget ${(rawBudget / 1024).toFixed(0)} KB = ${searchIndex.length}×${SEARCH_INDEX_RAW_PER_ENTRY}B) · ` +
-      `wire ~${(wireBytes / 1024).toFixed(1)} KB br (budget ${SEARCH_INDEX_WIRE_BUDGET / 1024} KB) · ` +
+      `wire ${(wireBytes / 1024).toFixed(1)} KB br (budget ${SEARCH_INDEX_WIRE_BUDGET / 1024} KB) · ` +
       `${searchIndex.length} entries — ${verdict}`,
   );
   if (!wireOk) {
