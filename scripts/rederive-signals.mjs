@@ -119,12 +119,47 @@ export function serialize(value, style) {
  * A snapshot can be re-derived offline when its homepage probe was a 2xx with
  * a non-empty body — the same gate the live scanner applies before it judges
  * the markup (a challenged homepage is not a homepage).
+ *
+ * A probe that succeeded but carries no body is NOT re-derivable: the raw
+ * material was dropped (see scripts/prune-snapshot-bodies.mjs) or never stored
+ * because the response was too large. Such a snapshot keeps its stored
+ * verdict — the tool must not turn "the body is gone" into "the site has no
+ * chat widget".
  */
 export function isReDerivable(homepage) {
   if (!homepage || typeof homepage !== 'object') return false;
   const status = homepage.status;
   if (status === undefined || status < 200 || status >= 300) return false;
   return typeof homepage.body === 'string' && homepage.body.length > 0;
+}
+
+/**
+ * The probes whose body the scoring engine reads to reproduce a stored score
+ * (packages/afr/src/index.ts, l1.ts, l2.ts, l3.ts). A snapshot that lost one
+ * of these bodies can no longer be re-scored offline.
+ */
+export const ENGINE_BODY_PROBES = ['homepage', 'robots', 'llms', 'sitemap'];
+
+/**
+ * True when a probe succeeded but carries no body: the raw material was
+ * dropped by scripts/prune-snapshot-bodies.mjs, or the scanner skipped the
+ * body because the response was too large (packages/scanner/src/http.ts).
+ * Such a probe is neither "not probed" nor "empty" — it is "the bytes are
+ * gone", a third state that must be reported as such.
+ */
+export function isBodyMissing(probe) {
+  if (!probe || typeof probe !== 'object') return false;
+  const status = probe.status;
+  if (status === undefined || status < 200 || status >= 300) return false;
+  return typeof probe.body !== 'string';
+}
+
+/**
+ * The probes whose body the engine needs but no longer has. An empty list
+ * means the snapshot is fully re-scorable offline.
+ */
+export function missingEngineBodies(signals) {
+  return ENGINE_BODY_PROBES.filter((key) => isBodyMissing(signals?.[key]));
 }
 
 /** True when the stored body hit the scanner's body cap (truncated page) */
@@ -273,6 +308,13 @@ function main() {
     engineDriftDown: 0,
     engineDriftSame: 0,
     engineDriftSum: 0,
+    // snapshots whose raw bodies are gone: they keep their stored verdict and
+    // their stored score, and they take part in no re-scoring at all
+    bodyPruned: 0,
+    bodyPrunedFiles: [],
+    engineDriftSkipped: 0,
+    changedNotRescored: 0,
+    writeSkippedNoBody: 0,
     maxDrop: null,
     maxGain: null,
     changedPaths: {},
@@ -299,28 +341,51 @@ function main() {
     const homepage = signals.homepage;
     const derivable = isReDerivable(homepage);
 
+    // A snapshot whose raw bodies were pruned (scripts/prune-snapshot-bodies.mjs)
+    // cannot be re-scored: the engine reads the body of the homepage, of
+    // robots.txt, of llms.txt and of sitemap.xml, so the stored score is not
+    // reproducible from what is left. Such a snapshot keeps its stored verdict
+    // and its stored score — it is skipped, never re-judged.
+    const missingBodies = missingEngineBodies(signals);
+    const reScorable = missingBodies.length === 0;
+
     // The engine result of the stored signals (old features, current engine):
     // the baseline that isolates the effect of the new signals, and at the
     // same time the measure of how far the stored score is from the engine.
     let baseline = null;
-    try {
-      baseline = scoreAfr(signals);
-    } catch {
-      continue;
+    if (reScorable) {
+      try {
+        baseline = scoreAfr(signals);
+      } catch {
+        continue;
+      }
     }
     const storedScore = snapshot.afr?.score ?? null;
     if (storedScore !== null) {
-      stats.engineDriftChecked++;
-      if (storedScore !== baseline.score) {
-        stats.engineDriftFiles++;
-        stats.engineDriftSum += baseline.score - storedScore;
-        if (baseline.score > storedScore) stats.engineDriftUp++;
-        else stats.engineDriftDown++;
-      } else stats.engineDriftSame++;
+      if (!reScorable) {
+        // the engine cannot reproduce this score without the missing bodies,
+        // so the snapshot is no evidence of engine drift
+        stats.engineDriftSkipped++;
+      } else {
+        stats.engineDriftChecked++;
+        if (storedScore !== baseline.score) {
+          stats.engineDriftFiles++;
+          stats.engineDriftSum += baseline.score - storedScore;
+          if (baseline.score > storedScore) stats.engineDriftUp++;
+          else stats.engineDriftDown++;
+        } else stats.engineDriftSame++;
+      }
     }
 
     if (!derivable) {
-      stats.notDerivable++;
+      if (!reScorable) {
+        // the homepage body is gone — that is "the raw material was pruned",
+        // not "the homepage was never probed"
+        stats.bodyPruned++;
+        stats.bodyPrunedFiles.push(relative(opts.dir, file));
+      } else {
+        stats.notDerivable++;
+      }
       continue;
     }
     stats.reDerivable++;
@@ -338,6 +403,36 @@ function main() {
 
     let next = baseline;
     if (changed) {
+      const transitions = featureTransitions(oldFeatures, newFeatures);
+      for (const t of transitions) stats.transitions[t] = (stats.transitions[t] ?? 0) + 1;
+
+      if (!reScorable) {
+        // The signal itself can be re-judged (it only needs the homepage body),
+        // but the score cannot be recomputed without the other bodies. The
+        // snapshot is therefore left untouched: its stored verdict and its
+        // stored score stay consistent with each other.
+        stats.changed++;
+        stats.changedNotRescored++;
+        affected.push({
+          domain: signals.domain ?? file,
+          date,
+          file: relative(opts.dir, file),
+          storedScore,
+          storedGrade: snapshot.afr?.grade ?? null,
+          baselineScore: null,
+          baselineGrade: null,
+          newScore: null,
+          newGrade: null,
+          signalDelta: null,
+          totalDelta: null,
+          transitions,
+          truncated: isTruncated(homepage),
+          bodyBytes: homepage.body.length,
+          missingBodies,
+        });
+        continue;
+      }
+
       const nextSignals = { ...signals, aiFeatures: newFeatures };
       try {
         next = scoreAfr(nextSignals);
@@ -345,8 +440,6 @@ function main() {
         continue;
       }
       stats.changed++;
-      const transitions = featureTransitions(oldFeatures, newFeatures);
-      for (const t of transitions) stats.transitions[t] = (stats.transitions[t] ?? 0) + 1;
 
       const signalDelta = next.score - baseline.score;
       const totalDelta = next.score - (storedScore ?? baseline.score);
@@ -405,6 +498,12 @@ function main() {
 
     const shouldWrite = opts.write && (changed || opts.recalcAll);
     if (!shouldWrite) continue;
+    if (!reScorable) {
+      // the stored score cannot be reproduced without the missing bodies, so
+      // writing would replace a correct score with a wrong one
+      stats.writeSkippedNoBody++;
+      continue;
+    }
 
     // Build the next snapshot: only the signals and the re-scored block change.
     const nextSnapshot = { ...snapshot };
@@ -430,7 +529,8 @@ function main() {
     if (!opts.quiet && (i + 1) % 500 === 0) process.stderr.write(`… ${i + 1}/${total}\n`);
   }
 
-  affected.sort((a, b) => a.signalDelta - b.signalDelta);
+  affected.sort((a, b) => (a.signalDelta ?? 0) - (b.signalDelta ?? 0));
+  const scored = affected.filter((r) => r.signalDelta !== null);
   const avgSignal = stats.signalDeltaCount
     ? (stats.signalDeltaSum / stats.signalDeltaCount).toFixed(2)
     : '—';
@@ -445,9 +545,20 @@ function main() {
   lines.push(
     `- not re-derivable (no homepage / non-2xx): ${stats.notDerivable} (${pct(stats.notDerivable, stats.snapshots)})`,
   );
+  lines.push(
+    `- raw body pruned (homepage 2xx but the body is gone — verdict kept as stored): ${stats.bodyPruned} (${pct(stats.bodyPruned, stats.snapshots)})`,
+  );
   lines.push(`- body truncated at the 1 MiB scanner cap: ${stats.truncated}`);
   lines.push(`- signals changed: ${stats.changed} · unchanged: ${stats.unchanged}`);
+  if (stats.changedNotRescored) {
+    lines.push(
+      `- of the changed ones, ${stats.changedNotRescored} could not be re-scored (another body the engine reads is gone) — left untouched`,
+    );
+  }
   lines.push(`- snapshots written: ${stats.written}`);
+  if (stats.writeSkippedNoBody) {
+    lines.push(`- **writes skipped because a body the engine reads is missing: ${stats.writeSkippedNoBody}**`);
+  }
   if (stats.styleRoundTripFailures) {
     lines.push(`- **style round-trip failures: ${stats.styleRoundTripFailures}**`);
   }
@@ -487,12 +598,15 @@ function main() {
   lines.push(
     `- average change: ${stats.engineDriftFiles ? (stats.engineDriftSum / stats.engineDriftFiles).toFixed(2) : '—'} points`,
   );
+  lines.push(
+    `- snapshots left out of the comparison because a body the engine reads is gone: ${stats.engineDriftSkipped}`,
+  );
   lines.push('');
   lines.push('## Ten largest drops (by signal effect)');
   lines.push('');
   lines.push('| domain | date | stored → new | Δsignal | grade | transitions |');
   lines.push('| --- | --- | --- | --- | --- | --- |');
-  for (const r of affected.slice(0, 10)) {
+  for (const r of scored.slice(0, 10)) {
     lines.push(
       `| ${r.domain} | ${r.date} | ${r.storedScore} → ${r.newScore} | ${r.signalDelta} | ${r.storedGrade} → ${r.newGrade} | ${r.transitions.join(', ')} |`,
     );
@@ -502,7 +616,7 @@ function main() {
   lines.push('');
   lines.push('| domain | date | stored → new | Δsignal | grade | transitions |');
   lines.push('| --- | --- | --- | --- | --- | --- |');
-  for (const r of affected.slice(-10).reverse()) {
+  for (const r of scored.slice(-10).reverse()) {
     lines.push(
       `| ${r.domain} | ${r.date} | ${r.storedScore} → ${r.newScore} | ${r.signalDelta} | ${r.storedGrade} → ${r.newGrade} | ${r.transitions.join(', ')} |`,
     );
