@@ -65,6 +65,43 @@ const extractLang = (body) => {
   const m = (body ?? '').match(/<html[^>]*\slang=["']?([a-zA-Z-]+)/i);
   return m ? m[1].toLowerCase().slice(0, 12) : undefined;
 };
+/**
+ * The site's own self-description (og:site_name / application-name / meta
+ * description / keywords). Feeds the generalized meta pass in
+ * categorize.mjs; it is evidence about the site's vertical only and never
+ * touches the score.
+ */
+const extractMeta = (body) => {
+  if (typeof body !== 'string') return undefined;
+  const head = body.slice(0, 20000);
+  const pick = (patterns) => {
+    for (const p of patterns) {
+      const m = head.match(p);
+      if (m && m[1] && m[1].trim()) return m[1].replace(/\s+/g, ' ').trim().slice(0, 300);
+    }
+    return undefined;
+  };
+  const meta = {
+    ogSiteName: pick([
+      /<meta[^>]+property\s*=\s*["']og:site_name["'][^>]+content\s*=\s*["']([^"']*)["']/i,
+      /<meta[^>]+content\s*=\s*["']([^"']*)["'][^>]+property\s*=\s*["']og:site_name["']/i,
+    ]),
+    appName: pick([
+      /<meta[^>]+name\s*=\s*["']application-name["'][^>]+content\s*=\s*["']([^"']*)["']/i,
+      /<meta[^>]+content\s*=\s*["']([^"']*)["'][^>]+name\s*=\s*["']application-name["']/i,
+    ]),
+    description: pick([
+      /<meta[^>]+name\s*=\s*["']description["'][^>]+content\s*=\s*["']([^"']*)["']/i,
+      /<meta[^>]+content\s*=\s*["']([^"']*)["'][^>]+name\s*=\s*["']description["']/i,
+      /<meta[^>]+property\s*=\s*["']og:description["'][^>]+content\s*=\s*["']([^"']*)["']/i,
+    ]),
+    keywords: pick([
+      /<meta[^>]+name\s*=\s*["']keywords["'][^>]+content\s*=\s*["']([^"']*)["']/i,
+      /<meta[^>]+content\s*=\s*["']([^"']*)["'][^>]+name\s*=\s*["']keywords["']/i,
+    ]),
+  };
+  return Object.values(meta).some(Boolean) ? meta : undefined;
+};
 
 // --- table shapes -----------------------------------------------------------
 // conflict keys are the tables' natural keys; update lists are the columns a
@@ -155,7 +192,7 @@ export function collectRows(dir, date, files) {
     };
     const title = extractTitle(signals.homepage?.body);
     const lang = extractLang(signals.homepage?.body);
-    const catSlug = categorize(domain, title);
+    const catSlug = categorize(domain, title, extractMeta(signals.homepage?.body));
     const catId = CATEGORY_SLUGS.indexOf(catSlug) + 1;
     const now = new Date().toISOString();
     siteRows.push([
