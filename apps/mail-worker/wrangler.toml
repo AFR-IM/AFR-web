@@ -1,0 +1,24 @@
+name = "afr-mail"
+main = "src/index.ts"
+compatibility_date = "2026-11-20"
+
+# Inbound-only worker. It has no route of its own: Cloudflare Email Routing
+# forwards inbound mail to it through a routing rule (see README.md), so the
+# HTTP surface is only reachable on the workers.dev subdomain and is protected
+# by the QUEUE_TOKEN secret.
+
+# D1 binding — same "aiapp" database as apps/worker.
+# Apply the schema first:
+#   wrangler d1 execute aiapp --file schema.sql --remote
+[[d1_databases]]
+binding = "DB"
+database_name = "aiapp"
+database_id = "9c00a786-d95a-462d-9727-6654c2c38135"
+
+# Required secrets (set with `wrangler secret put <NAME>`, values are never
+# committed):
+#   QUEUE_TOKEN             shared secret the read interface requires in the
+#                           X-Queue-Token header; when unset every read is
+#                           rejected
+#   TRUSTED_SENDER_DOMAINS  comma-separated domains whose mail may trigger
+#                           automatic actions (empty = automatic actions off)
