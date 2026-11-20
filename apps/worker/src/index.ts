@@ -44,6 +44,20 @@ import {
   EMAIL_CHALLENGE_TTL_MS,
   EMAIL_VERIFY_TTL_MS,
 } from './email.ts';
+import {
+  describeSmtpProblem,
+  parseSmtpConfig,
+  sendViaSmtp,
+  type SmtpConfig,
+} from './mail-smtp.ts';
+import {
+  consumeMailQuota,
+  DEFAULT_MAIL_QUOTA_LIMITS,
+  mailQuotaDay,
+  readMailQuotaStatus,
+  type MailQuotaLimits,
+  type QuotaDecision,
+} from './mail-quota.ts';
 
 /** Cloudflare bindings (wrangler.toml) */
 export interface WorkerEnv {
@@ -65,6 +79,23 @@ export interface WorkerEnv {
   RESEND_API_KEY?: string;
   /** Sender address of owner mail (defaults to notifications@afr.im) */
   EMAIL_FROM?: string;
+  /** Generic SMTP channel — host of the submission server (e.g. "smtp.mail.io").
+   * Missing → the SMTP channel reports itself as not configured. */
+  SMTP_HOST?: string;
+  /** Port of the SMTP server (default 587; 465 = implicit TLS, 2525 = common
+   * alternative). Port 25 is blocked by the platform and is refused. */
+  SMTP_PORT?: string;
+  /** Transport security: "starttls" (default), "ssl" (implicit TLS) or "none". */
+  SMTP_SECURITY?: string;
+  /** SMTP user name (optional — a server may accept mail without auth). */
+  SMTP_USERNAME?: string;
+  /** SMTP password (optional). Never echoed back by any endpoint. */
+  SMTP_PASSWORD?: string;
+  /** Sender address of the SMTP channel (required — a mail without an
+   * identity is never sent). */
+  SMTP_FROM?: string;
+  /** Reply-To address of the SMTP channel (optional). */
+  SMTP_REPLY_TO?: string;
   /** Public site base URL used in magic links and report links */
   PUBLIC_SITE_URL?: string;
 }
@@ -425,6 +456,194 @@ function baseUrlOf(c: Context<AppEnv>): string {
 /** Sender address of owner mail */
 function fromOf(c: Context<AppEnv>): string {
   return c.env?.EMAIL_FROM ?? DEFAULT_FROM;
+}
+
+// ---------------------------------------------------------------------------
+// Outbound mail channels (Resend → SMTP)
+// ---------------------------------------------------------------------------
+
+/** The environment values the mail channels read. */
+export type MailEnv = Record<string, string | undefined>;
+
+/** Arguments of one outbound mail. */
+export interface DeliverOwnerMailArgs {
+  /** Domain that triggers the mail (used for the per-domain quota). */
+  domain: string;
+  /** Recipient address. */
+  to: string;
+  subject: string;
+  text: string;
+  html?: string;
+  /** Idempotency key — a retry must not produce a second mail. */
+  idempotencyKey?: string;
+  /** Injectable clock (tests). */
+  now?: () => Date;
+  /** Injectable fetch (tests). */
+  fetchImpl?: typeof fetch;
+  /** Injectable SMTP connect step (tests). */
+  connect?: (opts: unknown) => Promise<unknown>;
+  /** Override of the quota limits (tests). */
+  limits?: Partial<MailQuotaLimits>;
+}
+
+/** Outcome of one delivery attempt. */
+export interface DeliverOwnerMailResult {
+  ok: boolean;
+  /** The channel that accepted the mail. */
+  channel?: 'resend' | 'smtp';
+  /** Provider id (Resend) or Message-ID (SMTP). */
+  id?: string;
+  /** Generic error text — never states why a mail was refused. */
+  error?: string;
+  /** Failure class of the last attempt (safe to log). */
+  category?: string;
+}
+
+/** Deliver one mail through the Resend HTTP API.
+ *
+ * The request carries an Idempotency-Key, so a retry after a crashed drain
+ * replays the original answer instead of sending a second mail. The API key
+ * never appears in the returned error and the recipient is not echoed back
+ * either — the caller only learns the status class. */
+async function deliverViaResend(
+  args: {
+    apiKey: string;
+    from: string;
+    to: string;
+    subject: string;
+    text: string;
+    html: string;
+    idempotencyKey: string;
+  },
+  fetchImpl: typeof fetch,
+): Promise<{ ok: boolean; id?: string; error?: string; status?: number }> {
+  const { apiKey, from, to, subject, text, html, idempotencyKey } = args;
+  try {
+    const res = await fetchImpl('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+        'content-type': 'application/json',
+        'idempotency-key': idempotencyKey,
+      },
+      body: JSON.stringify({ from, to, subject, text, html }),
+      signal: AbortSignal.timeout(10_000),
+    });
+
+    if (res.ok) {
+      let id: string | undefined;
+      try {
+        const payload = (await res.json()) as { id?: unknown };
+        if (typeof payload?.id === 'string') id = payload.id;
+      } catch {
+        // A 2xx without a parsable body still means the mail was accepted.
+      }
+      return id ? { ok: true, id } : { ok: true };
+    }
+    // Only the status class is reported — the provider body may quote the
+    // request (and therefore the address).
+    return { ok: false, status: res.status, error: `http_${res.status}` };
+  } catch {
+    return { ok: false, status: 0, error: 'network_error' };
+  }
+}
+
+/** Deliver one outbound mail, respecting the quota and the channel order.
+ *
+ * The quota is checked *before* the first byte leaves the worker: a request
+ * that is refused must not burn the provider budget. The channels are tried
+ * in a fixed order — Resend first (HTTP, cheapest), then SMTP — and the
+ * first success wins.
+ *
+ * A refused mail is reported as a plain failure: the reason (quota, auth,
+ * recipient) stays inside the worker, because the endpoints that trigger a
+ * mail are public and must not tell a caller how to get past the limit. */
+export async function deliverOwnerMail(
+  db: Db,
+  env: MailEnv,
+  args: DeliverOwnerMailArgs,
+): Promise<DeliverOwnerMailResult> {
+  const now = args.now ?? (() => new Date());
+  const fetchImpl = args.fetchImpl ?? fetch;
+
+  const apiKey = env.RESEND_API_KEY;
+  const smtpConfig: SmtpConfig | null = parseSmtpConfig(env);
+  if (!apiKey && !smtpConfig) {
+    // Nothing can be sent — do not consume a quota unit for a mail that
+    // cannot leave the worker anyway.
+    console.warn('mail: no channel configured');
+    return { ok: false, error: 'mail_not_configured' };
+  }
+
+  let quota: QuotaDecision;
+  try {
+    quota = await consumeMailQuota(db, {
+      domain: args.domain,
+      recipient: args.to,
+      now,
+      limits: args.limits,
+    });
+  } catch (err) {
+    // Without a working quota check no mail may go out (fail closed).
+    console.warn(
+      `mail: quota check failed (${err instanceof Error ? err.message : String(err)})`,
+    );
+    return { ok: false, error: 'mail_not_sent' };
+  }
+  if (!quota.allowed) {
+    console.warn(`mail: refused by quota (${quota.reason ?? 'unknown'})`);
+    return { ok: false, error: 'mail_not_sent' };
+  }
+
+  if (apiKey) {
+    const sent = await deliverViaResend(
+      {
+        apiKey,
+        from: env.EMAIL_FROM ?? DEFAULT_FROM,
+        to: args.to,
+        subject: args.subject,
+        text: args.text,
+        html: args.html ?? '',
+        idempotencyKey:
+          args.idempotencyKey ?? `mail:${args.domain}:${args.to}:${now().toISOString()}`,
+      },
+      fetchImpl,
+    );
+    if (sent.ok) return { ok: true, channel: 'resend', id: sent.id };
+    console.warn(
+      `mail: delivery failed (channel=resend status=${sent.status ?? 'unknown'})`,
+    );
+  }
+
+  if (smtpConfig) {
+    const sent = await sendViaSmtp({
+      config: smtpConfig,
+      to: args.to,
+      subject: args.subject,
+      text: args.text,
+      html: args.html,
+      now,
+      connect: args.connect,
+    });
+    if (sent.ok) return { ok: true, channel: 'smtp', id: sent.id };
+    console.warn(
+      `mail: delivery failed (channel=smtp category=${sent.category ?? 'unknown'})`,
+    );
+  }
+
+  return { ok: false, error: 'mail_not_sent' };
+}
+
+/** Detect a Cloudflare Email Routing send binding.
+ *
+ * The binding name is free, so the binding itself is detected: it carries a
+ * `send` function. Only the availability is reported, never the target. */
+function cfEmailAvailable(env: unknown): boolean {
+  if (!env || typeof env !== 'object') return false;
+  for (const value of Object.values(env as Record<string, unknown>)) {
+    if (value && typeof (value as { send?: unknown }).send === 'function') return true;
+  }
+  return false;
 }
 
 /** Canonical key of a domain inside the directory: the registered domain when
@@ -2144,6 +2363,51 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
       .prepare('UPDATE owner_emails SET notify = ?, updated_at = ? WHERE domain = ?')
       .run(payload.notify ? 1 : 0, new Date().toISOString(), domain);
     return c.json({ domain, notify: payload.notify });
+  });
+
+  // GET /api/v1/mail/status — which outbound mail channels are configured.
+  //
+  // Only *whether* a variable is set is reported: no key, no host, no
+  // address is echoed back. The endpoint is public (it has to work as a
+  // health check), so the answer lists variable names at most.
+  app.get('/api/v1/mail/status', async (c) => {
+    const env = (c.env ?? {}) as unknown as MailEnv;
+    const resendConfigured = Boolean(env.RESEND_API_KEY);
+    const smtpProblem = describeSmtpProblem(env);
+    const smtpStatus =
+      smtpProblem === 'ok'
+        ? 'configured'
+        : smtpProblem === 'not_configured'
+          ? 'missing'
+          : 'invalid';
+
+    const missing: string[] = [];
+    if (!resendConfigured) missing.push('RESEND_API_KEY');
+    if (smtpProblem === 'not_configured') missing.push('SMTP_HOST');
+    else if (smtpProblem === 'missing_from') missing.push('SMTP_FROM');
+    else if (smtpProblem === 'port_25_blocked') missing.push('SMTP_PORT');
+
+    let quota = {
+      day: mailQuotaDay(),
+      globalUsed: 0,
+      globalLimit: DEFAULT_MAIL_QUOTA_LIMITS.globalDaily,
+    };
+    try {
+      quota = await readMailQuotaStatus(dbOf(c, overrides));
+    } catch {
+      // An older D1 without the quota tables must not break the endpoint.
+    }
+
+    return c.json({
+      ok: true,
+      channels: {
+        resend: resendConfigured ? 'configured' : 'missing',
+        smtp: smtpStatus,
+        cf_email: cfEmailAvailable(c.env) ? 'available' : 'unavailable',
+      },
+      quota,
+      missing,
+    });
   });
 
   // GET/POST /api/v1/pv?site=<domain> — counts a detail-page view. Always

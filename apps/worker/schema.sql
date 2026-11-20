@@ -243,3 +243,25 @@ CREATE TABLE IF NOT EXISTS notify_outbox (
 -- existing DBs (table already created):
 --   wrangler d1 execute aiapp --command "ALTER TABLE notify_outbox ADD COLUMN next_attempt_at TEXT" --remote
 CREATE INDEX IF NOT EXISTS idx_notify_outbox_status ON notify_outbox(status, id);
+
+-- ---------------------------------------------------------------------------
+-- Outbound mail quota (added with the generic SMTP channel).
+-- Apply together with the statements above via:
+--   wrangler d1 execute aiapp --file schema.sql --remote
+-- ---------------------------------------------------------------------------
+
+-- Outbound mail quota: natural-day counters, no daily reset job needed.
+CREATE TABLE IF NOT EXISTS mail_quota (
+  day TEXT NOT NULL,            -- UTC date (YYYY-MM-DD)
+  scope TEXT NOT NULL,          -- 'global' | 'domain'
+  key TEXT NOT NULL,            -- 'all' | domain
+  count INTEGER DEFAULT 0,
+  updated_at TEXT,
+  PRIMARY KEY (day, scope, key)
+);
+
+-- Per-recipient cooldown for outbound mail.
+CREATE TABLE IF NOT EXISTS mail_cooldown (
+  recipient_hash TEXT PRIMARY KEY,   -- hex SHA-256 of the normalized address
+  last_sent_at TEXT NOT NULL
+);
