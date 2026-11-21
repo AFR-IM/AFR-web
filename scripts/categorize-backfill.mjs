@@ -16,6 +16,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolvePageMeta } from '../packages/scanner/src/page-meta.ts';
 import { categorize, CATEGORY_SLUGS } from '../apps/web/src/data/categorize.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -31,37 +32,6 @@ function parseDataDir(argv) {
 }
 
 /** The site's own self-description, read from the homepage snapshot. */
-function extractMeta(body) {
-  if (typeof body !== 'string') return undefined;
-  const head = body.slice(0, 20000);
-  const pick = (patterns) => {
-    for (const p of patterns) {
-      const m = head.match(p);
-      if (m && m[1] && m[1].trim()) return m[1].replace(/\s+/g, ' ').trim().slice(0, 300);
-    }
-    return undefined;
-  };
-  const meta = {
-    ogSiteName: pick([
-      /<meta[^>]+property\s*=\s*["']og:site_name["'][^>]+content\s*=\s*["']([^"']*)["']/i,
-      /<meta[^>]+content\s*=\s*["']([^"']*)["'][^>]+property\s*=\s*["']og:site_name["']/i,
-    ]),
-    appName: pick([
-      /<meta[^>]+name\s*=\s*["']application-name["'][^>]+content\s*=\s*["']([^"']*)["']/i,
-      /<meta[^>]+content\s*=\s*["']([^"']*)["'][^>]+name\s*=\s*["']application-name["']/i,
-    ]),
-    description: pick([
-      /<meta[^>]+name\s*=\s*["']description["'][^>]+content\s*=\s*["']([^"']*)["']/i,
-      /<meta[^>]+content\s*=\s*["']([^"']*)["'][^>]+name\s*=\s*["']description["']/i,
-      /<meta[^>]+property\s*=\s*["']og:description["'][^>]+content\s*=\s*["']([^"']*)["']/i,
-    ]),
-    keywords: pick([
-      /<meta[^>]+name\s*=\s*["']keywords["'][^>]+content\s*=\s*["']([^"']*)["']/i,
-      /<meta[^>]+content\s*=\s*["']([^"']*)["'][^>]+name\s*=\s*["']keywords["']/i,
-    ]),
-  };
-  return Object.values(meta).some(Boolean) ? meta : undefined;
-}
 
 /**
  * domain → meta, taken from the newest snapshot per domain (same merge rule
@@ -89,7 +59,7 @@ function loadMetaByDomain(root) {
             continue;
           }
           const domain = raw?.afr?.domain ?? raw?.signals?.domain ?? f.replace(/\.json$/, '');
-          const meta = extractMeta(raw?.signals?.homepage?.body);
+          const meta = resolvePageMeta(raw?.signals?.homepage);
           if (!meta) continue;
           const prev = out.get(domain);
           if (!prev || prev.stamp <= stamp) out.set(domain, { stamp, meta });

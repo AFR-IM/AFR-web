@@ -15,8 +15,10 @@ import {
   TITLE_MAX_CHARS,
   capturePageMeta,
   extractPageLang,
+  extractPageMeta,
   extractPageTitle,
   resolvePageLang,
+  resolvePageMeta,
   resolvePageTitle,
 } from '../src/page-meta.ts';
 import { scanSite } from '../src/scan.ts';
@@ -107,7 +109,69 @@ describe('extractPageLang', () => {
   });
 });
 
+describe('extractPageMeta', () => {
+  it('reads the self-description a page publishes', () => {
+    const html =
+      '<head>' +
+      '<meta property="og:site_name" content="Acme Widgets">' +
+      '<meta name="application-name" content="Acme">' +
+      '<meta name="description" content="Widgets for everyone">' +
+      '<meta name="keywords" content="widgets, gadgets">' +
+      '</head>';
+    assert.deepEqual(extractPageMeta(html), {
+      ogSiteName: 'Acme Widgets',
+      appName: 'Acme',
+      description: 'Widgets for everyone',
+      keywords: 'widgets, gadgets',
+    });
+  });
+
+  it('reads the attributes in either order', () => {
+    const html = '<meta content="Acme Widgets" property="og:site_name">';
+    assert.equal(extractPageMeta(html)?.ogSiteName, 'Acme Widgets');
+  });
+
+  it('falls back to og:description when there is no description', () => {
+    const html = '<meta property="og:description" content="Widgets for everyone">';
+    assert.equal(extractPageMeta(html)?.description, 'Widgets for everyone');
+  });
+
+  it('decodes the entities and collapses the whitespace', () => {
+    const html = '<meta name="description" content="Widgets &amp; gadgets\n  for everyone">';
+    assert.equal(extractPageMeta(html)?.description, 'Widgets & gadgets for everyone');
+  });
+
+  it('returns undefined when the page declares none of them', () => {
+    assert.equal(extractPageMeta('<html><body>x</body></html>'), undefined);
+    assert.equal(extractPageMeta(undefined), undefined);
+    assert.equal(extractPageMeta('<meta name="description" content="   ">'), undefined);
+  });
+
+  it('looks at the head of the page only', () => {
+    const html = `<head>${'x'.repeat(25000)}<meta name="description" content="late"></head>`;
+    assert.equal(extractPageMeta(html), undefined, 'the tag is past the 20 000 character head');
+  });
+});
+
 describe('capturePageMeta', () => {
+  it('captures the meta block next to the title and the lang', () => {
+    const html =
+      '<html lang="en"><head><title>Acme</title>' +
+      '<meta property="og:site_name" content="Acme Widgets"></head></html>';
+    assert.deepEqual(capturePageMeta(html), {
+      title: 'Acme',
+      lang: 'en',
+      meta: { ogSiteName: 'Acme Widgets' },
+    });
+  });
+
+  it('leaves the meta key out when the page publishes nothing', () => {
+    assert.deepEqual(capturePageMeta('<html lang="en"><title>Acme</title></html>'), {
+      title: 'Acme',
+      lang: 'en',
+    });
+  });
+
   it('captures both fields and leaves out what the page does not declare', () => {
     assert.deepEqual(capturePageMeta('<html lang="en"><title>Acme</title></html>'), {
       title: 'Acme',
@@ -172,12 +236,49 @@ describe('resolvePageTitle / resolvePageLang (field first, body second)', () => 
   });
 });
 
+describe('resolvePageMeta (field first, body second)', () => {
+  it('prefers the field the scanner wrote', () => {
+    const probe = {
+      meta: { ogSiteName: 'From the field' },
+      body: '<meta property="og:site_name" content="From the body">',
+    };
+    assert.equal(resolvePageMeta(probe)?.ogSiteName, 'From the field');
+  });
+
+  it('falls back to the body for the snapshots taken before the field existed', () => {
+    const probe = { body: '<meta property="og:site_name" content="From the body">' };
+    assert.equal(resolvePageMeta(probe)?.ogSiteName, 'From the body');
+  });
+
+  it('returns undefined when neither the field nor the body has it', () => {
+    assert.equal(resolvePageMeta({}), undefined);
+    assert.equal(resolvePageMeta(undefined), undefined);
+  });
+
+  it('ignores a corrupted field and reads the body instead', () => {
+    const probe = { meta: 'not an object', body: '<meta name="description" content="Body">' };
+    assert.equal(resolvePageMeta(probe)?.description, 'Body');
+    const empty = { meta: {}, body: '<meta name="description" content="Body">' };
+    assert.equal(resolvePageMeta(empty)?.description, 'Body');
+  });
+
+  it('gives the same answer for a field and for the body it came from', () => {
+    const body =
+      '<head><meta property="og:site_name" content="Acme Widgets">' +
+      '<meta name="description" content="Widgets for everyone"></head>';
+    assert.deepEqual(resolvePageMeta(capturePageMeta(body)), resolvePageMeta({ body }));
+  });
+});
+
 describe('the scanner writes the page metadata', () => {
-  it('stores the title and the lang next to the homepage body', async () => {
-    const body = '<html lang="en"><head><title>Acme — Widgets</title></head><body>hi</body></html>';
+  it('stores the title, the lang and the meta next to the homepage body', async () => {
+    const body =
+      '<html lang="en"><head><title>Acme — Widgets</title>' +
+      '<meta property="og:site_name" content="Acme Widgets"></head><body>hi</body></html>';
     const signals = await scanSite('acme.example', { fetchImpl: homepageFetch(body), gapMs: 0 });
     assert.equal(signals.homepage?.title, 'Acme — Widgets');
     assert.equal(signals.homepage?.lang, 'en');
+    assert.deepEqual(signals.homepage?.meta, { ogSiteName: 'Acme Widgets' });
     assert.equal(signals.homepage?.body, body, 'the body is still stored');
   });
 
@@ -195,6 +296,7 @@ describe('the scanner writes the page metadata', () => {
     });
     assert.ok(!('title' in (signals.homepage ?? {})));
     assert.ok(!('lang' in (signals.homepage ?? {})));
+    assert.ok(!('meta' in (signals.homepage ?? {})));
     assert.equal(signals.homepage?.body, '<html><body>plain</body></html>');
   });
 
@@ -222,5 +324,6 @@ describe('the scanner writes the page metadata', () => {
     assert.equal(signals.homepage?.status, 503);
     assert.ok(!('title' in (signals.homepage ?? {})));
     assert.ok(!('lang' in (signals.homepage ?? {})));
+    assert.ok(!('meta' in (signals.homepage ?? {})));
   });
 });

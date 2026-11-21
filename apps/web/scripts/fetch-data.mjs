@@ -28,7 +28,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { brotliCompressSync, constants } from 'node:zlib';
 import { CATEGORY_SLUGS, categorize } from '../src/data/categorize.mjs';
-import { resolvePageLang, resolvePageTitle } from '../../../packages/scanner/src/page-meta.ts';
+import { resolvePageLang, resolvePageMeta, resolvePageTitle } from '../../../packages/scanner/src/page-meta.ts';
 import {
   SEARCH_INDEX_RAW_PER_ENTRY,
   SEARCH_INDEX_WIRE_BUDGET,
@@ -193,61 +193,11 @@ async function listAllDates(scansRoot) {
   return out;
 }
 
-/**
- * The site's own self-description, read from the homepage snapshot: the
- * og:site_name / application-name it publishes, the meta description and the
- * keywords list. This is first-party evidence about what the site is, and it
- * feeds the generalized meta pass in categorize.mjs — it never touches the
- * score.
- */
-function extractMeta(body) {
-  if (typeof body !== 'string') return undefined;
-  const head = body.slice(0, 20000);
-  const pick = (patterns) => {
-    for (const p of patterns) {
-      const m = head.match(p);
-      if (m && m[1] && m[1].trim()) {
-        const text = m[1]
-          .replace(/&nbsp;/g, ' ')
-          .replace(/&amp;/g, '&')
-          .replace(/&lt;/g, '<')
-          .replace(/&gt;/g, '>')
-          .replace(/&quot;/g, '"')
-          .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
-          .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCharCode(parseInt(n, 16)))
-          .replace(/\s+/g, ' ')
-          .trim();
-        if (text) return text;
-      }
-    }
-    return undefined;
-  };
-  const meta = {
-    ogSiteName: pick([
-      /<meta[^>]+property\s*=\s*["']og:site_name["'][^>]+content\s*=\s*["']([^"']*)["']/i,
-      /<meta[^>]+content\s*=\s*["']([^"']*)["'][^>]+property\s*=\s*["']og:site_name["']/i,
-    ]),
-    appName: pick([
-      /<meta[^>]+name\s*=\s*["']application-name["'][^>]+content\s*=\s*["']([^"']*)["']/i,
-      /<meta[^>]+content\s*=\s*["']([^"']*)["'][^>]+name\s*=\s*["']application-name["']/i,
-    ]),
-    description: pick([
-      /<meta[^>]+name\s*=\s*["']description["'][^>]+content\s*=\s*["']([^"']*)["']/i,
-      /<meta[^>]+content\s*=\s*["']([^"']*)["'][^>]+name\s*=\s*["']description["']/i,
-      /<meta[^>]+property\s*=\s*["']og:description["'][^>]+content\s*=\s*["']([^"']*)["']/i,
-    ]),
-    keywords: pick([
-      /<meta[^>]+name\s*=\s*["']keywords["'][^>]+content\s*=\s*["']([^"']*)["']/i,
-      /<meta[^>]+content\s*=\s*["']([^"']*)["'][^>]+name\s*=\s*["']keywords["']/i,
-    ]),
-  };
-  return Object.values(meta).some(Boolean) ? meta : undefined;
-}
-
-// The title and the language of a site come from the scanner's own fields
-// (`signals.homepage.title` / `.lang`), with the homepage body as the
-// fallback for the snapshots taken before those fields existed. Both paths
-// apply the same rules — see packages/scanner/src/page-meta.ts.
+// The title, the language and the self-description of a site come from the
+// scanner's own fields (`signals.homepage.title` / `.lang` / `.meta`), with
+// the homepage body as the fallback for the snapshots taken before those
+// fields existed. Both paths apply the same rules — see
+// packages/scanner/src/page-meta.ts.
 
 const byScoreDesc = (a, b) => b.score - a.score || a.domain.localeCompare(b.domain);
 const byScanDesc = (a, b) =>
@@ -337,14 +287,13 @@ async function main() {
       continue;
     }
     const homepage = raw?.signals?.homepage;
-    const homepageBody = homepage?.body;
-    // Field first, body second: the title/lang the scanner captured survive a
-    // pruned body, and the body covers the snapshots taken before the field
-    // existed. Both paths apply the same rules, so a site reads the same
-    // either way.
+    // Field first, body second: the title/lang/meta the scanner captured
+    // survive a pruned body, and the body covers the snapshots taken before
+    // the fields existed. Both paths apply the same rules, so a site reads
+    // the same either way.
     const title = resolvePageTitle(homepage);
     const lang = resolvePageLang(homepage);
-    const meta = extractMeta(homepageBody);
+    const meta = resolvePageMeta(homepage);
     const category = categorize(afr.domain ?? name.replace(/\.json$/, ''), title, meta);
     sites.push({ afr, title, lang, category });
   }

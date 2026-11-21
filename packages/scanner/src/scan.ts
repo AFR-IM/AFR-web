@@ -18,21 +18,25 @@
 import type { AiFeatures, HttpProbe, ScanSignals } from '../../shared/src/index.ts';
 import { normalizeDomain, politeGet, RequestCounter, SCANNER_VERSION, sleep, type FetchImpl } from './http.ts';
 import { detectAiSearch, detectChatWidget, detectDeveloperConsole, parseMarkup } from './markup.ts';
-import { capturePageMeta } from './page-meta.ts';
+import { capturePageMeta, type PageMetaTags } from './page-meta.ts';
 
 /**
- * The homepage probe plus the page's own title/lang.
+ * The homepage probe plus the page's own title/lang/meta.
  *
  * The title and the language are captured while the body is still in hand:
  * the body is the bulk of the corpus and is pruned away later (it is only
  * needed to re-judge the AI-feature signals offline), so a title that is not
- * stored here is a title that is lost for good.
+ * stored here is a title that is lost for good. The site's own
+ * self-description (`meta`) rides along for the same reason — the category
+ * heuristics read it, and a pruned body would cost the site its category.
  */
 export interface HomepageProbe extends HttpProbe {
   /** The homepage <title> text, normalized (absent when the page has none) */
   title?: string;
   /** The <html lang> attribute (absent when the page declares none) */
   lang?: string;
+  /** The site's own og:site_name / application-name / description / keywords */
+  meta?: PageMetaTags;
 }
 
 /** Scan signals whose homepage probe carries the page metadata. */
@@ -115,10 +119,11 @@ export async function scanSite(domain: string, opts: ScanOptions = {}): Promise<
   // 4) homepage (key slot: retry on network error)
   const homepage = await politeGet(`https://${host}/`, { ...base, retryOnNetworkError: true, maxBytes: opts.maxBytes ?? 1024 * 1024 });
   const html = statusOk(homepage) ? (homepage.body ?? '') : '';
-  // The page's own title/lang are read here, while the body is in hand, and
-  // stored next to the probe. They are what every reader of the corpus needs
-  // (cards, search index, D1 rows) and the body — 98% of the corpus — is
-  // pruned away afterwards, so a title that is not captured now is lost.
+  // The page's own title/lang/meta are read here, while the body is in hand,
+  // and stored next to the probe. They are what every reader of the corpus
+  // needs (cards, categories, search index, D1 rows) and the body — 98% of
+  // the corpus — is pruned away afterwards, so a title that is not captured
+  // now is lost.
   // A body we cannot parse costs us the field, never the scan.
   const pageMeta = capturePageMeta(homepage.body);
   const homepageProbe: HomepageProbe = { ...homepage, ...pageMeta };

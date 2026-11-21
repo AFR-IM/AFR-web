@@ -13,6 +13,12 @@
 //   `signals.homepage.title` and `signals.homepage.lang`. The body can then
 //   be pruned without losing the face of the catalog.
 //
+//   The same holds for the site's own self-description — the og:site_name /
+//   application-name / description / keywords it publishes — which the
+//   category heuristics read. It lives in `signals.homepage.meta` for the
+//   same reason: without it, a pruned body would silently downgrade a site
+//   from its real vertical to "other".
+//
 // The rules are the ones the web build already applied
 // (apps/web/scripts/fetch-data.mjs) — moved here verbatim, not rewritten.
 // A title that the build derives from a body must be reproducible from that
@@ -28,12 +34,30 @@ export interface PageProbeLike {
   body?: unknown;
   title?: unknown;
   lang?: unknown;
+  meta?: unknown;
+}
+
+/**
+ * The site's own self-description, read from the page's own head.
+ *
+ * These are the four fields the web build reads out of a homepage body: the
+ * `og:site_name` / `application-name` the site publishes, its meta
+ * description and its keywords list. They are first-party evidence about
+ * what the site is — the generalized meta pass in categorize.mjs reads them —
+ * and they never touch the score.
+ */
+export interface PageMetaTags {
+  ogSiteName?: string;
+  appName?: string;
+  description?: string;
+  keywords?: string;
 }
 
 /** The page metadata captured at scan time (only the keys that were found). */
 export interface PageMeta {
   title?: string;
   lang?: string;
+  meta?: PageMetaTags;
 }
 
 /**
@@ -69,6 +93,67 @@ export function extractPageLang(body: unknown): string | undefined {
 }
 
 /**
+ * The site's own self-description, read from the head of a fetched page.
+ *
+ * The rules are the ones the web build already applied
+ * (apps/web/scripts/fetch-data.mjs) — moved here verbatim, not rewritten.
+ * A description that the build derives from a body must be reproducible from
+ * that body alone, otherwise old and new snapshots would disagree about the
+ * same site. Consumers read the field first and fall back to the body, so a
+ * snapshot taken before this change keeps working unchanged.
+ *
+ * Returns undefined when the page declares none of the four.
+ */
+export function extractPageMeta(body: unknown): PageMetaTags | undefined {
+  if (typeof body !== 'string') return undefined;
+  const head = body.slice(0, 20000);
+  const pick = (patterns: RegExp[]): string | undefined => {
+    for (const p of patterns) {
+      const m = head.match(p);
+      if (m && m[1] && m[1].trim()) {
+        const text = m[1]
+          .replace(/&nbsp;/g, ' ')
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/&quot;/g, '"')
+          .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+          .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCharCode(parseInt(n, 16)))
+          .replace(/\s+/g, ' ')
+          .trim();
+        if (text) return text;
+      }
+    }
+    return undefined;
+  };
+  const meta: PageMetaTags = {};
+  const ogSiteName = pick([
+    /<meta[^>]+property\s*=\s*["']og:site_name["'][^>]+content\s*=\s*["']([^"']*)["']/i,
+    /<meta[^>]+content\s*=\s*["']([^"']*)["'][^>]+property\s*=\s*["']og:site_name["']/i,
+  ]);
+  const appName = pick([
+    /<meta[^>]+name\s*=\s*["']application-name["'][^>]+content\s*=\s*["']([^"']*)["']/i,
+    /<meta[^>]+content\s*=\s*["']([^"']*)["'][^>]+name\s*=\s*["']application-name["']/i,
+  ]);
+  const description = pick([
+    /<meta[^>]+name\s*=\s*["']description["'][^>]+content\s*=\s*["']([^"']*)["']/i,
+    /<meta[^>]+content\s*=\s*["']([^"']*)["'][^>]+name\s*=\s*["']description["']/i,
+    /<meta[^>]+property\s*=\s*["']og:description["'][^>]+content\s*=\s*["']([^"']*)["']/i,
+  ]);
+  const keywords = pick([
+    /<meta[^>]+name\s*=\s*["']keywords["'][^>]+content\s*=\s*["']([^"']*)["']/i,
+    /<meta[^>]+content\s*=\s*["']([^"']*)["'][^>]+name\s*=\s*["']keywords["']/i,
+  ]);
+  // Only the values that were found are kept — a key that is not there says
+  // "the page does not publish it", which is what the consumers expect.
+  if (ogSiteName) meta.ogSiteName = ogSiteName;
+  if (appName) meta.appName = appName;
+  if (description) meta.description = description;
+  if (keywords) meta.keywords = keywords;
+  return Object.keys(meta).length > 0 ? meta : undefined;
+}
+
+/**
  * Capture the page metadata of a fetched body.
  *
  * Never throws: a body we cannot parse is a page we know nothing about, and
@@ -80,8 +165,10 @@ export function capturePageMeta(body: unknown): PageMeta {
     const meta: PageMeta = {};
     const title = extractPageTitle(body);
     const lang = extractPageLang(body);
+    const tags = extractPageMeta(body);
     if (title) meta.title = title;
     if (lang) meta.lang = lang;
+    if (tags) meta.meta = tags;
     return meta;
   } catch {
     return {};
@@ -108,4 +195,26 @@ export function resolvePageLang(probe: PageProbeLike | undefined): string | unde
   const field = probe?.lang;
   if (typeof field === 'string' && field.trim() !== '') return field;
   return extractPageLang(probe?.body);
+}
+
+/**
+ * The site's own self-description: the field the scanner wrote, else the body.
+ *
+ * Same rule as the title and the language — the field is the only survivor of
+ * a pruned body, the body is the fallback for the snapshots taken before the
+ * field existed. Only the four known keys are read back, so a corrupted
+ * field falls through to the body instead of poisoning the classification.
+ */
+export function resolvePageMeta(probe: PageProbeLike | undefined): PageMetaTags | undefined {
+  const field = probe?.meta;
+  if (field && typeof field === 'object' && !Array.isArray(field)) {
+    const source = field as Record<string, unknown>;
+    const out: PageMetaTags = {};
+    if (typeof source.ogSiteName === 'string' && source.ogSiteName) out.ogSiteName = source.ogSiteName;
+    if (typeof source.appName === 'string' && source.appName) out.appName = source.appName;
+    if (typeof source.description === 'string' && source.description) out.description = source.description;
+    if (typeof source.keywords === 'string' && source.keywords) out.keywords = source.keywords;
+    if (Object.keys(out).length > 0) return out;
+  }
+  return extractPageMeta(probe?.body);
 }

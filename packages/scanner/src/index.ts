@@ -10,10 +10,13 @@ export {
   TITLE_MAX_CHARS,
   capturePageMeta,
   extractPageLang,
+  extractPageMeta,
   extractPageTitle,
   resolvePageLang,
+  resolvePageMeta,
   resolvePageTitle,
   type PageMeta,
+  type PageMetaTags,
   type PageProbeLike,
 } from './page-meta.ts';
 export {

@@ -24,7 +24,7 @@ import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { catalogs } from '../packages/i18n/src/index.ts';
-import { resolvePageLang, resolvePageTitle } from '../packages/scanner/src/page-meta.ts';
+import { resolvePageLang, resolvePageMeta, resolvePageTitle } from '../packages/scanner/src/page-meta.ts';
 import { CATEGORY_SLUGS, categorize } from '../apps/web/src/data/categorize.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -58,53 +58,17 @@ export function latestDate(root) {
 
 const q = (v) => (v === null || v === undefined ? 'NULL' : `'${String(v).replace(/'/g, "''")}'`);
 const n = (v) => (v === null || v === undefined || Number.isNaN(Number(v)) ? 'NULL' : String(Number(v)));
-// The title and the language of a site come from the scanner's own fields
-// (`signals.homepage.title` / `.lang`); the homepage body is the fallback for
-// the snapshots taken before those fields existed. Both paths apply the same
-// rules — see packages/scanner/src/page-meta.ts — so a site loads the same
-// either way, and a body-less snapshot still carries its title.
+// The title, the language and the self-description of a site come from the
+// scanner's own fields (`signals.homepage.title` / `.lang` / `.meta`); the
+// homepage body is the fallback for the snapshots taken before those fields
+// existed. Both paths apply the same rules — see
+// packages/scanner/src/page-meta.ts — so a site loads the same either way,
+// and a body-less snapshot still carries its title.
 
 /** The D1 `sites.lang` shape: lowercase, at most 12 characters. */
 const d1Lang = (probe) => {
   const lang = resolvePageLang(probe);
   return lang ? lang.toLowerCase().slice(0, 12) : undefined;
-};
-/**
- * The site's own self-description (og:site_name / application-name / meta
- * description / keywords). Feeds the generalized meta pass in
- * categorize.mjs; it is evidence about the site's vertical only and never
- * touches the score.
- */
-const extractMeta = (body) => {
-  if (typeof body !== 'string') return undefined;
-  const head = body.slice(0, 20000);
-  const pick = (patterns) => {
-    for (const p of patterns) {
-      const m = head.match(p);
-      if (m && m[1] && m[1].trim()) return m[1].replace(/\s+/g, ' ').trim().slice(0, 300);
-    }
-    return undefined;
-  };
-  const meta = {
-    ogSiteName: pick([
-      /<meta[^>]+property\s*=\s*["']og:site_name["'][^>]+content\s*=\s*["']([^"']*)["']/i,
-      /<meta[^>]+content\s*=\s*["']([^"']*)["'][^>]+property\s*=\s*["']og:site_name["']/i,
-    ]),
-    appName: pick([
-      /<meta[^>]+name\s*=\s*["']application-name["'][^>]+content\s*=\s*["']([^"']*)["']/i,
-      /<meta[^>]+content\s*=\s*["']([^"']*)["'][^>]+name\s*=\s*["']application-name["']/i,
-    ]),
-    description: pick([
-      /<meta[^>]+name\s*=\s*["']description["'][^>]+content\s*=\s*["']([^"']*)["']/i,
-      /<meta[^>]+content\s*=\s*["']([^"']*)["'][^>]+name\s*=\s*["']description["']/i,
-      /<meta[^>]+property\s*=\s*["']og:description["'][^>]+content\s*=\s*["']([^"']*)["']/i,
-    ]),
-    keywords: pick([
-      /<meta[^>]+name\s*=\s*["']keywords["'][^>]+content\s*=\s*["']([^"']*)["']/i,
-      /<meta[^>]+content\s*=\s*["']([^"']*)["'][^>]+name\s*=\s*["']keywords["']/i,
-    ]),
-  };
-  return Object.values(meta).some(Boolean) ? meta : undefined;
 };
 
 // --- table shapes -----------------------------------------------------------
@@ -196,7 +160,7 @@ export function collectRows(dir, date, files) {
     };
     const title = resolvePageTitle(signals.homepage);
     const lang = d1Lang(signals.homepage);
-    const catSlug = categorize(domain, title, extractMeta(signals.homepage?.body));
+    const catSlug = categorize(domain, title, resolvePageMeta(signals.homepage));
     const catId = CATEGORY_SLUGS.indexOf(catSlug) + 1;
     const now = new Date().toISOString();
     siteRows.push([

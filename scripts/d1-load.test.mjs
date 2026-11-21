@@ -281,6 +281,53 @@ test('the title and the lang come from the scanner fields, the body is the fallb
   }
 });
 
+test('the category comes from the meta field, the body is the fallback', () => {
+  const root = mkdtempSync(join(tmpdir(), 'd1-load-'));
+  try {
+    const dir = writeDay(root, DATE, {
+      // a snapshot of the new shape: the meta field, no body (the body was pruned)
+      'fields.test': makeSnapshot('fields.test', {
+        score: 87,
+        grade: 'B',
+        points: 3,
+        status: 'pass',
+        homepage: { status: 200, meta: { ogSiteName: 'Acme — add to cart' } },
+      }),
+      // an old snapshot: no field, the meta lives in the body
+      'body.test': makeSnapshot('body.test', {
+        score: 40,
+        grade: 'C',
+        points: 0,
+        status: 'fail',
+        homepage: {
+          status: 200,
+          body: '<html><head><meta property="og:site_name" content="Acme — add to cart"></head></html>',
+        },
+      }),
+      // neither: the site stays uncategorized
+      'bare.test': makeSnapshot('bare.test', {
+        score: 40,
+        grade: 'C',
+        points: 0,
+        status: 'fail',
+        homepage: { status: 200, title: 'Acme Portal' },
+      }),
+    });
+    const db = openDb();
+    applyDay(db, dir);
+
+    const fields = db.prepare('SELECT category_id FROM sites WHERE domain = ?').get('fields.test');
+    assert.equal(fields.category_id, 4, 'a body-less snapshot still carries its category');
+    const body = db.prepare('SELECT category_id FROM sites WHERE domain = ?').get('body.test');
+    assert.equal(body.category_id, 4, 'an old snapshot reads its meta from the body');
+    const bare = db.prepare('SELECT category_id FROM sites WHERE domain = ?').get('bare.test');
+    assert.equal(bare.category_id, 14, 'without meta the site stays in "other"');
+    db.close();
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('compoundUpsert keeps every statement under maxBytes', () => {
   const rows = Array.from({ length: 50 }, (_, i) => [`'row-${i}'`, String(i), `'${'x'.repeat(60)}'`]);
   const stmts = compoundUpsert('sites', ['domain', 'score_total', 'title'], ['domain'], ['score_total'], rows, 300);
