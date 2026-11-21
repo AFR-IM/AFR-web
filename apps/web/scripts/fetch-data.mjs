@@ -31,6 +31,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { brotliCompressSync, constants } from 'node:zlib';
 import { CATEGORY_SLUGS, categorize } from '../src/data/categorize.mjs';
+import { SITE_PATHS_FILE, buildDetail } from '../src/data/detail.ts';
 import { resolvePageLang, resolvePageMeta, resolvePageTitle } from '../../../packages/scanner/src/page-meta.ts';
 import {
   SEARCH_INDEX_RAW_PER_ENTRY,
@@ -306,7 +307,16 @@ async function main() {
     const lang = resolvePageLang(homepage);
     const meta = resolvePageMeta(homepage);
     const category = categorize(afr.domain ?? name.replace(/\.json$/, ''), title, meta);
-    sites.push({ afr, title, lang, category });
+    sites.push({ afr, title, lang, category, probe: homepage });
+  }
+
+  // The on-demand detail pages need to know where a domain's snapshot
+  // lives: the newest date directory that holds it — the same merge rule
+  // the site build uses (a later date wins). One map, one asset.
+  const sitePaths = {};
+  for (const { dir, name } of entries) {
+    const domain = name.replace(/\.json$/, '');
+    sitePaths[domain] = path.relative(scansRoot, dir).split(path.sep).join('/');
   }
   if (sites.length === 0) {
     console.error('No usable snapshots found.');
@@ -331,21 +341,9 @@ async function main() {
     return card;
   };
 
-  const detailOf = (s) => ({
-    ...cardOf(s),
-    ...(DELISTED[domainOf(s)] ? { delistedNote: DELISTED[domainOf(s)] } : {}),
-    engineVersion: s.afr.engineVersion,
-    scannerVersion: s.afr.scannerVersion,
-    layers: s.afr.layers,
-    breakdown: s.afr.breakdown,
-    history: [
-      {
-        date: String(s.afr.scannedAt).slice(0, 10),
-        score: s.afr.score,
-        grade: s.afr.grade,
-      },
-    ],
-  });
+  // The detail payload comes from the shared builder (src/data/detail.ts) —
+  // the same one the on-demand detail pages use, so the two cannot drift.
+  const detailOf = (s) => buildDetail({ afr: s.afr, signals: { homepage: s.probe } }, domainOf(s), DELISTED);
 
   // ── home payload (scored only) ────────────────────────────────────────────
   const scoredCards = scored.map(cardOf).sort(byScoreDesc);
@@ -492,6 +490,14 @@ async function main() {
   await writeFile(
     path.join(PUBLIC_DATA_DIR, SEARCH_MANIFEST_FILE),
     `${JSON.stringify(shardManifest)}\n`,
+    'utf8',
+  );
+
+  // The snapshot index of the on-demand detail pages: domain → the date
+  // directory that holds its newest snapshot (see src/data/runtime-detail.ts).
+  await writeFile(
+    path.join(PUBLIC_DATA_DIR, SITE_PATHS_FILE),
+    `${JSON.stringify(sitePaths)}\n`,
     'utf8',
   );
 

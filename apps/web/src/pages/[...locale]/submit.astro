@@ -1,4 +1,7 @@
 ---
+// Prerendered: this page is a static asset. Only the detail pages are
+// rendered on demand (SSOT item 20 — the catalog must not cost assets).
+export const prerender = true;
 // P4 submit page: domain input + the 3-step flow (submit → scan
 // → score) + what happens afterwards + a politeness note linking to /bot.
 // Submitting posts to POST /api/v1/submissions {domain, note?} (server-side

@@ -1,4 +1,7 @@
 ---
+// Prerendered: this page is a static asset. Only the detail pages are
+// rendered on demand (SSOT item 20 — the catalog must not cost assets).
+export const prerender = true;
 // Search page — reads ?q= and renders results client-side from the search
 // index: the server ships only the page chrome, then the first 50 matches
 // render as DomainCards cloned from an inert template, with "Show more"

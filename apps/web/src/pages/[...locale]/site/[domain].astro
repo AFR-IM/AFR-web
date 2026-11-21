@@ -1,5 +1,16 @@
 ---
 // P3 detail page — /site/:domain.
+//
+// Rendered on demand (SSOT item 20: 详情页按需生成). A static page per site
+// does not scale: the Worker Free plan allows 20,000 asset files per
+// version, and the bilingual detail pages cost two files per domain — the
+// catalog is the product, the pages must not be the limit.
+//
+// The payload is the same scan snapshot the static build used (the data
+// repo's JSON is the SSOT), so an on-demand page shows exactly what the
+// static one showed: the snapshot comes from the data repo, and the map
+// that says where it lives is written by the build.
+//
 // Layout: 340px report card │ 1fr evidence chain │ 320px
 // statement/badge/history, left+right sticky at top 80px; 768–1279 → 2+1;
 // ≤767 → three tabs (Report / Evidence / Statement).
@@ -17,41 +28,14 @@ import VerifyPanel from '../../../components/detail/VerifyPanel.astro';
 import OwnerMailbox from '../../../components/detail/OwnerMailbox.astro';
 import HistorySpark from '../../../components/detail/HistorySpark.astro';
 import RescanButton from '../../../components/detail/RescanButton.astro';
-import { existsSync } from 'node:fs';
-import { getCatalog, LOCALES, pathFor, toLocale, type Locale } from '../../../i18n/loader.ts';
+import { getCatalog, pathFor, toLocale, type Locale } from '../../../i18n/loader.ts';
 import { uiText } from '../../../components/home/fallbacks.ts';
-import { listAllSites, loadSite } from '../../../data/loader.ts';
+import { loadRuntimeDetail } from '../../../data/runtime-detail.ts';
 import type { SiteDetail } from '../../../data/types.ts';
 import { gradeVar } from '../../../utils/grade.ts';
-import { ENGINE_VERSION } from '../../../../../../packages/afr/src/index.ts';
-import { SCANNER_VERSION } from '../../../../../../packages/scanner/src/http.ts';
 
-export function getStaticPaths() {
-  const out: { params: { locale?: string; domain: string } }[] = [];
-  for (const locale of LOCALES) {
-    // Both rated and unratable sites get a detail page (scored + pending).
-    for (const card of listAllSites()) {
-      out.push({ params: { locale: locale === 'en' ? undefined : locale, domain: card.domain } });
-    }
-  }
-  return out;
-}
-
-/** Sites without a full snapshot render a "pending scan" state. */
-function resolveDetail(domain: string): SiteDetail | undefined {
-  const full = loadSite(domain);
-  if (full) return full;
-  const card = listAllSites().find((s) => s.domain === domain);
-  if (!card) return undefined;
-  return {
-    ...card,
-    engineVersion: ENGINE_VERSION,
-    scannerVersion: SCANNER_VERSION,
-    layers: [],
-    breakdown: {},
-    history: [],
-  };
-}
+// Rendered per request — not prerendered into an asset.
+export const prerender = false;
 
 const locale: Locale = toLocale(Astro.params.locale);
 const L = getCatalog(locale);
@@ -60,7 +44,15 @@ const T = (en: string, zh: string) => (isZh ? zh : en);
 const href = (p: string) => pathFor(locale, p);
 
 const domain = Astro.params.domain ?? '';
-const site = resolveDetail(domain);
+const site: SiteDetail | undefined = await loadRuntimeDetail(
+  domain,
+  Astro.locals.runtime as unknown as Parameters<typeof loadRuntimeDetail>[1],
+  Astro.url.origin,
+);
+// The page is cached like the static one was (the old _headers rule for
+// /site/*): a short fresh window, a long stale window, and the origin only
+// pays for a change.
+Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=600');
 const isPending = site?.grade === 'Pending';
 const gc = site ? gradeVar(site.grade) : 'var(--text-3)';
 const gradeInfo = site ? L.grades[site.grade] : undefined;
@@ -76,13 +68,11 @@ const tabs = [
 const viewsLabel = uiText(L.ui, 'viewsLabel', locale);
 const claimFormVisible = !!site?.verified || !!site?.claim;
 const notFound = !site;
-// Per-site OG card when this build rendered one (scripts/make-og-cards.mjs);
-// otherwise Base.astro falls back to the brand card. Resolved from cwd —
-// astro build always runs from apps/web (sync-site working-directory + local
-// flow), because import.meta.url is rewritten by Vite during compilation.
-const ogImagePath = existsSync(`public/og/sites/${domain}.png`)
-  ? `/og/sites/${domain}.png`
-  : undefined;
+if (notFound) Astro.response.status = 404;
+// Every domain in the catalog gets a per-site OG card in the same build
+// (scripts/make-og-cards.mjs), so the card path is known without asking
+// the filesystem at runtime.
+const ogImagePath = site ? `/og/sites/${domain}.png` : undefined;
 const title = notFound ? (L.ui.notFound as string) : `${domain} — ${site.title ?? site.grade}`;
 // Unratable scans carry no score claim — the description omits score/grade numbers.
 const description = notFound

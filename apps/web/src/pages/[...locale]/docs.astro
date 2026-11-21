@@ -1,4 +1,7 @@
 ---
+// Prerendered: this page is a static asset. Only the detail pages are
+// rendered on demand (SSOT item 20 — the catalog must not cost assets).
+export const prerender = true;
 // API documentation page — /docs (English) and /zh-CN/docs (Chinese).
 // Documents the real AFR.IM Worker API (apps/worker): GET endpoints are
 // open and key-free, POST /api/v1/submissions is rate-limited. Every example

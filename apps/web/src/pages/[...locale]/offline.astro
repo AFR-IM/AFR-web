@@ -1,4 +1,7 @@
 ---
+// Prerendered: this page is a static asset. Only the detail pages are
+// rendered on demand (SSOT item 20 — the catalog must not cost assets).
+export const prerender = true;
 // P7 offline fallback — /offline (the service worker's offline route
 // shows a friendly message plus the last sync time and a link home).
 
