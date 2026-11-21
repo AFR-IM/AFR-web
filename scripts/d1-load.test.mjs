@@ -21,13 +21,13 @@ const SCHEMA_SQL = readFileSync(join(here, '..', 'apps', 'worker', 'schema.sql')
 const DATE = '2026/11/10';
 
 /** Snapshot shaped like real AFR-data output ({ signals, afr }) */
-function makeSnapshot(domain, { score, grade, points, status }) {
+function makeSnapshot(domain, { score, grade, points, status, homepage }) {
   return {
     signals: {
       domain,
       fetchedAt: '2026-11-10T11:42:36.513Z',
       scannerVersion: 'scanner-0.1.0',
-      homepage: { body: '<html lang="en"><title>Acme</title></html>' },
+      homepage: homepage ?? { body: '<html lang="en"><title>Acme</title></html>' },
     },
     afr: {
       domain,
@@ -221,6 +221,60 @@ test('a reload keeps human-curated site fields untouched', () => {
     assert.equal(site.title, 'Curated Title', 'title must not be overwritten by the loader');
     assert.equal(site.category_id, 3, 'category mapping must not be overwritten');
     assert.equal(site.score_total, 91, 'scanner-owned scores must refresh');
+    db.close();
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('the title and the lang come from the scanner fields, the body is the fallback', () => {
+  const root = mkdtempSync(join(tmpdir(), 'd1-load-'));
+  try {
+    const dir = writeDay(root, DATE, {
+      // a snapshot of the new shape: the fields, no body (the body was pruned)
+      'fields.dev': makeSnapshot('fields.dev', {
+        score: 87,
+        grade: 'B',
+        points: 3,
+        status: 'pass',
+        homepage: { status: 200, title: 'Fields Ltd', lang: 'en-US' },
+      }),
+      // an old snapshot: no fields, the title lives in the body
+      'body.dev': makeSnapshot('body.dev', {
+        score: 40,
+        grade: 'C',
+        points: 0,
+        status: 'fail',
+        homepage: { status: 200, body: '<html lang="de"><title>Body Title</title></html>' },
+      }),
+      // both: the field wins
+      'both.dev': makeSnapshot('both.dev', {
+        score: 40,
+        grade: 'C',
+        points: 0,
+        status: 'fail',
+        homepage: {
+          status: 200,
+          title: 'Field Title',
+          lang: 'fr',
+          body: '<html lang="de"><title>Body Title</title></html>',
+        },
+      }),
+    });
+    const db = openDb();
+    applyDay(db, dir);
+
+    const fields = db.prepare('SELECT title, lang FROM sites WHERE domain = ?').get('fields.dev');
+    assert.equal(fields.title, 'Fields Ltd', 'a body-less snapshot still carries its title');
+    assert.equal(fields.lang, 'en-us', 'the D1 language keeps its lowercase shape');
+
+    const body = db.prepare('SELECT title, lang FROM sites WHERE domain = ?').get('body.dev');
+    assert.equal(body.title, 'Body Title', 'an old snapshot reads its title from the body');
+    assert.equal(body.lang, 'de');
+
+    const both = db.prepare('SELECT title, lang FROM sites WHERE domain = ?').get('both.dev');
+    assert.equal(both.title, 'Field Title', 'the field wins over the body');
+    assert.equal(both.lang, 'fr');
     db.close();
   } finally {
     rmSync(root, { recursive: true, force: true });

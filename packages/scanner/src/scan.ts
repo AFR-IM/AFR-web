@@ -15,9 +15,30 @@
 //             robots crawl-delay honored (capped at 3s), 150ms gap between requests by default,
 //             transparent UA, 15s timeout.
 
-import type { AiFeatures, ScanSignals } from '../../shared/src/index.ts';
+import type { AiFeatures, HttpProbe, ScanSignals } from '../../shared/src/index.ts';
 import { normalizeDomain, politeGet, RequestCounter, SCANNER_VERSION, sleep, type FetchImpl } from './http.ts';
 import { detectAiSearch, detectChatWidget, detectDeveloperConsole, parseMarkup } from './markup.ts';
+import { capturePageMeta } from './page-meta.ts';
+
+/**
+ * The homepage probe plus the page's own title/lang.
+ *
+ * The title and the language are captured while the body is still in hand:
+ * the body is the bulk of the corpus and is pruned away later (it is only
+ * needed to re-judge the AI-feature signals offline), so a title that is not
+ * stored here is a title that is lost for good.
+ */
+export interface HomepageProbe extends HttpProbe {
+  /** The homepage <title> text, normalized (absent when the page has none) */
+  title?: string;
+  /** The <html lang> attribute (absent when the page declares none) */
+  lang?: string;
+}
+
+/** Scan signals whose homepage probe carries the page metadata. */
+export interface ScanSignalsWithPageMeta extends ScanSignals {
+  homepage?: HomepageProbe;
+}
 
 export interface ScanOptions {
   fetchImpl?: FetchImpl;
@@ -65,7 +86,7 @@ function statusOk(r: { status?: number }): boolean {
 }
 
 /** Scan a single site and produce AFR engine input. Pure IO function; does not score. */
-export async function scanSite(domain: string, opts: ScanOptions = {}): Promise<ScanSignals> {
+export async function scanSite(domain: string, opts: ScanOptions = {}): Promise<ScanSignalsWithPageMeta> {
   const host = normalizeDomain(domain);
   const gap = opts.gapMs ?? 150;
   const counter = new RequestCounter();
@@ -94,6 +115,13 @@ export async function scanSite(domain: string, opts: ScanOptions = {}): Promise<
   // 4) homepage (key slot: retry on network error)
   const homepage = await politeGet(`https://${host}/`, { ...base, retryOnNetworkError: true, maxBytes: opts.maxBytes ?? 1024 * 1024 });
   const html = statusOk(homepage) ? (homepage.body ?? '') : '';
+  // The page's own title/lang are read here, while the body is in hand, and
+  // stored next to the probe. They are what every reader of the corpus needs
+  // (cards, search index, D1 rows) and the body — 98% of the corpus — is
+  // pruned away afterwards, so a title that is not captured now is lost.
+  // A body we cannot parse costs us the field, never the scan.
+  const pageMeta = capturePageMeta(homepage.body);
+  const homepageProbe: HomepageProbe = { ...homepage, ...pageMeta };
   await sleep(crawlDelayMs);
 
   // 5) sitemap (robots.txt declaration takes priority)
@@ -138,7 +166,7 @@ export async function scanSite(domain: string, opts: ScanOptions = {}): Promise<
     robots,
     llms,
     llmsFull,
-    homepage,
+    homepage: homepageProbe,
     sitemap,
     agentsMd,
     openapi: { probed: true, found: openapiFound, urls: openapiFound ? [openapiUrl] : [] },

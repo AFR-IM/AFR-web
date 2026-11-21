@@ -28,6 +28,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { brotliCompressSync, constants } from 'node:zlib';
 import { CATEGORY_SLUGS, categorize } from '../src/data/categorize.mjs';
+import { resolvePageLang, resolvePageTitle } from '../../../packages/scanner/src/page-meta.ts';
 import {
   SEARCH_INDEX_RAW_PER_ENTRY,
   SEARCH_INDEX_WIRE_BUDGET,
@@ -192,25 +193,6 @@ async function listAllDates(scansRoot) {
   return out;
 }
 
-/** Homepage <title> text, normalized; undefined when the homepage is unreadable. */
-function extractTitle(body) {
-  if (typeof body !== 'string') return undefined;
-  const m = body.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-  if (!m) return undefined;
-  const text = m[1]
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCharCode(parseInt(n, 16)))
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (!text) return undefined;
-  return text.length > 120 ? `${text.slice(0, 119)}…` : text;
-}
-
 /**
  * The site's own self-description, read from the homepage snapshot: the
  * og:site_name / application-name it publishes, the meta description and the
@@ -262,12 +244,10 @@ function extractMeta(body) {
   return Object.values(meta).some(Boolean) ? meta : undefined;
 }
 
-/** <html lang="…"> attribute from the homepage snapshot, when present. */
-function extractLang(body) {
-  if (typeof body !== 'string') return undefined;
-  const m = body.match(/<html[^>]*\blang\s*=\s*["']?([A-Za-z][A-Za-z0-9-]{0,15})/i);
-  return m ? m[1] : undefined;
-}
+// The title and the language of a site come from the scanner's own fields
+// (`signals.homepage.title` / `.lang`), with the homepage body as the
+// fallback for the snapshots taken before those fields existed. Both paths
+// apply the same rules — see packages/scanner/src/page-meta.ts.
 
 const byScoreDesc = (a, b) => b.score - a.score || a.domain.localeCompare(b.domain);
 const byScanDesc = (a, b) =>
@@ -356,9 +336,14 @@ async function main() {
       console.warn(`skip ${name}: missing afr payload`);
       continue;
     }
-    const homepageBody = raw?.signals?.homepage?.body;
-    const title = extractTitle(homepageBody);
-    const lang = extractLang(homepageBody);
+    const homepage = raw?.signals?.homepage;
+    const homepageBody = homepage?.body;
+    // Field first, body second: the title/lang the scanner captured survive a
+    // pruned body, and the body covers the snapshots taken before the field
+    // existed. Both paths apply the same rules, so a site reads the same
+    // either way.
+    const title = resolvePageTitle(homepage);
+    const lang = resolvePageLang(homepage);
     const meta = extractMeta(homepageBody);
     const category = categorize(afr.domain ?? name.replace(/\.json$/, ''), title, meta);
     sites.push({ afr, title, lang, category });

@@ -24,6 +24,7 @@ import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { catalogs } from '../packages/i18n/src/index.ts';
+import { resolvePageLang, resolvePageTitle } from '../packages/scanner/src/page-meta.ts';
 import { CATEGORY_SLUGS, categorize } from '../apps/web/src/data/categorize.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -57,13 +58,16 @@ export function latestDate(root) {
 
 const q = (v) => (v === null || v === undefined ? 'NULL' : `'${String(v).replace(/'/g, "''")}'`);
 const n = (v) => (v === null || v === undefined || Number.isNaN(Number(v)) ? 'NULL' : String(Number(v)));
-const extractTitle = (body) => {
-  const m = (body ?? '').match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-  return m ? m[1].replace(/\s+/g, ' ').trim().slice(0, 200) : undefined;
-};
-const extractLang = (body) => {
-  const m = (body ?? '').match(/<html[^>]*\slang=["']?([a-zA-Z-]+)/i);
-  return m ? m[1].toLowerCase().slice(0, 12) : undefined;
+// The title and the language of a site come from the scanner's own fields
+// (`signals.homepage.title` / `.lang`); the homepage body is the fallback for
+// the snapshots taken before those fields existed. Both paths apply the same
+// rules — see packages/scanner/src/page-meta.ts — so a site loads the same
+// either way, and a body-less snapshot still carries its title.
+
+/** The D1 `sites.lang` shape: lowercase, at most 12 characters. */
+const d1Lang = (probe) => {
+  const lang = resolvePageLang(probe);
+  return lang ? lang.toLowerCase().slice(0, 12) : undefined;
 };
 /**
  * The site's own self-description (og:site_name / application-name / meta
@@ -190,8 +194,8 @@ export function collectRows(dir, date, files) {
       const l = afr.layers.find((x) => x.layer === id);
       return l ? n(l.awarded) : 'NULL';
     };
-    const title = extractTitle(signals.homepage?.body);
-    const lang = extractLang(signals.homepage?.body);
+    const title = resolvePageTitle(signals.homepage);
+    const lang = d1Lang(signals.homepage);
     const catSlug = categorize(domain, title, extractMeta(signals.homepage?.body));
     const catId = CATEGORY_SLUGS.indexOf(catSlug) + 1;
     const now = new Date().toISOString();
