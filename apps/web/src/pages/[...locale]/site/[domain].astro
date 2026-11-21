@@ -44,6 +44,12 @@ const T = (en: string, zh: string) => (isZh ? zh : en);
 const href = (p: string) => pathFor(locale, p);
 
 const domain = Astro.params.domain ?? '';
+// The static build answered /site/<domain> with a redirect to the slash
+// form (the asset was a directory); the rendered route has to keep that
+// answer, or every old link breaks.
+if (!Astro.url.pathname.endsWith('/')) {
+  return Astro.redirect(`${Astro.url.pathname}/${Astro.url.search}`, 307);
+}
 const site: SiteDetail | undefined = await loadRuntimeDetail(
   domain,
   Astro.locals.runtime as unknown as Parameters<typeof loadRuntimeDetail>[1],
