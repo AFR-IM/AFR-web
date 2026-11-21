@@ -16,7 +16,10 @@
 //   src/data/generated/home.json         HomeData — scored sites only + pendingCount
 //   src/data/generated/categories.json   {slug: SiteCard[]} — scored, score desc
 //   src/data/generated/details/<domain>.json  SiteDetail, scored AND pending
-//   public/data/search-index.json        compact [{d,s,c?,t?}] client search payload
+//   public/data/search-index.json        the legacy single index (while it fits)
+//   public/data/search-index/<id>.json   one index shard per first character
+//   public/data/search-index-top.json    the leaderboard slice (the browse case)
+//   public/data/search-index-manifest.json  what the browser reads first
 //
 // Pending sites (grade 'Pending': neither homepage nor robots readable) are
 // excluded from every card list / distribution / average, but do get a detail
@@ -32,8 +35,16 @@ import { resolvePageLang, resolvePageMeta, resolvePageTitle } from '../../../pac
 import {
   SEARCH_INDEX_RAW_PER_ENTRY,
   SEARCH_INDEX_WIRE_BUDGET,
+  SEARCH_LEGACY_FILE,
+  SEARCH_MANIFEST_FILE,
+  SEARCH_SHARD_DIR,
+  SEARCH_TOP_FILE,
+  SEARCH_TOP_SLICE_SIZE,
+  assignShards,
   buildSearchEntry,
+  buildShardManifest,
   gradeFor,
+  shardFileFor,
 } from './search-index-contract.mjs';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -421,6 +432,8 @@ async function main() {
   await rm(GENERATED_DIR, { recursive: true, force: true });
   await mkdir(DETAILS_DIR, { recursive: true });
   await mkdir(PUBLIC_DATA_DIR, { recursive: true });
+  await rm(path.join(PUBLIC_DATA_DIR, SEARCH_SHARD_DIR), { recursive: true, force: true });
+  await mkdir(path.join(PUBLIC_DATA_DIR, SEARCH_SHARD_DIR), { recursive: true });
 
   const writeJson = async (file, data) => {
     await writeFile(file, `${JSON.stringify(data)}\n`, 'utf8');
@@ -437,11 +450,77 @@ async function main() {
     detailBytes += await writeJson(path.join(DETAILS_DIR, `${s.afr.domain}.json`), detailOf(s));
   }
 
+  // ── the search index: shards + manifest + the legacy single file ────────
+  // The browser reads the manifest first, then fetches the shard(s) it
+  // needs. The legacy single file stays as long as the whole catalog fits
+  // the wire budget: a page cached from before the shards existed asks for
+  // /data/search-index.json by name and must find it.
   const searchJson = `${JSON.stringify(searchIndex)}\n`;
-  await writeFile(path.join(PUBLIC_DATA_DIR, 'search-index.json'), searchJson, 'utf8');
   const searchBytes = Buffer.byteLength(searchJson, 'utf8');
   // The browser pays the compressed size — measure it, do not estimate it.
   const wireBytes = brotliBytes(searchJson);
+
+  const shards = assignShards(searchIndex);
+  const sizes = {};
+  let shardWireMax = 0;
+  let shardRawMax = 0;
+  let shardRawBudget = 0;
+  for (const [id, shardEntries] of shards) {
+    const text = `${JSON.stringify(shardEntries)}\n`;
+    const raw = Buffer.byteLength(text, 'utf8');
+    const wire = brotliBytes(text);
+    sizes[id] = { raw, wire };
+    if (wire > shardWireMax) shardWireMax = wire;
+    if (raw > shardRawMax) shardRawMax = raw;
+    if (raw > shardEntries.length * SEARCH_INDEX_RAW_PER_ENTRY) shardRawBudget = id;
+    await writeFile(path.join(PUBLIC_DATA_DIR, shardFileFor(id)), text, 'utf8');
+  }
+
+  // The leaderboard slice: the browse case must not download the catalog.
+  const topEntries = searchIndex.slice(0, SEARCH_TOP_SLICE_SIZE);
+  const topJson = `${JSON.stringify(topEntries)}\n`;
+  const topSize = { raw: Buffer.byteLength(topJson, 'utf8'), wire: brotliBytes(topJson) };
+  await writeFile(path.join(PUBLIC_DATA_DIR, SEARCH_TOP_FILE), topJson, 'utf8');
+
+  const shardManifest = buildShardManifest({
+    shards,
+    top: topEntries,
+    entries: searchIndex.length,
+    sizes,
+    topSize,
+  });
+  await writeFile(
+    path.join(PUBLIC_DATA_DIR, SEARCH_MANIFEST_FILE),
+    `${JSON.stringify(shardManifest)}\n`,
+    'utf8',
+  );
+
+  // A shard that outgrows the budget is the signal that the shard key needs
+  // another level — the build must not publish a payload the browser cannot
+  // afford.
+  if (shardWireMax > SEARCH_INDEX_WIRE_BUDGET) {
+    console.error(
+      `REFUSING to build: the largest search shard is ${shardWireMax} B on the wire ` +
+        `(budget ${SEARCH_INDEX_WIRE_BUDGET} B) — the shard key needs another level ` +
+        '(SSOT item 20)',
+    );
+    process.exit(1);
+  }
+  if (shardRawBudget) {
+    console.error(
+      `REFUSING to build: search shard "${shardRawBudget}" is ${shardRawMax} B raw, over the ` +
+        `${SEARCH_INDEX_RAW_PER_ENTRY} B/entry guard — the shard key needs another level`,
+    );
+    process.exit(1);
+  }
+
+  const legacyPath = path.join(PUBLIC_DATA_DIR, SEARCH_LEGACY_FILE);
+  const legacyFits = wireBytes <= SEARCH_INDEX_WIRE_BUDGET;
+  if (legacyFits) {
+    await writeFile(legacyPath, searchJson, 'utf8');
+  } else {
+    await rm(legacyPath, { force: true });
+  }
 
   // ── summary ───────────────────────────────────────────────────────────────
   const mapped = sites.filter((s) => s.category !== 'other').length;
@@ -463,14 +542,20 @@ async function main() {
   const rawOk = searchBytes <= rawBudget;
   const verdict = wireOk && rawOk ? 'within' : 'OVER';
   console.log(
-    `search idx : public/data/search-index.json raw ${(searchBytes / 1024).toFixed(1)} KB ` +
-      `(budget ${(rawBudget / 1024).toFixed(0)} KB = ${searchIndex.length}×${SEARCH_INDEX_RAW_PER_ENTRY}B) · ` +
-      `wire ${(wireBytes / 1024).toFixed(1)} KB br (budget ${SEARCH_INDEX_WIRE_BUDGET / 1024} KB) · ` +
-      `${searchIndex.length} entries — ${verdict}`,
+    `search idx : ${searchIndex.length} entries in ${shards.size} shards · ` +
+      `raw ${(searchBytes / 1024).toFixed(1)} KB (budget ${(rawBudget / 1024).toFixed(0)} KB = ` +
+      `${searchIndex.length}×${SEARCH_INDEX_RAW_PER_ENTRY}B) · wire ${(wireBytes / 1024).toFixed(1)} KB br ` +
+      `(budget ${SEARCH_INDEX_WIRE_BUDGET / 1024} KB) — ${verdict}`,
+  );
+  console.log(
+    `             largest shard ${(shardWireMax / 1024).toFixed(1)} KB br · ` +
+      `top slice ${topEntries.length} entries ${(topSize.wire / 1024).toFixed(1)} KB br · ` +
+      `legacy file ${legacyFits ? 'kept' : 'dropped (the catalog outgrew the wire budget)'}`,
   );
   if (!wireOk) {
     console.warn(
-      'search idx OVER wire budget: shard before scaling (SSOT item 20) or shorten SEARCH_TITLE_MAX',
+      'search idx OVER wire budget: the browser now reads the shards, so this only means the ' +
+        'legacy single file was dropped',
     );
   }
 }
