@@ -58,7 +58,19 @@ const site: SiteDetail | undefined = await loadRuntimeDetail(
 // The page is cached like the static one was (the old _headers rule for
 // /site/*): a short fresh window, a long stale window, and the origin only
 // pays for a change.
+//
+// The edge keeps its own, much longer copy (Workers Cache — wrangler.jsonc).
+// A hit is served WITHOUT running the Worker, so a repeat visitor costs no
+// CPU, no isolate start and no GitHub round trip; the browser still sees
+// the old 60 s window, because the edge directive is stripped on the way
+// out. The page only changes when the domain is rescanned, so an hour of
+// edge freshness is still far fresher than the old static build, which
+// only changed on the next full rebuild.
 Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=600');
+Astro.response.headers.set(
+  'cloudflare-cdn-cache-control',
+  'public, max-age=3600, stale-while-revalidate=7200, stale-if-error=86400',
+);
 const isPending = site?.grade === 'Pending';
 const gc = site ? gradeVar(site.grade) : 'var(--text-3)';
 const gradeInfo = site ? L.grades[site.grade] : undefined;
@@ -75,6 +87,16 @@ const viewsLabel = uiText(L.ui, 'viewsLabel', locale);
 const claimFormVisible = !!site?.verified || !!site?.claim;
 const notFound = !site;
 if (notFound) Astro.response.status = 404;
+// A 404 is never cached at the edge: the domain may be missing from the
+// catalog for good, but it may also be a domain whose snapshot could not be
+// read this time (the data repo was unreachable). Caching that would keep
+// a wrong page up for an hour; not caching it lets the next request try
+// again. The catalog answers "is this domain known?" separately from
+// "could we read its snapshot?" — see runtime-detail.ts.
+if (notFound) Astro.response.headers.set('Cache-Control', 'no-store');
+// The edge directive above has the highest precedence, so it has to be
+// cleared too — otherwise the 404 would sit in the edge cache for an hour.
+if (notFound) Astro.response.headers.set('cloudflare-cdn-cache-control', 'no-store');
 // Every domain in the catalog gets a per-site OG card in the same build
 // (scripts/make-og-cards.mjs), so the card path is known without asking
 // the filesystem at runtime.

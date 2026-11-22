@@ -18,7 +18,11 @@ const DETAIL_WITHOUT_SLASH = /^\/(?:[a-z]{2}(?:-[A-Z]{2})?\/)?site\/[^/]+$/;
 export const onRequest = defineMiddleware(async (context, next) => {
   const { pathname, search } = context.url;
   if (!pathname.endsWith('/') && DETAIL_WITHOUT_SLASH.test(pathname)) {
-    return context.redirect(`${pathname}/${search}`, 307);
+    const res = context.redirect(`${pathname}/${search}`, 307);
+    // The redirect never changes — let the edge keep it. Without this the
+    // Worker runs for every no-slash request (old links, crawlers).
+    res.headers.set('Cache-Control', 'public, max-age=3600');
+    return res;
   }
   return next();
 });

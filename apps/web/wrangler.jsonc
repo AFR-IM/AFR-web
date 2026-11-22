@@ -6,6 +6,22 @@
   "compatibility_flags": [
     "global_fetch_strictly_public"
   ],
+  // Workers Cache — Cloudflare caches this Worker's own responses and
+  // serves a hit WITHOUT running the Worker (so a hit costs no CPU and
+  // no isolate start). The detail page is rendered on demand from the
+  // data repo, so every hit would otherwise pay a fresh render plus a
+  // GitHub round trip; with the cache the second visitor of a page gets
+  // the stored HTML straight from the edge. Tiered by default, so the
+  // first request anywhere in the world fills the cache for every colo.
+  //
+  // Cacheability is decided by the response headers (see the detail page):
+  // the browser keeps the old 60 s freshness, the edge keeps it for an
+  // hour — the page only changes when the domain is rescanned, so an
+  // hour of edge freshness is still far fresher than the old static
+  // build, which only changed on the next full rebuild.
+  "cache": {
+    "enabled": true
+  },
   "observability": {
     "enabled": true
   },
