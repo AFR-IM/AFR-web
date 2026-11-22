@@ -391,7 +391,9 @@ const loadMoreErrorText = uiText(L.ui, 'loadMoreError', locale);
           strategyTag: it.strategy_tag || '',
           category: it.category || category,
           lang: it.lang || '',
-          rankSource: it.rank_source == null ? null : Number(it.rank_source),
+          // The number is `rank`; `rank_source` only says where it came
+          // from ('tranco') — reading the source as the number gave NaN.
+          rankSource: it.rank == null ? null : Number(it.rank),
           scannedAt: it.scanned_at || '',
           tags: [], /* the API does not expose tags */
         };
