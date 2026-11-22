@@ -36,12 +36,25 @@
 # The service worker caches the same paths (cache-first) for offline use.
 /llms.txt
   Cache-Control: public, max-age=3600
+/llms-full.txt
+  Cache-Control: public, max-age=3600
+/robots.txt
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
 /agents.md
   Cache-Control: public, max-age=3600
 /ai.txt
   Cache-Control: public, max-age=3600
 /openapi.json
   Cache-Control: public, max-age=3600
+
+# --- Sitemap: the index + its shards, rebuilt with every daily build ---
+# Crawlers only. The index points at the shards under /sitemaps/, so the
+# two rules must not overlap (a request matching both would inherit two
+# Cache-Control values and get the most conservative one).
+/sitemap.xml
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+/sitemaps/*
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
 
 # --- Daily-built data payload: brief TTL + long background revalidate ---
 /data/*

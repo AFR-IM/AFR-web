@@ -1,0 +1,279 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <url>
+    <loc>https://afr.im/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/method/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/method/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/method/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/method/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/method/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/method/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/categories/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/categories/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/categories/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/categories/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/categories/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/categories/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/search/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/search/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/search/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/search/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/search/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/search/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/submit/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/submit/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/submit/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/submit/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/submit/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/submit/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/about/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/about/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/about/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/about/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/about/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/about/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/bot/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/bot/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/bot/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/bot/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/bot/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/bot/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/badge/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/badge/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/badge/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/badge/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/badge/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/badge/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/docs/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/docs/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/docs/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/docs/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/docs/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/docs/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/c/dev-tools/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/c/dev-tools/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/c/dev-tools/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/c/dev-tools/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/c/dev-tools/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/c/dev-tools/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/c/ai-tools/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/c/ai-tools/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/c/ai-tools/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/c/ai-tools/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/c/ai-tools/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/c/ai-tools/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/c/news/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/c/news/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/c/news/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/c/news/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/c/news/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/c/news/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/c/ecommerce/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/c/ecommerce/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/c/ecommerce/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/c/ecommerce/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/c/ecommerce/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/c/ecommerce/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/c/education/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/c/education/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/c/education/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/c/education/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/c/education/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/c/education/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/c/finance/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/c/finance/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/c/finance/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/c/finance/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/c/finance/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/c/finance/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/c/social/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/c/social/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/c/social/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/c/social/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/c/social/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/c/social/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/c/entertainment/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/c/entertainment/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/c/entertainment/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/c/entertainment/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/c/entertainment/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/c/entertainment/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/c/health/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/c/health/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/c/health/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/c/health/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/c/health/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/c/health/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/c/travel/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/c/travel/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/c/travel/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/c/travel/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/c/travel/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/c/travel/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/c/government/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/c/government/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/c/government/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/c/government/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/c/government/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/c/government/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/c/reference/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/c/reference/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/c/reference/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/c/reference/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/c/reference/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/c/reference/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/c/docs/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/c/docs/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/c/docs/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/c/docs/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/c/docs/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/c/docs/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/c/other/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/c/other/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/c/other/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/c/other/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/c/other/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/c/other/"/>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+</urlset>

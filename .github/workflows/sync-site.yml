@@ -69,6 +69,13 @@ jobs:
       - name: Regenerate sitemap
         run: node apps/web/scripts/make-sitemap.mjs
 
+      # The sitemap must be an index that lists exactly the shards that
+      # exist, every shard must fit the URL/size caps, and the shards
+      # together must hold every URL of the catalog (with the right
+      # hreflang pair) — a broken sitemap is invisible to every test.
+      - name: Check the sitemap (index, shards, caps, alternates)
+        run: node scripts/check-sitemap.mjs
+
       - name: Install dependencies
         run: npm ci
 

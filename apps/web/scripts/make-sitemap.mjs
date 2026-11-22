@@ -1,92 +1,62 @@
 #!/usr/bin/env node
-// make-sitemap.mjs — regenerate apps/web/public/sitemap.xml from the current
-// build inputs (top-level routes × locales, the 14 category pages, and every
-// site detail page in src/data/generated/details/).
+// make-sitemap.mjs — regenerate the sitemap from the current build inputs
+// (top-level routes × locales, the 14 category pages, and every site detail
+// page in src/data/generated/details/).
 //
 // Run after scripts/fetch-data.mjs refreshes the data and before `astro build`
 // (public/ is copied verbatim into dist/). Node built-ins only, no deps.
 //
+// /sitemap.xml is a sitemap *index*; the URLs live in shards under
+// /sitemaps/. One file cannot hold the catalog: a sitemap file may hold at
+// most 50,000 URLs, and the catalog is heading for 100k sites (two URLs
+// each, en + zh-CN). The split rules live in sitemap-contract.mjs — the
+// generator and the guardrail share them, so neither can drift.
+//
 // Every entry carries <lastmod> plus xhtml:link hreflang alternates (en ↔ zh-CN).
 
-import { readdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  CATS,
+  INDEX_FILE,
+  SHARD_DIR,
+  TOP,
+  planShards,
+  renderIndex,
+  renderShard,
+  shardName,
+  siteDomains,
+} from './sitemap-contract.mjs';
 
 const webDir = dirname(dirname(fileURLToPath(import.meta.url)));
-const detailsDir = join(webDir, 'src/data/generated/details');
-const out = join(webDir, 'public/sitemap.xml');
+const publicDir = join(webDir, 'public');
+const shardDir = join(publicDir, SHARD_DIR);
 
-const SITE = 'https://afr.im';
 const LASTMOD = new Date().toISOString().slice(0, 10); // the day this file is generated
-const TOP = ['/', '/method', '/categories', '/search', '/submit', '/about', '/bot', '/badge', '/docs'];
 
-// 14 first-level categories — same set the catalog ships.
-const CATS = [
-  'dev-tools', 'ai-tools', 'news', 'ecommerce', 'education', 'finance', 'social',
-  'entertainment', 'health', 'travel', 'government', 'reference', 'docs', 'other',
-];
+const sites = siteDomains(webDir);
+const staticPaths = [...TOP, ...CATS.map((s) => `/c/${s}`)];
+const sitePaths = sites.map((d) => `/site/${d}`);
 
-// Site detail pages — mirrors loader.ts's availability gate: the build serves
-// generated data only when src/data/generated/index.json (the manifest) is
-// present, otherwise it falls back to fixtures.ts.
-//   1. manifest + details/*.json present → generated inventory
-//   2. otherwise → domains declared in fixtures.ts (fresh clone / pre-fetch)
-//   3. last resort → dist/site (auditing an already-built tree)
-function siteDomains() {
-  const manifest = join(webDir, 'src/data/generated/index.json');
-  if (existsSync(manifest) && existsSync(detailsDir)) {
-    return readdirSync(detailsDir)
-      .filter((f) => f.endsWith('.json'))
-      .map((f) => f.slice(0, -'.json'.length))
-      .sort();
-  }
-  const fixtures = readFileSync(join(webDir, 'src/data/fixtures.ts'), 'utf8');
-  const fromFixtures = [...new Set([...fixtures.matchAll(/\bdomain:\s*'([^']+)'/g)].map((m) => m[1]))].sort();
-  if (fromFixtures.length > 0) return fromFixtures;
-  const distSite = join(webDir, 'dist/site');
-  if (existsSync(distSite)) {
-    return readdirSync(distSite, { withFileTypes: true })
-      .filter((d) => d.isDirectory())
-      .map((d) => d.name)
-      .sort();
-  }
-  return [];
+const shards = planShards(staticPaths, sitePaths, LASTMOD);
+
+// A shorter catalog must not leave the shards of a longer one behind:
+// an orphan shard is still deployed (and still counted as an asset), and a
+// crawler that found it would read URLs the index no longer lists.
+mkdirSync(shardDir, { recursive: true });
+const wanted = new Set(shards.map((_, i) => `${i}.xml`));
+for (const file of readdirSync(shardDir)) {
+  if (file.endsWith('.xml') && !wanted.has(file)) rmSync(join(shardDir, file));
 }
 
-const sites = siteDomains();
-
-const paths = [...TOP, ...CATS.map((s) => `/c/${s}`), ...sites.map((d) => `/site/${d}`)];
-
-const enc = (p) => p.split('/').map(encodeURIComponent).join('/');
-
-// Astro builds every route as a directory (route/index.html), and production
-// serves `/method` → `/method/` with a 307. Emit the final form directly so
-// crawlers never double-hop: every URL carries a trailing slash (root stays `/`).
-const withSlash = (p) => (p === '/' || p.endsWith('/') ? p : `${p}/`);
-
-const entries = [];
-for (const raw of paths) {
-  const p = withSlash(raw);
-  const enUrl = `${SITE}${enc(p)}`; // '/' → https://afr.im/
-  const zhUrl = p === '/' ? `${SITE}/zh-CN/` : `${SITE}/zh-CN${enc(p)}`;
-  entries.push({ loc: enUrl, en: enUrl, zh: zhUrl });
-  entries.push({ loc: zhUrl, en: enUrl, zh: zhUrl });
+for (const [i, shard] of shards.entries()) {
+  writeFileSync(join(publicDir, shardName(i)), renderShard(shard.paths, LASTMOD));
 }
+writeFileSync(join(publicDir, INDEX_FILE), renderIndex(shards, LASTMOD));
 
-const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
-${entries
-  .map(
-    (e) => `  <url>
-    <loc>${e.loc}</loc>
-    <xhtml:link rel="alternate" hreflang="en" href="${e.en}"/>
-    <xhtml:link rel="alternate" hreflang="zh-CN" href="${e.zh}"/>
-    <lastmod>${LASTMOD}</lastmod>
-  </url>`,
-  )
-  .join('\n')}
-</urlset>
-`;
-
-writeFileSync(out, xml);
-console.log(`sitemap.xml: ${entries.length} urls (${paths.length} paths, ${sites.length} site pages) -> ${out}`);
+const urls = shards.reduce((n, s) => n + s.urls, 0);
+console.log(
+  `sitemap: ${urls} urls in ${shards.length} shards (${staticPaths.length} static paths, ` +
+    `${sites.length} site pages) -> ${join(publicDir, INDEX_FILE)} + ${SHARD_DIR}/`,
+);
