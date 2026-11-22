@@ -2437,6 +2437,38 @@ const RULES = [
   ['buienradar.nl', 'reference'],
   ['builtin.com', 'dev-tools'],
   ['bundesregierung.de', 'government'],
+
+  // ── manual review batch 2026-11-22 #5 (sites whose own title/description
+  //    states the vertical; each entry was read against the site's own
+  //    self-description, never against the name alone) ─────────────────────
+  ['carrefour.fr', 'ecommerce'],
+  ['cars24.com', 'ecommerce'],
+  ['cashify.in', 'ecommerce'],
+  ['castbox.fm', 'entertainment'],
+  ['catho.com.br', 'dev-tools'],
+  ['cdreader.com', 'entertainment'],
+  ['cellphones.com.vn', 'ecommerce'],
+  ['celsius.com', 'ecommerce'],
+  ['centris.ca', 'ecommerce'],
+  ['cfa2.net', 'dev-tools'],
+  ['cgbum.com', 'entertainment'],
+  ['change.org', 'social'],
+  ['channel.io', 'dev-tools'],
+  ['checkdomain.de', 'dev-tools'],
+  ['chiikawamarket.jp', 'ecommerce'],
+  ['chunkbase.com', 'entertainment'],
+  ['cic.fr', 'finance'],
+  ['cimanow.cc', 'entertainment'],
+  ['cinemahq.app', 'entertainment'],
+  ['cio.com', 'news'],
+  ['claro.com.br', 'dev-tools'],
+  ['clashofclans-layouts.com', 'entertainment'],
+  ['cloud.sap', 'dev-tools'],
+  ['cloudamqp.com', 'dev-tools'],
+  ['cloudlinux.com', 'dev-tools'],
+  ['cloudtrax.com', 'dev-tools'],
+  ['clover.com', 'dev-tools'],
+  ['cmpassport.com', 'dev-tools'],
 ];
 
 const TITLE_RULES = RULES.filter((r) => r[2] === true && !r[0].includes('.'));
