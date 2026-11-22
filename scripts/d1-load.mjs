@@ -84,12 +84,18 @@ export const SITE_COLUMNS = [
   'score_total', 'score_l1', 'score_l2', 'score_l3', 'status',
   'created_at', 'updated_at', 'scanned_at',
 ];
-// Mirrors d1-sync.ts: category_id/title/lang are human-curated (and rank/verified
-// are not written here at all), so a reload must not clobber them.
+// Mirrors d1-sync.ts: category_id is human-curated (and rank/verified are not
+// written here at all), so a reload must not clobber it. title and lang ARE
+// scanner-owned — they come from the page the scanner read — so a reload
+// refreshes them; but a snapshot that knows no title must not erase a known
+// one (COALESCE), because a later scan that could not read the homepage says
+// less than the earlier one that did.
 export const SITE_CONFLICT = ['domain'];
 export const SITE_UPDATES = [
   'strategy_tag', 'grade', 'score_total', 'score_l1', 'score_l2', 'score_l3',
   'status', 'updated_at', 'scanned_at',
+  ['title', 'COALESCE(excluded.title, sites.title)'],
+  ['lang', 'COALESCE(excluded.lang, sites.lang)'],
 ];
 
 export const SCAN_COLUMNS = [
@@ -111,12 +117,17 @@ export const EVIDENCE_UPDATES = ['status', 'points', 'max_points', 'evidence_typ
 /**
  * Split rows into compound upsert statements whose text stays under maxBytes.
  * Each statement: INSERT INTO t (cols) VALUES (…), (…) ON CONFLICT(keys) DO UPDATE SET col = excluded.col, …
+ *
+ * An update column may also be a [column, expression] pair — the expression
+ * replaces the plain `excluded.col` (used for the columns that must not be
+ * erased by a snapshot that knows less than the row it lands on).
  */
 export function compoundUpsert(table, columns, conflictKeys, updateCols, rows, maxBytes = 80_000) {
   const head = `INSERT INTO ${table} (${columns.join(', ')}) VALUES`;
-  const tail =
-    ` ON CONFLICT(${conflictKeys.join(', ')}) DO UPDATE SET ` +
-    `${updateCols.map((c) => `${c} = excluded.${c}`).join(', ')};`;
+  const setClause = updateCols
+    .map((c) => (Array.isArray(c) ? `${c[0]} = ${c[1]}` : `${c} = excluded.${c}`))
+    .join(', ');
+  const tail = ` ON CONFLICT(${conflictKeys.join(', ')}) DO UPDATE SET ${setClause};`;
   const stmts = [];
   let buf = '';
   for (const row of rows) {

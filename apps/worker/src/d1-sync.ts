@@ -31,6 +31,7 @@
 // whose write failed keeps its old blob sha so the next run retries it.
 
 import type { AfrResult, CheckResult, ScanSignals } from '../../../packages/shared/src/index.ts';
+import { resolvePageLang, resolvePageTitle } from '../../../packages/scanner/src/page-meta.ts';
 import type { Db } from './db.ts';
 
 export const DATA_REPO_API = 'https://api.github.com/repos/AFR-IM/AFR-data/contents';
@@ -406,18 +407,27 @@ export async function upsertSnapshot(
   const now = new Date().toISOString();
   const scannedAt = afr.scannedAt ?? signals.fetchedAt ?? now;
 
-  // --- sites: upsert keeps human-curated fields (category_id, title, lang,
-  // rank, verified) untouched — only scanner-owned columns are overwritten.
+  // --- sites: upsert keeps the human-curated fields (category_id, rank,
+  // verified) untouched — only scanner-owned columns are overwritten.
+  // title and lang ARE scanner-owned: they come from the page the scanner
+  // read (signals.homepage), so the sync has to write them. Nothing else
+  // writes them — the loader and the sync are the only two writers — and
+  // the reader of a missing title is a bare domain in the API, the badge
+  // and the MCP response. A NULL title must never erase a known one
+  // (COALESCE): a later scan that could not read the homepage says less
+  // than the earlier one that did.
   // The WHERE clause makes the write order-independent: an older snapshot
   // syncing after a newer one (multi-date backfill, cron racing the CI loop)
   // can never downgrade the live score. Equal scanned_at still updates, so an
   // engine re-run of the same scan refreshes in place.
   const siteRun = await db
     .prepare(
-      `INSERT INTO sites (domain, strategy_tag, grade, score_total, score_l1, score_l2, score_l3,
+      `INSERT INTO sites (domain, title, lang, strategy_tag, grade, score_total, score_l1, score_l2, score_l3,
                           status, created_at, updated_at, scanned_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
        ON CONFLICT(domain) DO UPDATE SET
+         title = COALESCE(excluded.title, sites.title),
+         lang = COALESCE(excluded.lang, sites.lang),
          strategy_tag = excluded.strategy_tag,
          grade = excluded.grade,
          score_total = excluded.score_total,
@@ -431,6 +441,8 @@ export async function upsertSnapshot(
     )
     .run(
       domain,
+      resolvePageTitle(signals.homepage) ?? null,
+      resolvePageLang(signals.homepage)?.toLowerCase().slice(0, 12) ?? null,
       afr.strategyTag ?? null,
       afr.grade ?? null,
       afr.score ?? null,

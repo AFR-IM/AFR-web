@@ -85,6 +85,12 @@ export interface HttpProbe {
   /** Body was re-fetched with a browser UA fallback (transparent UA was challenged);
    *  used by L2/L3 content checks */
   uaFallback?: boolean;
+  /** The page's own <title>, normalized — only the homepage probe carries it.
+   *  The scanner writes it next to the probe because the body (98% of the
+   *  corpus) is pruned afterwards; without it a title is lost forever. */
+  title?: string;
+  /** The page's own <html lang> — same reason as the title. */
+  lang?: string;
 }
 
 export interface OpenApiProbe {

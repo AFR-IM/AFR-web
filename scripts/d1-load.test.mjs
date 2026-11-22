@@ -202,7 +202,7 @@ test('evidence conflicts update values instead of appending', () => {
   }
 });
 
-test('a reload keeps human-curated site fields untouched', () => {
+test('a reload refreshes the scanner-owned title but keeps the curated category', () => {
   const root = mkdtempSync(join(tmpdir(), 'd1-load-'));
   try {
     const dir = writeDay(root, DATE, {
@@ -218,9 +218,39 @@ test('a reload keeps human-curated site fields untouched', () => {
     applyDay(db, dir);
 
     const site = db.prepare('SELECT title, category_id, score_total FROM sites WHERE domain = ?').get('acme.dev');
-    assert.equal(site.title, 'Curated Title', 'title must not be overwritten by the loader');
+    // The title is the scanner's data (the page's own <title>) — the loader
+    // refreshes it like the scores. A curated CATEGORY is not scanner data
+    // and stays.
+    assert.equal(site.title, 'Acme', 'the title is scanner-owned and refreshes with the scan');
     assert.equal(site.category_id, 3, 'category mapping must not be overwritten');
     assert.equal(site.score_total, 91, 'scanner-owned scores must refresh');
+    db.close();
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a snapshot without a title does not erase a known one', () => {
+  const root = mkdtempSync(join(tmpdir(), 'd1-load-'));
+  try {
+    const dir = writeDay(root, DATE, {
+      'acme.dev': makeSnapshot('acme.dev', { score: 87, grade: 'B', points: 3, status: 'pass', homepage: { body: '<html lang="en"><title>Acme</title></html>' } }),
+    });
+    const db = openDb();
+    applyDay(db, dir);
+    assert.equal(db.prepare('SELECT title FROM sites WHERE domain = ?').get('acme.dev').title, 'Acme');
+
+    // The next scan could not read the homepage: it knows less than the
+    // row it lands on, so it must not erase the title.
+    writeDay(root, DATE, {
+      'acme.dev': makeSnapshot('acme.dev', { score: 87, grade: 'B', points: 3, status: 'pass', homepage: { body: '<html>no title here</html>' } }),
+    });
+    applyDay(db, dir);
+    assert.equal(
+      db.prepare('SELECT title FROM sites WHERE domain = ?').get('acme.dev').title,
+      'Acme',
+      'a title-less snapshot must not erase a known title',
+    );
     db.close();
   } finally {
     rmSync(root, { recursive: true, force: true });
