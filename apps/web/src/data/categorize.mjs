@@ -2385,6 +2385,30 @@ const RULES = [
   ['arbitr.ru', 'government'],
   ['architecturaldigest.com', 'news'],
   ['ardmediathek.de', 'entertainment'],
+
+  // ── manual review batch 2026-11-22 #3 (sites whose own title/description
+  //    states the vertical; each entry was read against the site's own
+  //    self-description, never against the name alone) ─────────────────────
+  ['avid.com', 'dev-tools'],
+  ['avidreaders.ru', 'reference'],
+  ['avizoone.com', 'entertainment'],
+  ['avj-th.com', 'entertainment'],
+  ['avtub.wiki', 'entertainment'],
+  ['awin.com', 'dev-tools'],
+  ['aylanetworks.com', 'dev-tools'],
+  ['b92.net', 'news'],
+  ['babel.com', 'social'],
+  ['bahesab.ir', 'reference'],
+  ['bama.ir', 'ecommerce'],
+  ['bamboohr.com', 'dev-tools'],
+  ['banglachotikahinii.com', 'entertainment'],
+  ['bankier.pl', 'finance'],
+  ['barotem.com', 'ecommerce'],
+  ['barracudanetworks.com', 'dev-tools'],
+  ['baseball-reference.com', 'reference'],
+  ['batch.com', 'dev-tools'],
+  ['bell.ca', 'dev-tools'],
+  ['betcity.ru', 'entertainment'],
 ];
 
 const TITLE_RULES = RULES.filter((r) => r[2] === true && !r[0].includes('.'));
@@ -2539,6 +2563,8 @@ export const META_MARKERS = [
   ['news', 3, 'breaking news'],
   ['news', 3, 'news headlines'],
   ['news', 3, 'latest news'],
+  // The Serbian/Croatian spelling of the same phrase.
+  ['news', 3, 'najnovije vesti'],
   ['news', 3, 'latest headlines'],
   ['news', 3, 'news update'],
   ['news', 3, 'live news'],
@@ -2635,6 +2661,8 @@ export const META_MARKERS = [
   ['entertainment', 3, 'comic book'],
   ['entertainment', 3, 'celebrity news'],
   ['entertainment', 3, 'movies'],
+  // The Persian spelling of the same phrase.
+  ['entertainment', 3, 'فیلم'],
   ['entertainment', 2, 'series'],
   ['entertainment', 3, 'episodes'],
   ['entertainment', 2, 'streaming'],
@@ -2646,6 +2674,9 @@ export const META_MARKERS = [
   ['entertainment', 3, 'аниме'],
   ['entertainment', 2, 'comics'],
   ['entertainment', 3, 'porn'],
+  // The Indonesian and Thai spellings of the same phrase.
+  ['entertainment', 3, 'bokep'],
+  ['entertainment', 3, 'หนังโป๊'],
   ['entertainment', 3, 'sex videos'],
   ['entertainment', 2, 'webcam'],
   ['entertainment', 1, 'games'],
@@ -2813,6 +2844,8 @@ export const META_MARKERS = [
   ['finance', 2, 'credit'],
   ['finance', 1, 'finance'],
   ['finance', 1, 'financial'],
+  // The Polish spelling of the same phrase.
+  ['finance', 1, 'finanse'],
   ['finance', 1, 'money'],
   ['finance', 1, 'payment'],
   ['finance', 2, 'versicherung'],
@@ -3127,6 +3160,8 @@ export const META_MARKERS = [
   ['dev-tools', 3, 'error tracking'],
   ['dev-tools', 3, 'crash reporting'],
   ['dev-tools', 3, 'advertising platform'],
+  // The affiliate variant of the same phrase.
+  ['dev-tools', 3, 'affiliate platform'],
   // The Russian spelling of the same phrase.
   ['dev-tools', 3, 'рекламная платформа'],
   ['dev-tools', 3, 'programmatic advertising'],
@@ -3275,6 +3310,8 @@ export const META_MARKERS = [
   ['reference', 3, 'perpetual calendar'],
   ['reference', 3, 'translation and dictionary'],
   ['reference', 3, 'online calculator'],
+  // The Persian spelling of the same phrase.
+  ['reference', 3, 'محاسبه آنلاین'],
   ['reference', 3, 'recipes and cooking'],
   ['reference', 2, 'wiki'],
   ['reference', 2, 'definition'],
@@ -3347,6 +3384,8 @@ export const META_MARKERS = [
   ['entertainment', 3, 'casino'],
   ['entertainment', 3, 'online casino'],
   ['entertainment', 3, 'sports betting'],
+  // The Russian spelling of the same phrase.
+  ['entertainment', 3, 'ставки на спорт'],
   ['entertainment', 3, 'betting odds'],
   ['entertainment', 3, 'matka'],
   ['entertainment', 3, 'satta'],
@@ -3407,6 +3446,8 @@ export const META_MARKERS = [
   ['ecommerce', 3, 'online auctions'],
   ['ecommerce', 3, 'car auctions'],
   ['ecommerce', 2, 'marketplace'],
+  // The Persian spelling of the same phrase.
+  ['ecommerce', 2, 'بازار'],
   ['ecommerce', 3, 'classificados'],
   ['dev-tools', 3, 'job listings'],
   ['dev-tools', 3, 'ofertas de trabajo'],
