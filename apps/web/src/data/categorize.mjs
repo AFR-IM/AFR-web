@@ -2409,6 +2409,34 @@ const RULES = [
   ['batch.com', 'dev-tools'],
   ['bell.ca', 'dev-tools'],
   ['betcity.ru', 'entertainment'],
+
+  // ── manual review batch 2026-11-22 #4 (sites whose own title/description
+  //    states the vertical; each entry was read against the site's own
+  //    self-description, never against the name alone) ─────────────────────
+  ['blocket.se', 'ecommerce'],
+  ['blowjobs.pro', 'entertainment'],
+  ['bluebeam.com', 'dev-tools'],
+  ['bluevideos.net', 'entertainment'],
+  ['bms.com', 'health'],
+  ['boardgamearena.com', 'entertainment'],
+  ['bolt.eu', 'travel'],
+  ['bombuj.si', 'entertainment'],
+  ['bondeddarkenedswerve.com', 'dev-tools'],
+  ['bongdaplus.vn', 'news'],
+  ['bootstrapmade.com', 'dev-tools'],
+  ['boursorama.com', 'finance'],
+  ['box.com', 'dev-tools'],
+  ['box.net', 'dev-tools'],
+  ['braiiz.com', 'entertainment'],
+  ['bricklink.com', 'ecommerce'],
+  ['browserstack.com', 'dev-tools'],
+  ['bucetaflix.com', 'entertainment'],
+  ['buddyns.com', 'dev-tools'],
+  ['buffermotivatorsuffice.com', 'dev-tools'],
+  ['bugfender.com', 'dev-tools'],
+  ['buienradar.nl', 'reference'],
+  ['builtin.com', 'dev-tools'],
+  ['bundesregierung.de', 'government'],
 ];
 
 const TITLE_RULES = RULES.filter((r) => r[2] === true && !r[0].includes('.'));
@@ -2663,6 +2691,8 @@ export const META_MARKERS = [
   ['entertainment', 3, 'movies'],
   // The Persian spelling of the same phrase.
   ['entertainment', 3, 'فیلم'],
+  // The Slovak spelling of the same phrase.
+  ['entertainment', 3, 'filmy'],
   ['entertainment', 2, 'series'],
   ['entertainment', 3, 'episodes'],
   ['entertainment', 2, 'streaming'],
@@ -2677,7 +2707,13 @@ export const META_MARKERS = [
   // The Indonesian and Thai spellings of the same phrase.
   ['entertainment', 3, 'bokep'],
   ['entertainment', 3, 'หนังโป๊'],
+  // The Romance-language spelling of the same phrase (the word-boundary
+  // rule never reaches it from 'porn').
+  ['entertainment', 3, 'porno'],
   ['entertainment', 3, 'sex videos'],
+  // The Arabic and Hindi spellings of the same phrase.
+  ['entertainment', 3, 'افلام سكس'],
+  ['entertainment', 3, 'चुदाई पिक्चर'],
   ['entertainment', 2, 'webcam'],
   ['entertainment', 1, 'games'],
   ['entertainment', 1, 'music'],
@@ -2801,6 +2837,8 @@ export const META_MARKERS = [
 
   // ── finance ────────────────────────────────────────────────────────────
   ['finance', 2, 'banking'],
+  // The French spelling of the same phrase.
+  ['finance', 2, 'banque en ligne'],
   ['finance', 3, 'bank account'],
   ['finance', 3, 'credit union'],
   ['finance', 3, 'mortgage'],
@@ -2822,6 +2860,8 @@ export const META_MARKERS = [
   ['finance', 3, 'retail banking'],
   ['finance', 3, 'wealth management'],
   ['finance', 3, 'stock market'],
+  // The French spelling of the same phrase.
+  ['finance', 3, 'bourse'],
   ['finance', 3, 'savings account'],
   ['finance', 3, 'credit card'],
   ['finance', 3, 'debit card'],
@@ -2975,6 +3015,8 @@ export const META_MARKERS = [
   ['health', 3, 'medical information'],
   ['health', 3, 'health information'],
   ['health', 3, 'pharmaceutical'],
+  // The longer spelling of the same phrase.
+  ['health', 3, 'biopharmaceutical'],
   ['health', 3, 'mental wellness'],
   ['health', 3, 'healthcare provider'],
   ['health', 3, 'medical'],
@@ -3306,6 +3348,8 @@ export const META_MARKERS = [
   ['reference', 3, 'etymology'],
   ['reference', 3, 'flashcards'],
   ['reference', 3, 'weather forecast'],
+  // The Dutch spelling of the same phrase.
+  ['reference', 3, 'weersverwachting'],
   ['reference', 3, 'age calculator'],
   ['reference', 3, 'perpetual calendar'],
   ['reference', 3, 'translation and dictionary'],
@@ -3409,6 +3453,8 @@ export const META_MARKERS = [
   // ad tech / monetization platforms
   ['dev-tools', 3, 'ad tracking'],
   ['dev-tools', 3, 'advertising network'],
+  // The spelling the same phrase takes in ad-tech copy.
+  ['dev-tools', 3, 'advertisement network'],
   ['dev-tools', 3, 'native advertising'],
   ['dev-tools', 3, 'header bidding'],
   ['dev-tools', 3, 'ad network'],
@@ -3423,6 +3469,8 @@ export const META_MARKERS = [
   ['dev-tools', 3, 'webhosting'],
   ['dev-tools', 3, 'data center'],
   ['dev-tools', 3, 'dynamic dns'],
+  // The other spelling of the same service.
+  ['dev-tools', 3, 'secondary dns'],
   ['dev-tools', 3, 'vpn'],
   ['dev-tools', 3, 'web analytics'],
   ['dev-tools', 3, 'productivity software'],
@@ -3449,7 +3497,11 @@ export const META_MARKERS = [
   // The Persian spelling of the same phrase.
   ['ecommerce', 2, 'بازار'],
   ['ecommerce', 3, 'classificados'],
+  // The Swedish spelling of the same phrase.
+  ['ecommerce', 3, 'köp och sälj'],
   ['dev-tools', 3, 'job listings'],
+  // The spelling the same phrase takes in recruiting copy.
+  ['dev-tools', 3, 'job search'],
   ['dev-tools', 3, 'ofertas de trabajo'],
   ['ecommerce', 2, 'versand'],
   ['ecommerce', 2, 'paketsendung'],
