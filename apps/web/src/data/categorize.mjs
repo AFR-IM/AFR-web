@@ -798,7 +798,7 @@ const RULES = [
 
   // ── wt-ac batch (with-title domains, confident mappings) ───────────────
 ['piano', 'dev-tools', true],
-['picsart', 'entertainment', true],
+['picsart', 'dev-tools', true],
 ['pki.goog', 'dev-tools'],
 ['plausible.io', 'dev-tools'],
 ['politico.eu', 'news'],
@@ -1022,7 +1022,7 @@ const RULES = [
 ['uni-heidelberg.de', 'education'],
 ['unicode.org', 'reference'],
 ['unisys.com', 'dev-tools'],
-['unsplash', 'entertainment', true],
+['unsplash', 'dev-tools', true],
 ['unwomen.org', 'government'],
 ['ups.com', 'ecommerce'],
 ['urbandictionary', 'reference', true],
@@ -1036,7 +1036,7 @@ const RULES = [
 ['vatican.va', 'government'],
 ['vaticannews.va', 'news'],
 ['vdo.ai', 'dev-tools'],
-['vecteezy', 'entertainment', true],
+['vecteezy', 'dev-tools', true],
 ['vedomosti.ru', 'news'],
 ['veeam', 'dev-tools', true],
 ['venmo', 'finance', true],
@@ -1915,7 +1915,7 @@ const RULES = [
 ['penguinrandomhouse', 'reference'],
 ['people.cn', 'news'],
 ['perl', 'dev-tools'],
-['pexels', 'reference'],
+['pexels', 'dev-tools'],
 ['photofolio', 'dev-tools'],
 
 
@@ -2329,7 +2329,7 @@ const RULES = [
   // ── manual review batch 2026-11-22 (sites whose own title/description
   //    states the vertical; each entry was read against the site's own
   //    self-description, never against the name alone) ─────────────────────
-  ['123rf.com', 'entertainment'],
+  ['123rf.com', 'dev-tools'],
   ['1capp.com', 'dev-tools'],
   ['1geki.jp', 'entertainment'],
   ['1rpc.io', 'dev-tools'],
@@ -2363,7 +2363,7 @@ const RULES = [
   ['ahagamecenter.com', 'entertainment'],
   ['airbridge.io', 'dev-tools'],
   ['ajax.systems', 'ecommerce'],
-  ['alamy.com', 'entertainment'],
+  ['alamy.com', 'dev-tools'],
   ['alexa.com', 'ai-tools'],
   ['alfasense.com', 'dev-tools'],
   ['allnewyonoapps.com', 'entertainment'],
@@ -2421,7 +2421,6 @@ const RULES = [
   ['boardgamearena.com', 'entertainment'],
   ['bolt.eu', 'travel'],
   ['bombuj.si', 'entertainment'],
-  ['bondeddarkenedswerve.com', 'dev-tools'],
   ['bongdaplus.vn', 'news'],
   ['bootstrapmade.com', 'dev-tools'],
   ['boursorama.com', 'finance'],
@@ -2432,7 +2431,6 @@ const RULES = [
   ['browserstack.com', 'dev-tools'],
   ['bucetaflix.com', 'entertainment'],
   ['buddyns.com', 'dev-tools'],
-  ['buffermotivatorsuffice.com', 'dev-tools'],
   ['bugfender.com', 'dev-tools'],
   ['buienradar.nl', 'reference'],
   ['builtin.com', 'dev-tools'],
@@ -2469,6 +2467,33 @@ const RULES = [
   ['cloudtrax.com', 'dev-tools'],
   ['clover.com', 'dev-tools'],
   ['cmpassport.com', 'dev-tools'],
+
+  // ── manual review batch 2026-11-22 #6 (sites whose own title/description
+  //    states the vertical; each entry was read against the site's own
+  //    self-description, never against the name alone) ─────────────────────
+  ['counterpath.com', 'dev-tools'],
+  ['cp.sk', 'travel'],
+  ['cpi.ad.jp', 'dev-tools'],
+  ['cra.cz', 'dev-tools'],
+  ['cricketwireless.com', 'dev-tools'],
+  ['crisp.chat', 'dev-tools'],
+  ['crowncoinscasino.com', 'entertainment'],
+  ['csmonitor.com', 'news'],
+  ['cutestat.com', 'dev-tools'],
+  ['cv666.net', 'entertainment'],
+  ['cylance.com', 'dev-tools'],
+  ['dafiti.com.br', 'ecommerce'],
+  ['dailykos.com', 'news'],
+  ['dan.com', 'ecommerce'],
+  ['datagrail.io', 'dev-tools'],
+  ['dba.dk', 'ecommerce'],
+  ['dealer.com', 'dev-tools'],
+  ['dealerinspire.com', 'dev-tools'],
+  ['decathlon.in', 'ecommerce'],
+  ['decodo.com', 'dev-tools'],
+  ['dedeman.ro', 'ecommerce'],
+  ['demonii.com', 'dev-tools'],
+  ['depositphotos.com', 'dev-tools'],
 ];
 
 const TITLE_RULES = RULES.filter((r) => r[2] === true && !r[0].includes('.'));
@@ -2717,6 +2742,8 @@ export const META_MARKERS = [
   ['entertainment', 3, 'live tv streaming'],
   ['entertainment', 3, 'sports highlights'],
   ['entertainment', 3, 'gaming platform'],
+  // The Bengali spelling of the same phrase.
+  ['entertainment', 3, 'গেমিং'],
   ['entertainment', 3, 'online gaming'],
   ['entertainment', 3, 'comic book'],
   ['entertainment', 3, 'celebrity news'],
@@ -2975,6 +3002,8 @@ export const META_MARKERS = [
   ['travel', 3, 'trip planning'],
   ['travel', 3, 'train ticket booking'],
   ['travel', 3, 'train timetable'],
+  // The Slovak spelling of the same phrase.
+  ['travel', 3, 'cestovné poriadky'],
   ['travel', 3, 'hotels and resorts'],
   ['travel', 3, 'flights and hotels'],
   ['travel', 3, 'travel destinations'],
@@ -3316,6 +3345,8 @@ export const META_MARKERS = [
   ['dev-tools', 3, '開発'],
   ['dev-tools', 3, 'プログラミング'],
   ['dev-tools', 3, 'ホスティング'],
+  // The Japanese spelling of the same service.
+  ['dev-tools', 3, 'レンタルサーバー'],
   ['dev-tools', 3, '开发'],
   ['dev-tools', 3, '编程'],
   ['dev-tools', 3, '源码'],
@@ -3485,8 +3516,9 @@ export const META_MARKERS = [
   // ad tech / monetization platforms
   ['dev-tools', 3, 'ad tracking'],
   ['dev-tools', 3, 'advertising network'],
-  // The spelling the same phrase takes in ad-tech copy.
-  ['dev-tools', 3, 'advertisement network'],
+  // 'advertisement network' was tried and dropped: the only titles it
+  // reached were parked domains ("Operated by <network> Advertisement
+  // Network") — the network is the operator, not the site's own business.
   ['dev-tools', 3, 'native advertising'],
   ['dev-tools', 3, 'header bidding'],
   ['dev-tools', 3, 'ad network'],
@@ -3500,6 +3532,8 @@ export const META_MARKERS = [
   ['dev-tools', 3, 'deployment'],
   ['dev-tools', 3, 'webhosting'],
   ['dev-tools', 3, 'data center'],
+  // The Czech and Slovak spelling of the same phrase.
+  ['dev-tools', 3, 'datové centrum'],
   ['dev-tools', 3, 'dynamic dns'],
   // The other spelling of the same service.
   ['dev-tools', 3, 'secondary dns'],
@@ -3531,6 +3565,8 @@ export const META_MARKERS = [
   ['ecommerce', 3, 'classificados'],
   // The Swedish spelling of the same phrase.
   ['ecommerce', 3, 'köp och sälj'],
+  // The Danish and Norwegian spellings of the same phrase.
+  ['ecommerce', 3, 'køb og salg'],
   ['dev-tools', 3, 'job listings'],
   // The spelling the same phrase takes in recruiting copy.
   ['dev-tools', 3, 'job search'],
