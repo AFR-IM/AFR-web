@@ -124,7 +124,7 @@ If your runtime speaks MCP, you can skip HTTP entirely — `POST https://afr.im/
 
 | Tool | Arguments | Returns |
 | --- | --- | --- |
-| `site_rating` | `{ "domain": "example.com" }` | grade, AFR score, strategy tag, last scan time, page views |
+| `site_rating` | `{ "domain": "example.com" }` | the site's own name, grade, AFR score, Tranco rank, strategy tag, last scan time, page views |
 | `search_sites` | `{ "query"?, "grade"?, "limit"? }` | graded sites ranked by score descending |
 | `grade_distribution` | `{}` | totals, pending count, average score, per-grade counts |
 

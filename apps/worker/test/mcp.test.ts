@@ -209,8 +209,10 @@ describe('POST /mcp — tools/call site_rating', () => {
     const site = JSON.parse(body.result.content[0].text);
     assert.deepEqual(site, {
       domain: 'example.com',
+      title: 'Example',
       grade: 'A',
       score: 92,
+      rank: 100,
       strategyTag: 'AI-Open',
       scannedAt: '2026-11-10T10:00:00.000Z',
       views: 0,
@@ -268,11 +270,13 @@ describe('POST /mcp — tools/call search_sites', () => {
       items.map((i: { domain: string }) => i.domain),
       ['example.com', 'coolsite.io', 'neutral.net', 'closed.org'],
     );
-    assert.deepEqual(Object.keys(items[0]), ['domain', 'grade', 'score', 'strategyTag']);
+    assert.deepEqual(Object.keys(items[0]), ['domain', 'title', 'grade', 'score', 'rank', 'strategyTag']);
     assert.deepEqual(items[0], {
       domain: 'example.com',
+      title: 'Example',
       grade: 'A',
       score: 92,
+      rank: 100,
       strategyTag: 'AI-Open',
     });
   });

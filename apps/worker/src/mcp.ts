@@ -49,8 +49,9 @@ export const MCP_INSTRUCTIONS =
   'afr.im is a public directory of AI-friendliness ratings for websites; every rating comes ' +
   'from public, reproducible scans (the AFR standard) and is served read-only here. Transport: ' +
   'stateless JSON-RPC 2.0 over HTTP at POST /mcp — no SSE streams and no session state. Tools: ' +
-  'site_rating returns the grade, score, strategy tag, last scan time and view count for one ' +
-  'domain; search_sites returns graded sites (A–F) ranked by score with optional keyword and ' +
+  'site_rating returns the grade, score, strategy tag, the site\'s own name, its Tranco rank, ' +
+  'last scan time and view count for one domain; search_sites returns graded sites (A–F) with ' +
+  'their name and Tranco rank, ranked by score, with optional keyword and ' +
   'grade filters; grade_distribution returns directory totals, per-grade counts and the number ' +
   'of pending sites. Start with search_sites or grade_distribution, then call site_rating for ' +
   'a specific domain.';
@@ -69,8 +70,9 @@ export const MCP_TOOLS: readonly McpTool[] = [
   {
     name: 'site_rating',
     description:
-      'Look up the afr.im AI-friendliness rating for a single domain: grade, AFR score, ' +
-      'strategy tag, last scan time and page views. The values are public, reproducible scan ' +
+      'Look up the afr.im AI-friendliness rating for a single domain: the site\'s own name, ' +
+      'grade, AFR score, strategy tag, its Tranco rank, last scan time and page views. The ' +
+      'values are public, reproducible scan ' +
       'results; an unknown domain is reported as a tool error, not a protocol error.',
     inputSchema: {
       type: 'object',
@@ -88,7 +90,8 @@ export const MCP_TOOLS: readonly McpTool[] = [
     name: 'search_sites',
     description:
       'Search the afr.im directory of AI-friendliness ratings and get graded sites (A–F) ' +
-      'ranked by score descending. Only public, reproducible scan results are returned — ' +
+      'with their own name and Tranco rank, ranked by score descending. Only public, ' +
+      'reproducible scan results are returned — ' +
       'pending (unscanned) sites are excluded.',
     inputSchema: {
       type: 'object',
@@ -181,16 +184,20 @@ function resolveDomain(raw: string): string | null {
 
 interface RatingRow extends Row {
   domain: string;
+  title: string | null;
   grade: string | null;
   score_total: number | null;
+  rank: number | null;
   strategy_tag: string | null;
   scanned_at: string | null;
 }
 
 interface SearchRow extends Row {
   domain: string;
+  title: string | null;
   grade: string | null;
   score_total: number | null;
+  rank: number | null;
   strategy_tag: string | null;
 }
 
@@ -229,8 +236,13 @@ async function toolSiteRating(db: Db, args: Record<string, unknown>): Promise<un
 
   return {
     domain: site.domain,
+    title: site.title ?? null,
     grade: site.grade ?? null,
     score: site.score_total ?? null,
+    // The Tranco rank the site holds in the top 1M (null when it is not in
+    // the list — the name is what a reader can act on, the rank is the
+    // objective anchor behind it).
+    rank: site.rank ?? null,
     strategyTag: site.strategy_tag ?? null,
     scannedAt: site.scanned_at ?? null,
     views,
@@ -287,7 +299,7 @@ async function toolSearchSites(db: Db, args: Record<string, unknown>): Promise<u
 
   const rows = await db
     .prepare(
-      `SELECT s.domain, s.grade, s.score_total, s.strategy_tag FROM sites s
+      `SELECT s.domain, s.title, s.grade, s.score_total, s.rank, s.strategy_tag FROM sites s
        WHERE ${where.join(' AND ')}
        ORDER BY s.score_total DESC, s.domain ASC LIMIT ?`,
     )
@@ -295,8 +307,10 @@ async function toolSearchSites(db: Db, args: Record<string, unknown>): Promise<u
 
   return rows.map((row) => ({
     domain: row.domain,
+    title: row.title,
     grade: row.grade,
     score: row.score_total,
+    rank: row.rank,
     strategyTag: row.strategy_tag,
   }));
 }
