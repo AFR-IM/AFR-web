@@ -106,7 +106,7 @@ for (const r of rows) {
 }
 console.log(`rows to update: ${changed}`);
 for (const [slug, list] of [...bySlug].sort((a, b) => b[1].length - a[1].length)) {
-  console.log(`  ${slug}: ${list.length}`);
+  console.log(`  ${slug}: ${list.length}${slug === 'other' ? ` — ${list.join(', ')}` : ''}`);
 }
 if (dryRun || changed === 0) process.exit(0);
 

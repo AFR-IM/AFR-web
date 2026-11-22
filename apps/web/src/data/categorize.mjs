@@ -2325,6 +2325,35 @@ const RULES = [
   ['wiz.io', 'dev-tools'],
   ['photoroom.com', 'ai-tools'],
   ['sync.com', 'dev-tools'],
+
+  // ── manual review batch 2026-11-22 (sites whose own title/description
+  //    states the vertical; each entry was read against the site's own
+  //    self-description, never against the name alone) ─────────────────────
+  ['123rf.com', 'entertainment'],
+  ['1capp.com', 'dev-tools'],
+  ['1geki.jp', 'entertainment'],
+  ['1rpc.io', 'dev-tools'],
+  ['1tv.ru', 'news'],
+  ['24xxx.men', 'entertainment'],
+  ['2dehands.be', 'ecommerce'],
+  ['2giskz.app', 'reference'],
+  ['4dmoon.com', 'entertainment'],
+  ['51job.com', 'dev-tools'],
+  ['52shuku.net', 'entertainment'],
+  ['58.com', 'ecommerce'],
+  ['66lottery.vip', 'entertainment'],
+  ['7-zip.org', 'dev-tools'],
+  ['77w19.com', 'entertainment'],
+  ['888scoreonline.net', 'entertainment'],
+  ['91cg1.com', 'entertainment'],
+  ['91porn.com', 'entertainment'],
+  ['91porna.com', 'entertainment'],
+  ['99xo4.com', 'entertainment'],
+  ['aa.com.tr', 'news'],
+  ['aafp.org', 'health'],
+  ['abc.com', 'entertainment'],
+  ['abcp.ru', 'ecommerce'],
+  ['abercrombie.com', 'ecommerce'],
 ];
 
 const TITLE_RULES = RULES.filter((r) => r[2] === true && !r[0].includes('.'));
