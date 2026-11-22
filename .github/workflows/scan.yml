@@ -106,6 +106,21 @@ jobs:
               exit 1
             fi
             SEGMENT_START="$INPUT_SEGMENT"
+          elif [ -f data/scan-cursor.json ]; then
+            # The explicit cursor: the highest Tranco rank the pipeline has
+            # *attempted*. It used to be derived from the number of snapshot
+            # files, but a rescan of an old site writes a second file and an
+            # on-demand submission from a rank-500,000 site writes one too —
+            # so the count ran ahead of the ranks and whole segments were
+            # skipped. The fallback below keeps the old derivation for a repo
+            # that has no cursor yet.
+            #
+            # The cursor is the *attempted* rank, not the *covered* rank: a
+            # domain the scanner cannot reach (blocked, no DNS, a challenge
+            # page) leaves a hole in the coverage and is retried by the
+            # weekly rescan. Deriving it from the coverage would never move
+            # past the first unreachable domain.
+            SEGMENT_START="$(python3 -c "import json;print(int(json.load(open('data/scan-cursor.json'))['lastRank']))")"
           else
             TODAY_DIR="data/scans/${SCAN_DATE//-//}"
             COLLECTED=0
@@ -170,9 +185,16 @@ jobs:
         if: steps.mode.outputs.mode == 'daily'
         env:
           SEGMENT: ${{ steps.segment.outputs.start }}
+          TRANCO_COUNT: ${{ steps.tranco.outputs.count || '0' }}
           DATA_REPO_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
         run: |
           cd data
+          # The cursor advances only when the segment was really scanned —
+          # a run that found no new domain must not claim the next ranks.
+          if [ "${TRANCO_COUNT:-0}" -gt 0 ]; then
+            python3 -c "import json,sys; json.dump({'lastRank': int(sys.argv[1]) + 1000, 'updatedAt': sys.argv[2]}, open('scan-cursor.json','w'), indent=1, ensure_ascii=False)" "$SEGMENT" "$(date -u +%F)"
+            echo "scan cursor: last attempted Tranco rank = $(( SEGMENT + 1000 ))"
+          fi
           git config user.name "afr-bot"
           git config user.email "dev@afr.im"
           # Redact secret-looking examples that target sites publish in their own
