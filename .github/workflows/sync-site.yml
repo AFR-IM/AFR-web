@@ -65,6 +65,14 @@ jobs:
       - name: Check the search index (budget, shard union, determinism)
         run: node scripts/check-search-index.mjs
 
+      # The classification gate (SSOT §6): the coverage is measured on the
+      # sites that can be classified at all — a site whose homepage could
+      # not be read has no evidence to classify on. The numbers are printed
+      # on every build so the gate is never a guess. (It does not fail the
+      # build: the expansion is a user decision, not a build decision.)
+      - name: Report the classification coverage
+        run: node scripts/measure-classification.mjs
+
       # Reads src/data/generated/details written by fetch-data -> must run after it.
       - name: Regenerate sitemap
         run: node apps/web/scripts/make-sitemap.mjs
