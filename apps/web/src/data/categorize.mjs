@@ -2354,6 +2354,37 @@ const RULES = [
   ['abc.com', 'entertainment'],
   ['abcp.ru', 'ecommerce'],
   ['abercrombie.com', 'ecommerce'],
+
+  // ── manual review batch 2026-11-22 #2 (sites whose own title/description
+  //    states the vertical; each entry was read against the site's own
+  //    self-description, never against the name alone) ─────────────────────
+  ['aftenposten.no', 'news'],
+  ['aghazno12.com', 'social'],
+  ['ahagamecenter.com', 'entertainment'],
+  ['airbridge.io', 'dev-tools'],
+  ['ajax.systems', 'ecommerce'],
+  ['alamy.com', 'entertainment'],
+  ['alexa.com', 'ai-tools'],
+  ['alfasense.com', 'dev-tools'],
+  ['allnewyonoapps.com', 'entertainment'],
+  ['allwyn.cz', 'entertainment'],
+  ['almalinux.org', 'dev-tools'],
+  ['alza.cz', 'ecommerce'],
+  ['amd.online', 'entertainment'],
+  ['amnesty.org', 'government'],
+  ['ams.org', 'education'],
+  ['andpad.jp', 'dev-tools'],
+  ['aniagotuje.pl', 'reference'],
+  ['animevost.org', 'entertainment'],
+  ['aniworld.to', 'entertainment'],
+  ['anjuke.com', 'ecommerce'],
+  ['anonymised.io', 'dev-tools'],
+  ['appnext.com', 'dev-tools'],
+  ['appsheet.com', 'dev-tools'],
+  ['arabsex1.com', 'entertainment'],
+  ['arbitr.ru', 'government'],
+  ['architecturaldigest.com', 'news'],
+  ['ardmediathek.de', 'entertainment'],
 ];
 
 const TITLE_RULES = RULES.filter((r) => r[2] === true && !r[0].includes('.'));
@@ -2611,6 +2642,8 @@ export const META_MARKERS = [
   ['entertainment', 3, 'podcasts'],
   ['entertainment', 3, 'manga'],
   ['entertainment', 3, 'anime'],
+  // The Cyrillic spelling of the same phrase — same weight, same meaning.
+  ['entertainment', 3, 'аниме'],
   ['entertainment', 2, 'comics'],
   ['entertainment', 3, 'porn'],
   ['entertainment', 3, 'sex videos'],
@@ -3010,7 +3043,7 @@ export const META_MARKERS = [
   ['government', 1, 'comune'],
   ['government', 1, 'правительство'],
   ['government', 1, 'министерство'],
-  ['government', 1, 'арбитражных судов'],
+  ['government', 3, 'арбитражных судов'],
   ['government', 3, '厚生労働省'],
   ['government', 3, '裁判所'],
   ['government', 3, '自治体'],
@@ -3094,6 +3127,8 @@ export const META_MARKERS = [
   ['dev-tools', 3, 'error tracking'],
   ['dev-tools', 3, 'crash reporting'],
   ['dev-tools', 3, 'advertising platform'],
+  // The Russian spelling of the same phrase.
+  ['dev-tools', 3, 'рекламная платформа'],
   ['dev-tools', 3, 'programmatic advertising'],
   ['dev-tools', 3, 'demand side platform'],
   ['dev-tools', 3, 'supply side platform'],
@@ -3316,6 +3351,8 @@ export const META_MARKERS = [
   ['entertainment', 3, 'matka'],
   ['entertainment', 3, 'satta'],
   ['entertainment', 2, 'lottery'],
+  // The Czech spelling of the same phrase.
+  ['entertainment', 2, 'loterie'],
   ['entertainment', 2, 'apuestas'],
   ['entertainment', 2, 'pronostics'],
   ['entertainment', 3, 'chess'],
