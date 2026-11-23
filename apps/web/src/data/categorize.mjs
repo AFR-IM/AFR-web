@@ -2494,6 +2494,37 @@ const RULES = [
   ['dedeman.ro', 'ecommerce'],
   ['demonii.com', 'dev-tools'],
   ['depositphotos.com', 'dev-tools'],
+
+  // ── manual review batch 2026-11-23 #7 (the first Tranco segment that
+  //    came in: ranks 11,001–12,000. Its sites are the big consumer
+  //    names — retail, fashion, banking, magazines — and their titles do
+  //    not always say which vertical they are in) ─────────────────────────
+  ['primark.com', 'ecommerce'],
+  ['zone.ee', 'dev-tools'],
+  ['adnami.io', 'dev-tools'],
+  ['devin.ai', 'ai-tools'],
+  ['tutorialspoint.com', 'education'],
+  ['ettoday.net', 'news'],
+  ['journaldesfemmes.fr', 'news'],
+  ['vinted.nl', 'ecommerce'],
+  ['scotiabank.com', 'finance'],
+  ['hites.com', 'ecommerce'],
+  ['tapclap.com', 'entertainment'],
+  ['eveonline.com', 'entertainment'],
+  ['unfpa.org', 'government'],
+  ['redfast.com', 'dev-tools'],
+  ['wechatpay.cn', 'finance'],
+  ['getcourse.ru', 'education'],
+  ['contentstack.io', 'dev-tools'],
+  ['fontanka.ru', 'news'],
+  ['vibe.co', 'dev-tools'],
+  ['clickcease.com', 'dev-tools'],
+  // Two overrides: an exact domain outranks the title/meta markers, and
+  // both of these were caught by the wrong one — gupy.io by 'whatsapp'
+  // (an HR platform that talks about WhatsApp) and cline.bot by 'open
+  // source' (an AI coding agent, not a generic open-source project).
+  ['gupy.io', 'dev-tools'],
+  ['cline.bot', 'ai-tools'],
 ];
 
 const TITLE_RULES = RULES.filter((r) => r[2] === true && !r[0].includes('.'));
