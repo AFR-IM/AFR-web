@@ -2525,6 +2525,129 @@ const RULES = [
   // source' (an AI coding agent, not a generic open-source project).
   ['gupy.io', 'dev-tools'],
   ['cline.bot', 'ai-tools'],
+
+  // ── manual review batches 2026-11-25 #9-#11 (the Tranco segment
+  //    ranks 11,001-12,000 and the next judgable slice of the catalog).
+  //    Every entry was read against the site's own title/description,
+  //    never against the name alone; a site whose evidence was thin was
+  //    left unclassified instead of guessed) ─────────────────────────────
+  ['0123tt.ru', 'news'],
+  ['101domain.com', 'dev-tools'],
+  ['1984.is', 'ecommerce'],
+  ['1cfresh.com', 'dev-tools'],
+  ['257.cz', 'ecommerce'],
+  ['2miners.com', 'finance'],
+  ['2osb.com', 'dev-tools'],
+  ['360buyimg.com', 'ecommerce'],
+  ['3cat.cat', 'entertainment'],
+  ['3iskk.xyz', 'entertainment'],
+  ['4.cn', 'ecommerce'],
+  ['4pda.to', 'news'],
+  ['5ch.io', 'social'],
+  ['a8.net', 'dev-tools'],
+  ['aao.org', 'health'],
+  ['aap.org', 'health'],
+  ['abema.tv', 'entertainment'],
+  ['ably-realtime.com', 'dev-tools'],
+  ['abzarek.ir', 'reference'],
+  ['academic.ru', 'reference'],
+  ['academy.com', 'ecommerce'],
+  ['acadeu.com', 'education'],
+  ['accompany.com', 'dev-tools'],
+  ['acint.net', 'dev-tools'],
+  ['aclu.org', 'government'],
+  ['acog.org', 'health'],
+  ['ad-stir.com', 'dev-tools'],
+  ['ada.org', 'health'],
+  ['adapty.io', 'dev-tools'],
+  ['adelement.com', 'dev-tools'],
+  ['adguard-dns.com', 'dev-tools'],
+  ['adikteev.com', 'dev-tools'],
+  ['adingo.jp', 'dev-tools'],
+  ['admatic.com.tr', 'dev-tools'],
+  ['adplay.ru', 'dev-tools'],
+  ['adskeeper.com', 'dev-tools'],
+  ['adtec.ru', 'dev-tools'],
+  ['adult-machiko.com', 'entertainment'],
+  ['adup-tech.com', 'dev-tools'],
+  ['ae.com', 'ecommerce'],
+  ['aeolservice.es', 'education'],
+  ['ageverif.com', 'dev-tools'],
+  ['ahnlab.com', 'dev-tools'],
+  ['aiboss.im', 'dev-tools'],
+  ['aircall.io', 'dev-tools'],
+  ['akakce.com', 'ecommerce'],
+  ['allafrica.com', 'news'],
+  ['allevents.in', 'travel'],
+  ['alltel24.ru', 'dev-tools'],
+  ['alo.bg', 'ecommerce'],
+  ['amung.us', 'dev-tools'],
+  ['androidapplications.store', 'dev-tools'],
+  ['ankr.com', 'dev-tools'],
+  ['apester.com', 'dev-tools'],
+  ['apkpure.net', 'dev-tools'],
+  ['aqara.com', 'ecommerce'],
+  ['aqsi.ru', 'finance'],
+  ['archives-ouvertes.fr', 'reference'],
+  ['ariba.com', 'dev-tools'],
+  ['askfilo.com', 'education'],
+  ['askona.ru', 'ecommerce'],
+  ['astro.com', 'reference'],
+  ['asupanrare.com', 'entertainment'],
+  ['atcpulsa.net', 'finance'],
+  ['atv.com.tr', 'entertainment'],
+  ['auction.co.kr', 'ecommerce'],
+  ['auspost.com.au', 'government'],
+  ['auswaertiges-amt.de', 'government'],
+  ['auth.gr', 'education'],
+  ['author.today', 'reference'],
+  ['auto.ru', 'ecommerce'],
+  ['autohome.com.cn', 'ecommerce'],
+  ['autoriteitpersoonsgegevens.nl', 'government'],
+  ['av19t.com', 'entertainment'],
+  ['avaaz.org', 'social'],
+  ['badoocdn.com', 'social'],
+  ['balena-cloud.com', 'dev-tools'],
+  ['bandlab.com', 'entertainment'],
+  ['baqend.com', 'dev-tools'],
+  ['barcelona.cat', 'government'],
+  ['autoscout24', 'ecommerce'],
+  ['avon', 'ecommerce'],
+  ['babycenter', 'health'],
+  ['bambuser', 'ecommerce'],
+  ['bancsabadell', 'finance'],
+
+  // ── carried over from the pre-rule-table D1 load (2026-11-25): these sites
+  //    were classified in D1 by the old loader, but the rule table never had
+  //    them, so the catalog showed 'other' while the API showed a category.
+  //    An exact domain keeps both sides in step; the label is the one D1
+  //    already carried (g5e.com was corrected: it is a game portal, not news).
+  ['breitbart.com', 'news'],
+  ['cointelegraph.com', 'news'],
+  ['credit-agricole.fr', 'finance'],
+  ['eonline.com', 'entertainment'],
+  ['lector-mangas.lat', 'entertainment'],
+  ['news-medical.net', 'health'],
+  ['runescape.wiki', 'reference'],
+  ['tradeinn.com', 'ecommerce'],
+  ['learnosity.com', 'education'],
+  ['telex.hu', 'news'],
+  ['thairath.co.th', 'news'],
+  ['arabic-porn-tube.com', 'entertainment'],
+  ['livejasmin.com', 'entertainment'],
+  ['sapphireonline.pk', 'ecommerce'],
+  ['adb.org', 'finance'],
+  ['investors.com', 'finance'],
+  ['mangago.zone', 'entertainment'],
+  ['spring.io', 'dev-tools'],
+  ['g5e.com', 'entertainment'],
+  ['htx.com', 'finance'],
+  // Three sites the markers got wrong: a crypto market site is a news site
+  // (not finance), a strikes news site is not a developer tool, and a
+  // password manager is not an AI product.
+  ['ibtimes.co.uk', 'news'],
+  ['stiripesurse.ro', 'news'],
+  ['keepersecurity.com', 'dev-tools'],
 ];
 
 const TITLE_RULES = RULES.filter((r) => r[2] === true && !r[0].includes('.'));
@@ -3684,7 +3807,17 @@ export const META_MARKERS = [
   ['government', 3, 'ministero degli'],
   ['government', 3, 'national research council'],
   ['government', 3, 'e-government'],
-  ['government', 3, 'public library'],
+
+  // ── manual review batches 2026-11-25 #9-#11 ─────────────────────────────
+  ['dev-tools', 3, 'sell side platform'], // batch 9 — ad supply-side platform; adscale/cpmstar precedent
+  ['finance', 3, 'mining pool'], // batch 9 — crypto mining pool; bitcoin/blockchain precedent
+  ['finance', 3, 'онлайн кассы'], // batch 10 — Russian online cash desk (fiscal POS)
+  ['entertainment', 3, 'アダルト動画'], // batch 10 — Japanese adult video
+  ['reference', 3, 'horoscopes'], // batch 11 — plural of the existing singular marker
+  ['entertainment', 3, 'diziler'], // batch 11 — Turkish "TV series" (plural)
+  ['reference', 3, 'электронная библиотека'], // batch 11 — Russian e-library; litres/avidreaders precedent
+  ['reference', 3, 'читать книги онлайн'], // batch 11 — Russian "read books online"
+  ['ecommerce', 3, 'video commerce'], // batch 11 — live/video shopping; distinct from "video hosting"
 ];
 
 /**
