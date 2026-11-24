@@ -150,12 +150,37 @@ CREATE TABLE IF NOT EXISTS billing_reconcile_state (
 );
 
 -- One grant per source order. No cascading link to mutable billing state.
+-- LEGACY: kept for schema stability only. It is NOT written any more and NOT a
+-- source of truth — see pro_entitlement_events below.
 CREATE TABLE IF NOT EXISTS pro_entitlements (
   source_merchant_order_id TEXT NOT NULL PRIMARY KEY,
   subject_id TEXT NOT NULL CHECK (trim(subject_id) <> ''),
   granted_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_pro_entitlements_subject ON pro_entitlements(subject_id);
+
+-- Append-only Pro subscription event log (term / renewal / explicit revoke).
+-- The current state of a subject is derived by replaying its events in id
+-- order; there is no mutable "current entitlement" row.
+CREATE TABLE IF NOT EXISTS pro_entitlement_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_merchant_order_id TEXT NOT NULL,
+  subject_id TEXT NOT NULL CHECK (trim(subject_id) <> ''),
+  kind TEXT NOT NULL CHECK (kind IN ('grant', 'renew', 'revoke')),
+  term_days INTEGER,
+  occurred_at TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+-- One grant/renew event per source order: a replayed order cannot extend a
+-- term twice. Partial, because the kind is decided at insert time and two
+-- concurrent inserts could pick 'grant' and 'renew' for the same order.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pro_entitlement_events_order_term
+  ON pro_entitlement_events(source_merchant_order_id) WHERE kind IN ('grant', 'renew');
+-- One revoke per reference (an order id or an admin:<uuid>).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pro_entitlement_events_order_revoke
+  ON pro_entitlement_events(source_merchant_order_id) WHERE kind = 'revoke';
+CREATE INDEX IF NOT EXISTS idx_pro_entitlement_events_subject
+  ON pro_entitlement_events(subject_id, id);
 
 -- Ad slots
 CREATE TABLE IF NOT EXISTS ads (
