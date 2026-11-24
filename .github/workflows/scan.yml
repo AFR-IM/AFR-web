@@ -41,6 +41,15 @@ on:
 permissions:
   contents: read
 
+# One writer for the data repo at a time. The weekly rescan, the targeted
+# rescans and this workflow all push snapshots to the same AFR-data branch;
+# racing pushes make the later push fail and lose that run's work. Runs that
+# wait here are not lost: a queued submission is only acknowledged after its
+# snapshot reached the repo, so it is simply picked up by the next run.
+concurrency:
+  group: scan
+  cancel-in-progress: false
+
 jobs:
   scan:
     runs-on: ubuntu-latest
