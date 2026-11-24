@@ -49,6 +49,17 @@ jobs:
       - name: Checkout web repo
         uses: actions/checkout@v4
 
+      - name: Verify data repository credential owner
+        env:
+          GH_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+        run: |
+          : "${GH_TOKEN:?DATA_REPO_TOKEN is required}"
+          OWNER="$(gh api user --jq .login)"
+          if [ "$OWNER" != 'AFR-IM' ]; then
+            echo '::error::DATA_REPO_TOKEN does not belong to AFR-IM'
+            exit 1
+          fi
+
       - name: Checkout data repo
         uses: actions/checkout@v4
         with:
@@ -257,13 +268,16 @@ jobs:
         run: |
           DATE_DIR="data/scans/${SCAN_DATE//-//}"
           mkdir -p "$DATE_DIR"
-          node packages/scanner/src/cli.ts --file queue.txt --out "$DATE_DIR" --concurrency 5 | tee -a scan-summary.txt
+          node packages/scanner/src/cli.ts --file queue.txt --out "$DATE_DIR" --success-file queue-success.txt --concurrency 5 | tee -a scan-summary.txt
 
       - name: Commit queue snapshots to data repo
         id: commit-queue
         if: fromJSON(steps.queue.outputs.count || '0') > 0
+        env:
+          DATA_REPO_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
         run: |
           cd data
+          [ -s ../queue-success.txt ] || exit 0
           git config user.name "afr-bot"
           git config user.email "dev@afr.im"
           # Redact secret-looking examples that target sites publish in their own
@@ -277,17 +291,21 @@ jobs:
             echo "No changes to commit"
           else
             git commit -m "scan $(date -u +%F) queue"
-            git push
-            # Inline dispatch (see commit-topn): rebuild right after the push.
-            curl -fsS -X POST https://api.github.com/repos/AFR-IM/AFR-web/dispatches \
-              -H "Authorization: Bearer ${DATA_REPO_TOKEN}" \
-              -H "Accept: application/vnd.github+json" \
-              -d '{"event_type":"scan-done"}' \
-              || echo "::warning::scan-done dispatch failed after queue push"
-            echo "repository_dispatch scan-done sent (queue)"
           fi
+          # Push even if unchanged so a rerun can safely retry dispatch/ack.
+          git push
+          STATUS="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+            -X POST https://api.github.com/repos/AFR-IM/AFR-web/dispatches \
+            -H "Authorization: Bearer ${DATA_REPO_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -d '{"event_type":"scan-done"}')" || STATUS=transport_error
+          if [ "$STATUS" != 204 ]; then
+            echo "::error::Queue snapshots were pushed, but rebuild dispatch failed ($STATUS); retaining queue items"
+            exit 1
+          fi
+          echo "repository_dispatch accepted (queue, HTTP 204)"
 
-      # Acknowledge every domain we just scanned so it leaves the queue.
+      # Acknowledge only successfully written snapshots in the pushed commit.
       # Runs only after the data push succeeded (step-level success gate);
       # a failed callback keeps the item queued for the next run and fails
       # the job so a missing/rotated QUEUE_TOKEN stays visible.
@@ -295,10 +313,17 @@ jobs:
         if: fromJSON(steps.queue.outputs.count || '0') > 0
         env:
           QUEUE_TOKEN: ${{ secrets.QUEUE_TOKEN }}
+          SCAN_DATE: ${{ steps.date.outputs.date }}
         run: |
+          DATE_DIR="scans/${SCAN_DATE//-//}"
           FAILURES=0
           while IFS= read -r domain; do
             [ -n "$domain" ] || continue
+            if ! git -C data cat-file -e "HEAD:${DATE_DIR}/${domain}.json"; then
+              echo "::error::No pushed snapshot for ${domain}"
+              FAILURES=$((FAILURES + 1))
+              continue
+            fi
             if curl -fsS -X POST "https://afr.im/api/v1/queue/${domain}/done" \
                 -H "X-Queue-Token: ${QUEUE_TOKEN}" -o /dev/null; then
               echo "reported done: ${domain}"
@@ -306,7 +331,13 @@ jobs:
               echo "::warning::done callback failed for ${domain}"
               FAILURES=$((FAILURES + 1))
             fi
-          done < queue.txt
+          done < queue-success.txt
+          REQUESTED="$(grep -c . queue.txt || true)"
+          WRITTEN="$(grep -c . queue-success.txt || true)"
+          if [ "$WRITTEN" -ne "$REQUESTED" ]; then
+            echo "::error::Wrote ${WRITTEN}/${REQUESTED} queue snapshots; failed items remain queued"
+            exit 1
+          fi
           if [ "$FAILURES" -gt 0 ]; then
             echo "::error::${FAILURES} done callback(s) failed"
             exit 1

@@ -84,6 +84,7 @@ interface FakeSite {
   methods?: Set<'dns' | 'file' | 'meta'>;
   /** status the Resend endpoint answers with */
   resendStatus?: number;
+  verifyToken?: string;
 }
 
 function fakeSite(state: FakeSite) {
@@ -92,6 +93,8 @@ function fakeSite(state: FakeSite) {
     const url = String(input);
     calls.push({ url, init });
     if (url.startsWith('https://api.resend.com/emails')) {
+      const { text } = JSON.parse(String(init?.body));
+      state.verifyToken = /token=([0-9a-f]{32})/.exec(text)?.[1];
       return Response.json({ id: 'email_123' }, { status: state.resendStatus ?? 200 });
     }
     const methods = state.methods ?? new Set(['dns', 'file', 'meta']);
@@ -122,7 +125,7 @@ function fakeSite(state: FakeSite) {
 }
 
 function envWith(overrides: Partial<WorkerEnv> = {}): WorkerEnv {
-  return { DB: undefined as unknown as WorkerEnv['DB'], ...overrides };
+  return { DB: undefined as unknown as WorkerEnv['DB'], RESEND_API_KEY: API_KEY, ...overrides };
 }
 
 function freshApp(fetchImpl?: typeof fetch, limits: EmailRateLimits = freshEmailLimits()) {
@@ -216,9 +219,9 @@ async function onboardOwner(
     envWith({ EMAIL_ENC_KEY: SECRET }),
   );
   assert.equal(res.status, 200, `registration failed: ${res.status}`);
-  const body = (await res.json()) as { verifyUrl?: string };
-  const token = /token=([0-9a-f]{32})/.exec(String(body.verifyUrl))?.[1];
-  assert.ok(token, 'the registration hands out the confirmation link');
+  assert.deepEqual(await res.json(), { status: 'sent', emailed: true });
+  const token = site.verifyToken;
+  assert.ok(token, 'the confirmation link is delivered in the email');
   const verified = await get(app, `/api/v1/owners/email/verify?token=${token}`, ip);
   assert.equal(verified.status, 200);
   const { manageToken } = (await verified.json()) as { manageToken: string };
@@ -733,10 +736,7 @@ describe('POST /api/v1/owners/email', () => {
       envWith({ EMAIL_ENC_KEY: SECRET }),
     );
     assert.equal(res.status, 200);
-    const body = (await res.json()) as { status: string; emailed: boolean; verifyUrl: string };
-    assert.equal(body.status, 'stored');
-    assert.equal(body.emailed, false);
-    assert.match(body.verifyUrl, /\/api\/v1\/owners\/email\/verify\?token=[0-9a-f]{32}$/);
+    assert.deepEqual(await res.json(), { status: 'sent', emailed: true });
 
     const row = raw.prepare('SELECT * FROM owner_emails WHERE domain = ?').get('example.com') as OwnerEmailRow;
     assert.ok(row, 'the mailbox row exists');
@@ -816,6 +816,44 @@ describe('POST /api/v1/owners/email', () => {
 
     const row = raw.prepare('SELECT notify FROM owner_emails WHERE domain = ?').get('example.com') as { notify: number };
     assert.equal(row.notify, 0, 'the opt-out survives a re-registration');
+  });
+
+  it('keeps registration retryable and returns no link on missing configuration or delivery failure', async () => {
+    const site = fakeSite({ challenge: null, resendStatus: 503 });
+    const { app, raw } = freshApp(site.impl);
+    const ip = '203.0.113.81';
+    const challenge = await startChallenge(app, 'example.com', 'owner@example.com', ip);
+    site.state.challenge = challenge;
+    const payload = { domain: 'example.com', email: 'owner@example.com', challenge };
+    const register = (key?: string) => post(app, '/api/v1/owners/email', payload, ip,
+      envWith({ EMAIL_ENC_KEY: SECRET, RESEND_API_KEY: key }));
+    const unconfigured = await register();
+    assert.equal(unconfigured.status, 503);
+    assert.deepEqual(await unconfigured.json(), { error: 'email_not_configured', retryable: true });
+    const failed = await register(API_KEY);
+    assert.equal(failed.status, 502);
+    assert.deepEqual(await failed.json(), { error: 'email_delivery_failed', retryable: true });
+    assert.equal(raw.prepare('SELECT used_at FROM email_challenges').get()?.used_at, null);
+    assert.equal(raw.prepare('SELECT domain FROM owner_emails').get(), undefined);
+    site.state.resendStatus = 200;
+    assert.equal((await register(API_KEY)).status, 200);
+  });
+
+  it('rolls back the mailbox write if consuming the challenge fails', async () => {
+    const site = fakeSite({ challenge: null });
+    const { app, raw } = freshApp(site.impl);
+    const ip = '203.0.113.81';
+    const challenge = await startChallenge(app, 'example.com', 'owner@example.com', ip);
+    site.state.challenge = challenge;
+    raw.exec(`CREATE TRIGGER test_reject_challenge BEFORE UPDATE OF used_at ON email_challenges
+      BEGIN SELECT RAISE(ABORT, 'injected write failure'); END`);
+    const register = () => post(app, '/api/v1/owners/email',
+      { domain: 'example.com', email: 'owner@example.com', challenge }, ip, envWith({ EMAIL_ENC_KEY: SECRET }));
+    assert.equal((await register()).status, 500);
+    assert.equal(raw.prepare('SELECT used_at FROM email_challenges').get()?.used_at, null);
+    assert.equal(raw.prepare('SELECT domain FROM owner_emails').get(), undefined);
+    raw.exec('DROP TRIGGER test_reject_challenge');
+    assert.equal((await register()).status, 200);
   });
 
   it('mails the magic link when a provider is configured', async () => {
@@ -931,6 +969,32 @@ describe('GET /api/v1/owners/email/verify', () => {
     assert.equal((await replay.json()).error, 'invalid_or_expired_token');
   });
 
+  it('issues exactly one management token when confirmation requests overlap', async () => {
+    const { app, raw } = freshApp();
+    const token = 'test-concurrent-confirmation';
+    raw.prepare(`INSERT INTO owner_emails (domain, email_cipher, email_hash, verify_token_hash, verify_expires_at)
+      VALUES ('example.com', 'cipher', 'hash', ?, ?)`)
+      .run(await hashToken(`owner-mail-confirmation:v2:${token}`), '2099-01-01T00:00:00.000Z');
+    const responses = await Promise.all([get(app, `/api/v1/owners/email/verify?token=${token}`),
+      get(app, `/api/v1/owners/email/verify?token=${token}`)]);
+    assert.deepEqual(responses.map(({ status }) => status).sort(), [200, 400]);
+    const success = responses.find((response) => response.ok)!;
+    assert.equal(success.headers.get('Cache-Control'), 'no-store');
+    const { manageToken } = await success.json();
+    assert.equal(raw.prepare('SELECT manage_token_hash FROM owner_emails').get()?.manage_token_hash,
+      await hashToken(manageToken));
+  });
+
+  it('rejects an unexpired confirmation issued before email-only delivery', async () => {
+    const { app, raw } = freshApp();
+    raw.prepare(`INSERT INTO owner_emails (domain, email_cipher, email_hash, verify_token_hash, verify_expires_at)
+      VALUES ('example.com', 'cipher', 'hash', ?, ?)`)
+      .run(await hashToken('legacy-link'), '2099-01-01T00:00:00.000Z');
+    const result = await get(app, '/api/v1/owners/email/verify?token=legacy-link');
+    assert.equal(result.status, 400);
+    assert.equal(raw.prepare('SELECT manage_token_hash FROM owner_emails').get()?.manage_token_hash, null);
+  });
+
   it('rejects an expired token', async () => {
     const { app, raw } = freshApp();
     raw
@@ -939,7 +1003,7 @@ describe('GET /api/v1/owners/email/verify', () => {
            (domain, email_cipher, email_hash, verified_at, verify_token_hash, verify_expires_at, notify, created_at, updated_at)
          VALUES ('example.com', 'cipher', 'hash', NULL, ?, ?, 1, '2026-11-01', '2026-11-01')`,
       )
-      .run(await hashToken('expired-token'), '2020-01-01T00:00:00.000Z');
+      .run(await hashToken('owner-mail-confirmation:v2:expired-token'), '2020-01-01T00:00:00.000Z');
 
     const res = await get(app, '/api/v1/owners/email/verify?token=expired-token', '203.0.113.83');
     assert.equal(res.status, 400);

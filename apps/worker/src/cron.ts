@@ -75,7 +75,7 @@ export async function latestSnapshotDate(fetchImpl: typeof fetch): Promise<strin
  * day's run resumes where it left off only for files whose sha changed). */
 export async function runDailySync(
   deps: CronDeps,
-  opts: { date?: string; offset?: number; limit?: number } = {},
+  opts: { date?: string; offset?: number; limit?: number; dataSha?: string } = {},
 ): Promise<SyncResult | null> {
   const log = deps.log ?? ((message: string) => console.log(message));
   try {
@@ -87,6 +87,7 @@ export async function runDailySync(
     const result = await syncDate(date, { db: deps.db, fetchImpl: deps.fetchImpl }, {
       offset: opts.offset,
       limit: opts.limit,
+      dataSha: opts.dataSha,
     });
     log(
       `daily sync ${date}@${opts.offset ?? 0}: ${result.sitesUpserted} sites, ${result.scansUpserted} scans, ` +

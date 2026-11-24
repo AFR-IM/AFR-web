@@ -56,15 +56,23 @@ export const CATS = [
  *   2. otherwise → domains declared in fixtures.ts (fresh clone / pre-fetch)
  *   3. last resort → dist/site (auditing an already-built tree)
  */
-export function siteDomains(webDir) {
+export function siteDomains(webDir, { required = false } = {}) {
   const detailsDir = join(webDir, 'src/data/generated/details');
   const manifest = join(webDir, 'src/data/generated/index.json');
   if (existsSync(manifest) && existsSync(detailsDir)) {
-    return readdirSync(detailsDir)
+    const domains = readdirSync(detailsDir)
       .filter((f) => f.endsWith('.json'))
       .map((f) => f.slice(0, -'.json'.length))
       .sort();
+    if (required) {
+      const { sites } = JSON.parse(readFileSync(manifest, 'utf8'));
+      if (!domains.length || sites !== domains.length) {
+        throw new Error(`Incomplete generated catalog: ${domains.length} details, manifest expects ${sites}`);
+      }
+    }
+    return domains;
   }
+  if (required) throw new Error('Release sitemap requires a generated catalog; run fetch-data.mjs first.');
   const fixturesPath = join(webDir, 'src/data/fixtures.ts');
   if (existsSync(fixturesPath)) {
     const fixtures = readFileSync(fixturesPath, 'utf8');

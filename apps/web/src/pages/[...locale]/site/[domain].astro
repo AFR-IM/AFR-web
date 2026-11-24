@@ -21,11 +21,9 @@ import StrategyTag from '../../../components/detail/StrategyTag.astro';
 import VerifiedTick from '../../../components/detail/VerifiedTick.astro';
 import ReportCard from '../../../components/detail/ReportCard.astro';
 import EvidenceChain from '../../../components/detail/EvidenceChain.astro';
+import ObservationPanel from '../../../components/detail/ObservationPanel.astro';
 import ClaimBlock from '../../../components/detail/ClaimBlock.astro';
-import ClaimForm from '../../../components/detail/ClaimForm.astro';
 import BadgeEmbed from '../../../components/detail/BadgeEmbed.astro';
-import VerifyPanel from '../../../components/detail/VerifyPanel.astro';
-import OwnerMailbox from '../../../components/detail/OwnerMailbox.astro';
 import HistorySpark from '../../../components/detail/HistorySpark.astro';
 import RescanButton from '../../../components/detail/RescanButton.astro';
 import { getCatalog, pathFor, toLocale, type Locale } from '../../../i18n/loader.ts';
@@ -84,7 +82,6 @@ const tabs = [
   { id: 'statement', label: L.ui.statementTitle ?? T('Statement', '声明') },
 ];
 const viewsLabel = uiText(L.ui, 'viewsLabel', locale);
-const claimFormVisible = !!site?.verified || !!site?.claim;
 const notFound = !site;
 if (notFound) Astro.response.status = 404;
 // A 404 is never cached at the edge: the domain may be missing from the
@@ -203,14 +200,15 @@ const description = notFound
             <ReportCard site={site} locale={locale} />
           </div>
           <div class="col col-center">
+            <ObservationPanel site={site} locale={locale} />
             <EvidenceChain site={site} locale={locale} />
           </div>
           <div class="col col-right">
             <ClaimBlock claim={site.claim} locale={locale} />
             <BadgeEmbed domain={site.domain} grade={site.grade} locale={locale} badgeHref={href('/badges')} />
-            <VerifyPanel domain={site.domain} locale={locale} verified={!!site.verified} />
-            <OwnerMailbox domain={site.domain} locale={locale} />
-            <ClaimForm domain={site.domain} locale={locale} visible={claimFormVisible} />
+            {!site.delistedNote && (
+              <a class="btn" href={href(`/owner/${site.domain}/`)}>{T('Site owner tools', '站主管理')}</a>
+            )}
             <HistorySpark site={site} locale={locale} />
             <p class="views mono" data-views data-domain={site.domain} data-label={viewsLabel}>
               <span class="views-sk" aria-hidden="true"></span>

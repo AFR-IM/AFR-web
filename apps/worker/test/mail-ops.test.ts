@@ -344,7 +344,7 @@ describe('changing the mailbox of a confirmed domain', () => {
     return app.request(
       '/api/v1/owners/email/change',
       { method: 'POST', headers, body: JSON.stringify(body) },
-      { EMAIL_ENC_KEY: SECRET },
+      { EMAIL_ENC_KEY: SECRET, RESEND_API_KEY: 'fake-key' },
     );
   }
 
@@ -364,12 +364,15 @@ describe('changing the mailbox of a confirmed domain', () => {
     );
   }
 
-  /** The confirmation token of a change — the link the new address gets. */
-  function tokenOf(body: unknown): string {
-    const url = String((body as { verifyUrl?: string }).verifyUrl ?? '');
-    const token = /token=([0-9a-f]{32})/.exec(url)?.[1];
-    assert.ok(token, 'the change hands out a confirmation link');
-    return token;
+  function fakeDelivery(status = 200) {
+    const tokens: string[] = [];
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      const token = /token=([0-9a-f]{32})/.exec(JSON.parse(String(init?.body)).text)?.[1];
+      assert.ok(token);
+      tokens.push(token);
+      return Response.json({ id: 'fake-mail' }, { status });
+    };
+    return { tokens, fetchImpl };
   }
 
   /** Confirm the new address and return the fresh management token. */
@@ -388,37 +391,36 @@ describe('changing the mailbox of a confirmed domain', () => {
     return body.manageToken;
   }
 
-  it('replaces the mailbox, voids the old token and leaves the new address unconfirmed', async () => {
+  it('keeps the old mailbox active until the new mailbox confirms', async () => {
     const { db, raw } = openSeededDb();
     await seedConfirmed(raw, 'example.com', 'owner@example.com');
-    const app = createApp({ db, emailLimits: limits() });
-
+    const delivery = fakeDelivery();
+    const app = createApp({ db, emailLimits: limits(), fetchImpl: delivery.fetchImpl });
     const res = await change(app, { domain: 'example.com', email: 'new@example.com' }, TOKEN);
     assert.equal(res.status, 200);
-    const body = (await res.json()) as { status?: string; emailed?: boolean; verifyUrl?: string };
-    assert.equal(body.status, 'stored', 'no mail provider is configured in the test');
-    assert.equal(body.emailed, false);
-    assert.ok(body.verifyUrl, 'the confirmation link is handed back');
-
-    const row = raw
-      .prepare(
-        'SELECT email_cipher, verified_at, manage_token_hash, notify FROM owner_emails WHERE domain = ?',
-      )
-      .get('example.com') as {
-      email_cipher: string;
-      verified_at: string | null;
-      manage_token_hash: string | null;
-      notify: number | null;
-    };
+    assert.deepEqual(await res.json(), { status: 'sent', emailed: true });
+    assert.equal((await readMailbox(app, TOKEN)).status, 200);
+    const manageToken = await confirm(app, delivery.tokens[0]!);
+    assert.equal((await readMailbox(app, TOKEN)).status, 401);
+    assert.equal((await readMailbox(app, manageToken)).status, 200);
+    const row = raw.prepare('SELECT email_cipher, notify FROM owner_emails WHERE domain = ?')
+      .get('example.com') as { email_cipher: string; notify: number };
     assert.equal(await decryptEmail(row.email_cipher, SECRET), 'new@example.com');
-    assert.equal(row.verified_at, null, 'the new address has to be confirmed');
-    assert.equal(row.manage_token_hash, null, 'the old management token is void');
-    assert.equal(row.notify, 1, 'the notification preference is kept');
+    assert.equal(row.notify, 1);
+  });
 
-    // the old token can no longer read the mailbox
-    const read = await readMailbox(app, TOKEN);
-    assert.equal(read.status, 401);
-    assert.equal((await read.json()).error, 'unauthorized');
+  it('keeps the current mailbox and returns no link when delivery fails', async () => {
+    const { db, raw } = openSeededDb();
+    await seedConfirmed(raw, 'example.com', 'owner@example.com');
+    const delivery = fakeDelivery(500);
+    const app = createApp({ db, emailLimits: limits(), fetchImpl: delivery.fetchImpl });
+    const res = await change(app, { domain: 'example.com', email: 'new@example.com' }, TOKEN);
+    assert.equal(res.status, 502);
+    assert.deepEqual(await res.json(), { error: 'email_delivery_failed', retryable: true });
+    assert.equal((await readMailbox(app, TOKEN)).status, 200);
+    const row = raw.prepare('SELECT pending_email_cipher, verify_token_hash FROM owner_emails WHERE domain = ?')
+      .get('example.com');
+    assert.deepEqual({ ...row }, { pending_email_cipher: null, verify_token_hash: null });
   });
 
   it('refuses a request without a token, with a wrong token and with the token of another domain', async () => {
@@ -469,14 +471,12 @@ describe('changing the mailbox of a confirmed domain', () => {
   it('spends the mailbox budget of the domain', async () => {
     const { db, raw } = openSeededDb();
     await seedConfirmed(raw, 'example.com', 'owner@example.com');
-    const app = createApp({ db, emailLimits: limits({ daily: 1 }) });
+    const delivery = fakeDelivery();
+    const app = createApp({ db, emailLimits: limits({ daily: 1 }), fetchImpl: delivery.fetchImpl });
 
     const first = await change(app, { domain: 'example.com', email: 'new@example.com' }, TOKEN);
     assert.equal(first.status, 200);
-    const body = await first.json();
-
-    // the new address is confirmed → a new management token
-    const manageToken = await confirm(app, tokenOf(body));
+    const manageToken = await confirm(app, delivery.tokens[0]!);
 
     // the second change of the day is refused
     const second = await change(app, { domain: 'example.com', email: 'other@example.com' }, manageToken);
@@ -490,30 +490,21 @@ describe('changing the mailbox of a confirmed domain', () => {
     assert.equal(await decryptEmail(row.email_cipher, SECRET), 'new@example.com');
   });
 
-  it('stops the notifications of the old address', async () => {
+  it('continues notification delivery to the confirmed mailbox during a pending change', async () => {
     const { db, raw } = openSeededDb();
     await seedConfirmed(raw, 'example.com', 'owner@example.com');
-    const app = createApp({ db, emailLimits: limits() });
-
-    // the seed holds example.com as A (92) while its previous scan was
-    // B (88) — a provable change of a verified site
+    const app = createApp({ db, emailLimits: limits(), fetchImpl: fakeDelivery().fetchImpl });
     assert.equal(await enqueueScoreChangeNotifications(db, {}), 1);
-
     const res = await change(app, { domain: 'example.com', email: 'new@example.com' }, TOKEN);
     assert.equal(res.status, 200);
-
-    // the unconfirmed mailbox produces no further events …
-    assert.equal(await enqueueScoreChangeNotifications(db, {}), 0);
-
-    // … and the pending event is not delivered to the old address
-    const calls: string[] = [];
-    const impl = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      calls.push(String(init?.body ?? ''));
-      return Response.json({ id: 'email_123' }, { status: 200 });
-    }) as unknown as typeof fetch;
-    const drained = await drainNotifyOutbox(db, { secretB64: SECRET, resendApiKey: 'resend-key' }, impl);
-    assert.deepEqual(drained, { sent: 0, failed: 0, skipped: 1 });
-    assert.equal(calls.length, 0, 'the old address receives nothing');
+    const recipients: string[] = [];
+    const impl: typeof fetch = async (_input, init) => {
+      recipients.push(JSON.parse(String(init?.body)).to);
+      return Response.json({ id: 'fake-mail' });
+    };
+    const drained = await drainNotifyOutbox(db, { secretB64: SECRET, resendApiKey: 'fake-key' }, impl);
+    assert.deepEqual(drained, { sent: 1, failed: 0, skipped: 0 });
+    assert.deepEqual(recipients, ['owner@example.com']);
   });
 
   it('lets the holder of the token re-confirm through the registration endpoint', async () => {
@@ -531,15 +522,16 @@ describe('changing the mailbox of a confirmed domain', () => {
       )
       .run('example.com', await hashToken(challenge), cipher, hash, '2099-01-01T00:00:00.000Z', '2026-11-20');
 
-    // the domain publishes the challenge (the well-known file answers it)
-    const impl = (async (input: RequestInfo | URL) => {
+    const delivery = fakeDelivery();
+    const impl: typeof fetch = async (input, init) => {
       const url = String(input);
+      if (url === 'https://api.resend.com/emails') return delivery.fetchImpl(input, init);
       if (url.includes('/.well-known/afr-mail.txt')) return new Response(challenge, { status: 200 });
       if (url.includes('cloudflare-dns.com')) {
         return Response.json({ Status: 0, Answer: [] }, { status: 200 });
       }
       return new Response('<html><head><title>x</title></head><body>x</body></html>', { status: 200 });
-    }) as unknown as typeof fetch;
+    };
 
     const app = createApp({ db, emailLimits: limits(), fetchImpl: impl });
     const body = JSON.stringify({ domain: 'example.com', email: 'new@example.com', challenge });
@@ -570,12 +562,13 @@ describe('changing the mailbox of a confirmed domain', () => {
         },
         body,
       },
-      { EMAIL_ENC_KEY: SECRET },
+      { EMAIL_ENC_KEY: SECRET, RESEND_API_KEY: 'fake-key' },
     );
     assert.equal(owner.status, 200);
-    assert.equal((await owner.json()).status, 'stored');
-
-    // the mailbox is unconfirmed again and the old token is void
+    assert.deepEqual(await owner.json(), { status: 'sent', emailed: true });
+    assert.equal((await readMailbox(app, TOKEN)).status, 200);
+    const manageToken = await confirm(app, delivery.tokens[0]!);
+    assert.equal((await readMailbox(app, TOKEN)).status, 401);
     const row = raw
       .prepare(
         'SELECT verified_at, manage_token_hash, email_cipher FROM owner_emails WHERE domain = ?',
@@ -585,8 +578,8 @@ describe('changing the mailbox of a confirmed domain', () => {
       manage_token_hash: string | null;
       email_cipher: string;
     };
-    assert.equal(row.verified_at, null);
-    assert.equal(row.manage_token_hash, null);
+    assert.ok(row.verified_at);
+    assert.equal(row.manage_token_hash, await hashToken(manageToken));
     assert.equal(await decryptEmail(row.email_cipher, SECRET), 'new@example.com');
   });
 });

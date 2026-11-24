@@ -1,0 +1,39 @@
+---
+import type { SiteDetail } from '../../data/types.ts';
+
+interface Props { site: SiteDetail; locale: string }
+const { site, locale } = Astro.props;
+const check = site.layers.find((layer) => layer.layer === 'L2')?.checks.find((item) => item.id === 'l2.llms-family');
+const zh = locale === 'zh-CN';
+const scanTime = Date.parse(site.scannedAt);
+const show = site.grade !== 'Pending' && !site.delistedNote && check?.status === 'fail' &&
+  typeof check.evidence?.detail === 'string' && !!check.evidence.detail.trim() &&
+  typeof site.engineVersion === 'string' && !!site.engineVersion.trim() && Number.isFinite(scanTime);
+const scanned = show ? new Date(scanTime).toISOString().replace('T', ' ').slice(0, 16) + ' UTC' : '';
+---
+{show && check?.evidence && (
+  <section class="observation" aria-labelledby="observation-title" data-check-id={check.id}>
+    <header>
+      <h2 id="observation-title">{zh ? '观察与改进' : 'Observation & action'}</h2>
+      <span class="score mono">{check.awarded} / {check.max}</span>
+    </header>
+    <h3>{zh ? '本次观察' : 'What the scan observed'}</h3>
+    <p>{zh ? '按本次扫描记录，llms.txt 系列检查未通过。下方证据仅反映当时的扫描结果，不代表端点当前状态。' : 'The llms.txt family check failed in this scan. The evidence below describes that scan, not the endpoints’ current state.'}</p>
+    <p class="evidence mono" dir="auto">{check.evidence.detail}</p>
+    <h3>{zh ? '可尝试的改进' : 'Possible action'}</h3>
+    <p>{zh ? '如有意提供这些资源，可在站点根目录发布非空的 /llms.txt，按需提供 /llms-full.txt，并在首页加入指向已发布文件的链接。' : 'If you intend to offer these resources, publish a non-empty /llms.txt at the site root, optionally provide /llms-full.txt, and link to the published file from the homepage.'}</p>
+    <h3>{zh ? '如何验证' : 'How to verify'}</h3>
+    <p>{zh ? '先确认已发布文件的 GET 请求返回 HTTP 2xx、/llms.txt 内容非空，且首页 HTML 包含预期链接。再发起复扫，确认报告时间已更新，并对照同一规则版本下此项检查的证据。' : 'Check that GET requests for the published files return HTTP 2xx, that /llms.txt has a non-empty body, and that the homepage HTML includes the intended link. Then rescan, confirm the report has a new scan time, and compare the check evidence under the same rule version.'}</p>
+    <footer class="mono">{zh ? '扫描时间' : 'Scanned'}: <time datetime={site.scannedAt}>{scanned}</time> · {zh ? '规则版本' : 'Rule version'}: {site.engineVersion}</footer>
+  </section>
+)}
+<style>
+  .observation { padding: 14px; border: 1px solid var(--line); border-left: 3px solid var(--grade-c); background: var(--bg-surface); margin-bottom: 16px; }
+  header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  h2 { margin: 0; font-size: 15px; color: var(--text-1); }
+  h3 { margin: 12px 0 4px; font-size: 12px; color: var(--text-2); }
+  p { margin: 6px 0; font-size: 13px; line-height: 1.6; color: var(--text-2); overflow-wrap: anywhere; }
+  .evidence { padding: 8px; background: var(--bg-ink); font-size: 11px; }
+  .score, footer { font-size: 11px; color: var(--text-3); }
+  footer { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 12px; overflow-wrap: anywhere; }
+</style>

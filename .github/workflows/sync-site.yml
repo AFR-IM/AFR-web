@@ -15,6 +15,11 @@ on:
   repository_dispatch:
     types: [scan-done]
   workflow_dispatch:
+    inputs:
+      data_sha:
+        description: "Full AFR-data commit SHA for retrying a release (blank uses current main)"
+        type: string
+        required: false
   # Safety net: rebuild even when a scan-done dispatch is missed (the old
   # cross-step dispatch condition in scan.yml skipped on scheduled runs).
   # The date-walk sync is idempotent (sha-skip), so a no-change rebuild is cheap.
@@ -31,7 +36,10 @@ permissions:
   contents: read
 
 jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
   rebuild:
+    needs: test
     runs-on: ubuntu-latest
     # 60 min: the D1 date-walk pages through the fresh snapshots (~30 pages
     # at 32/page for a full scan day) after a missed dispatch backfills a
@@ -43,16 +51,38 @@ jobs:
       - name: Checkout web repo
         uses: actions/checkout@v4
 
+      - name: Validate optional data commit
+        env:
+          REQUESTED_DATA_SHA: ${{ inputs.data_sha }}
+        run: |
+          if [[ -n "$REQUESTED_DATA_SHA" && ! "$REQUESTED_DATA_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo '::error::data_sha must be a full lowercase commit SHA'
+            exit 1
+          fi
+
       - name: Checkout data repo
         uses: actions/checkout@v4
         with:
           repository: AFR-IM/AFR-data
+          ref: ${{ inputs.data_sha || 'main' }}
           token: ${{ secrets.DATA_REPO_TOKEN }}
+          persist-credentials: false
           path: data
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+
+      - name: Record release inputs
+        run: |
+          code_sha=$(git rev-parse HEAD)
+          data_sha=$(git -C data rev-parse HEAD)
+          echo "DATA_SHA=$data_sha" >> "$GITHUB_ENV"
+          {
+            echo '## AFR release'
+            echo "- Code: \`$code_sha\`"
+            echo "- Data: \`$data_sha\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # Build-time JSON payloads; the data repo is the single source of truth.
       # Script-relative paths, so it runs fine from the repo root.
@@ -82,7 +112,7 @@ jobs:
       # together must hold every URL of the catalog (with the right
       # hreflang pair) — a broken sitemap is invisible to every test.
       - name: Check the sitemap (index, shards, caps, alternates)
-        run: node scripts/check-sitemap.mjs
+        run: node scripts/check-sitemap.mjs --release
 
       - name: Install dependencies
         run: npm ci
@@ -97,12 +127,11 @@ jobs:
         working-directory: apps/web
         run: npx astro build
 
-      # Cards must leave the main Worker before deploy: Workers Free caps
-      # 20,000 asset files per version and the bilingual detail pages already
-      # use ~2N of it. They are moved out of dist (not filtered by
-      # .assetsignore, which would leave the count unverifiable) and into the
-      # separate afr-og Worker. Staging happens after the build so the
-      # existsSync probe above still sees them.
+      - name: Check sitemap in the deployment assets
+        run: node scripts/check-sitemap.mjs --release apps/web/dist
+
+      # Move the cards from dist to afr-og before checking each Worker's
+      # asset budget. Stage after the build so its existsSync probe sees them.
       - name: Stage Open Graph cards for the afr-og Worker
         run: |
           set -euo pipefail
@@ -117,78 +146,54 @@ jobs:
             echo "::error::/og/sites still present in the main Worker assets"
             exit 1
           fi
-          main=$(find apps/web/dist -type f ! -path '*/_worker.js/*' ! -name '_routes.json' | wc -l)
-          echo "main Worker asset files: ${main}"
-          test "$main" -lt 20000
 
-      # Cards first: a detail page must never reference a card that is not
-      # live yet. A missing card only costs the preview image, but deploy order
-      # keeps the window at zero.
+      - name: Check deployable assets for both Workers
+        run: node scripts/check-worker-assets.mjs apps/web/dist apps/og-worker/assets
+
+      - name: Record D1 restore point and check schema
+        working-directory: apps/worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          bookmark=$(npx --no-install wrangler d1 time-travel info DB --json | jq -er '.bookmark | strings | select(length > 0)')
+          echo "- D1 pre-sync bookmark: \`$bookmark\`" >> "$GITHUB_STEP_SUMMARY"
+          npx --no-install wrangler d1 execute DB --remote --command \
+            'SELECT pending_email_cipher, pending_email_hash FROM owner_emails LIMIT 0' --json > /dev/null
+
+      - name: Deploy API Worker with pinned sync support
+        working-directory: apps/worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+        run: bash ../../scripts/deploy-release-worker.sh afr-api
+
+      - name: Sync D1 from the same data checkout
+        env:
+          QUEUE_TOKEN: ${{ secrets.QUEUE_TOKEN }}
+        run: |
+          node scripts/sync-release-d1.mjs
+          echo '- D1 sync completed' >> "$GITHUB_STEP_SUMMARY"
+
+      # Publish the site only after all pinned D1 pages succeed.
       - name: Deploy afr-og (per-site cards)
         working-directory: apps/og-worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-        run: npx wrangler deploy
+        run: bash ../../scripts/deploy-release-worker.sh afr-og
 
       - name: Deploy to Cloudflare
         working-directory: apps/web
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-        run: npx wrangler deploy
+        run: bash ../../scripts/deploy-release-worker.sh afr-web
 
-      - name: Sync D1 with the freshly published data
+      - name: Record release outcome
+        if: always()
         env:
-          QUEUE_TOKEN: ${{ secrets.QUEUE_TOKEN }}
+          RELEASE_STATUS: ${{ job.status }}
         run: |
-          set -euo pipefail
-          # Same snapshot set as the static build: publish, then sync D1.
-          # Every date is walked (not just the newest) so a day whose sync
-          # failed once is backfilled by the next run; each date is paged
-          # because one Worker invocation may only fetch ~32 snapshots
-          # (Cloudflare free-plan subrequest/CPU caps). nextOffset=null → done.
-          # A date whose snapshots are all in D1 already (same blob sha) is
-          # skipped by the Worker without downloading a file, so re-walking
-          # the history costs one cheap page per date. The expensive part is
-          # the fresh day: the Worker fetches and writes a page with bounded
-          # concurrency (~20 s per page instead of ~2.5 min), so a full
-          # 1000-snapshot day fits in minutes, not in a 60-minute job.
-          # Newest date first: if the job ever hits its timeout again, the
-          # data that matters most is already in D1.
-          # curl retries transient failures (connection resets and 5xx from
-          # CPU-limit pages) — the endpoint is idempotent (sha-skip), so a
-          # retry of the same offset resumes instead of duplicating work.
-          dates=$(find data/scans -name '*.json' -printf '%h\n' | sed 's|data/scans/||' | sort -u -r)
-          fail=0
-          for date in $dates; do
-            offset=0
-            while :; do
-              resp=$(curl -fsS --connect-timeout 20 --max-time 240 \
-                --retry 6 --retry-delay 10 --retry-all-errors --retry-max-time 900 \
-                -X POST https://afr.im/api/v1/_internal/sync \
-                -H "X-Queue-Token: ${QUEUE_TOKEN}" \
-                -H 'Content-Type: application/json' \
-                -d "{\"date\":\"${date}\",\"offset\":${offset}}") || { echo "sync call failed for ${date}@${offset}"; fail=1; break; }
-              echo "${date}@${offset}: ${resp}"
-              # A snapshot whose write failed keeps its old blob sha, so the
-              # next run syncs it again — surface it instead of losing it.
-              errors=$(printf '%s' "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("errors") or 0)')
-              if [ "$errors" != "0" ]; then
-                echo "::warning::${errors} snapshot(s) failed to sync in ${date}@${offset} (retried on the next run)"
-              fi
-              next=$(printf '%s' "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("nextOffset") or "")')
-              [ -z "$next" ] && break
-              # The cursor must move forward. A page that returns the same
-              # offset again would spin until the job times out (2026-11-18:
-              # 60 minutes and 226 MB of identical log lines), so stop the
-              # date here and let the next run retry it from the top.
-              if [ "$next" -le "$offset" ]; then
-                echo "::error::sync cursor did not advance for ${date} (offset ${offset} → ${next}); stopping this date"
-                fail=1
-                break
-              fi
-              offset=$next
-            done
-          done
-          exit $fail
+          echo "- Release job: $RELEASE_STATUS" >> "$GITHUB_STEP_SUMMARY"

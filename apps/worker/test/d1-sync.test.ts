@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { Grade } from '../../../packages/shared/src/index.ts';
 import { DATA_REPO_RAW, type Snapshot, syncDate } from '../src/d1-sync.ts';
+import { createApp, type WorkerEnv } from '../src/index.ts';
 import { openSeededDb } from './helpers.ts';
 
 const DATE = '2026/11/10';
@@ -111,7 +112,66 @@ function fakeFetch(options: FakeFetchOptions = {}) {
   return { impl, calls };
 }
 
+describe('release sync endpoint', () => {
+  it('rejects a mutable ref and reports failed paths against the pinned page', async () => {
+    const { db } = openSeededDb();
+    const sha = 'b'.repeat(40);
+    const paths: string[] = [];
+    const app = createApp({ db, async fetchImpl(input) {
+      const url = String(input);
+      paths.push(url);
+      if (url.includes('/git/trees/')) {
+        return Response.json({ tree: [{ type: 'blob', path: 'acme.dev.json', sha: 'blob' }] });
+      }
+      return new Response(null, { status: 503 });
+    } });
+    const env = { QUEUE_TOKEN: 'fixture' } as WorkerEnv;
+    const post = (dataSha: string) => app.request('/api/v1/_internal/sync', {
+      method: 'POST', headers: { 'x-queue-token': 'fixture', 'content-type': 'application/json' },
+      body: JSON.stringify({ date: DATE, offset: 0, dataSha }),
+    }, env);
+    assert.equal((await post('main')).status, 400);
+    assert.deepEqual(paths, []);
+    const response = await post(sha);
+    assert.equal(response.status, 200);
+    const page = await response.json();
+    assert.equal(page.ok, false);
+    assert.equal(page.dataSha, sha);
+    assert.equal(page.offset, 0);
+    assert.deepEqual(page.failedPaths, [SNAPSHOT_PATH]);
+    assert.equal(paths.length, 2);
+    assert.ok(paths.every((url) => url.includes(sha)));
+  });
+});
+
 describe('syncDate', () => {
+  it('pins both the tree and snapshot reads to the same release commit', async () => {
+    const { db } = openSeededDb();
+    const dataSha = 'a'.repeat(40);
+    const snapshot = makeSnapshot(87, 'B');
+    const urls = [
+      `https://api.github.com/repos/AFR-IM/AFR-data/git/trees/${dataSha}:scans/${DATE}`,
+      `https://raw.githubusercontent.com/AFR-IM/AFR-data/${dataSha}/${SNAPSHOT_PATH}`,
+    ];
+    const calls: string[] = [];
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input);
+      calls.push(url);
+      if (url === urls[0]) {
+        return Response.json({ tree: [{ type: 'blob', path: SNAPSHOT_PATH.split('/').at(-1), sha: fakeSha(snapshot) }] });
+      }
+      if (url === urls[1]) return Response.json(snapshot);
+      throw new Error(`unexpected URL: ${url}`);
+    };
+    const result = await syncDate(DATE, { db, fetchImpl }, { dataSha });
+    assert.deepEqual(result.errors, []);
+    assert.equal(result.scansUpserted, 1);
+    assert.deepEqual(calls, urls);
+    calls.length = 0;
+    const repeat = await syncDate(DATE, { db, fetchImpl }, { dataSha });
+    assert.equal(repeat.skipped, 1);
+    assert.deepEqual(calls, [urls[0]]);
+  });
   it('upserts sites, scans and evidence from the day listing', async () => {
     const { db, raw } = openSeededDb();
     const { impl } = fakeFetch();

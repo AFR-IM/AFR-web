@@ -36,7 +36,9 @@ import type { Db } from './db.ts';
 
 export const DATA_REPO_API = 'https://api.github.com/repos/AFR-IM/AFR-data/contents';
 export const DATA_REPO_TREES = 'https://api.github.com/repos/AFR-IM/AFR-data/git/trees';
-export const DATA_REPO_RAW = 'https://raw.githubusercontent.com/AFR-IM/AFR-data/main';
+const RAW_ROOT = 'https://raw.githubusercontent.com/AFR-IM/AFR-data';
+export const DATA_REPO_RAW = `${RAW_ROOT}/main`;
+export const DATA_COMMIT_RE = /^[0-9a-f]{40}$/;
 
 /** Max snapshot fetches per invocation: 3 dir listings (cron path) + 1 trees
  * listing + 32 raw fetches = 36 ≤ the ~50 subrequest free-plan cap. Kept at
@@ -78,6 +80,8 @@ export interface SyncError {
 }
 
 export interface SyncOptions {
+  /** Immutable data checkout used by the release workflow. */
+  dataSha?: string;
   /** First entry index (sorted by path) to process — resume cursor from `nextOffset`. */
   offset?: number;
   /** Max snapshot fetches this invocation (skips are free and do not consume budget). */
@@ -141,13 +145,14 @@ interface TreeEntry {
 /** Validate the YYYY/MM/DD date segment and return the Git Trees URL for that
  * day's directory. Entries come back relative to the queried subtree (bare
  * filenames), so syncDate re-prefixes them with `scans/<date>/`. */
-export function listingUrl(date: string): string {
+export function listingUrl(date: string, dataSha?: string): string {
   if (!DATE_RE.test(date)) throw new Error(`invalid date "${date}" (expected YYYY/MM/DD)`);
-  return `${DATA_REPO_TREES}/main:scans/${date}`;
+  if (dataSha !== undefined && !DATA_COMMIT_RE.test(dataSha)) throw new Error('invalid data commit');
+  return `${DATA_REPO_TREES}/${dataSha ?? 'main'}:scans/${date}`;
 }
 
-export function snapshotUrl(path: string): string {
-  return `${DATA_REPO_RAW}/${path}`;
+export function snapshotUrl(path: string, dataSha?: string): string {
+  return `${dataSha ? `${RAW_ROOT}/${dataSha}` : DATA_REPO_RAW}/${path}`;
 }
 
 /** Fetch the day's trees listing and upsert the snapshots that start at
@@ -170,12 +175,13 @@ export async function syncDate(date: string, deps: SyncDeps, opts: SyncOptions =
     errors: [],
   };
 
-  const listingRes = await deps.fetchImpl(listingUrl(date));
+  const listingRes = await deps.fetchImpl(listingUrl(date, opts.dataSha));
   if (!listingRes.ok) {
     throw new Error(`snapshot listing failed: HTTP ${listingRes.status}`);
   }
   const tree = (await listingRes.json()) as { tree?: TreeEntry[]; truncated?: boolean };
   if (tree.truncated) throw new Error(`snapshot listing truncated for ${date}`);
+  if (!Array.isArray(tree.tree)) throw new Error(`invalid snapshot listing for ${date}`);
 
   const prefix = `scans/${date}/`;
   const entries = (tree.tree ?? [])
@@ -231,7 +237,7 @@ export async function syncDate(date: string, deps: SyncDeps, opts: SyncOptions =
     // fetches cost ~64 s, six at a time cost ~11 s.
     const fetched = await mapConcurrent(todo, SYNC_CONCURRENCY, async (entry) => {
       try {
-        const res = await deps.fetchImpl(snapshotUrl(entry.path));
+        const res = await deps.fetchImpl(snapshotUrl(entry.path, opts.dataSha));
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return { path: entry.path, sha: entry.sha, snapshot: (await res.json()) as Snapshot };
       } catch (err) {

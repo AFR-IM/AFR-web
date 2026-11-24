@@ -18,7 +18,7 @@ export const API_KEY_HEADER = 'x-afr-agent-key';
  * WebCrypto only: the module is bundled into the Worker, where node:crypto
  * does not exist. */
 export async function hashApiKey(key: string): Promise<string> {
-  const digest = await globalThis.crypto.subtle.digest(
+  const digest = await crypto.subtle.digest(
     'SHA-256',
     new TextEncoder().encode(key),
   );

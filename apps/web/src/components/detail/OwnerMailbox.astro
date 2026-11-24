@@ -72,16 +72,16 @@ const changeEmailText = t('ownerMailChangeEmail', 'Use another email', '换个�
 const changeTitle = t('ownerMailChangeTitle', 'Change the mailbox', '更换邮箱');
 const changeDesc = t(
   'ownerMailChangeDesc',
-  'The old address stops receiving notifications right away — a mail that is already on its way cannot be recalled. To keep it, register it again.',
-  '旧地址会立即停止接收通知——已在途的邮件无法追回。若想继续使用它，请重新登记。',
+  'Your current address and management token stay active until you confirm the new address. Your notification preference is kept.',
+  '确认新地址前，当前邮箱和管理令牌仍然有效。通知偏好会保留。',
 );
 const changeLabel = t('ownerMailChangeLabel', 'New email address', '新的邮箱地址');
 const changeSubmitText = t('ownerMailChangeSubmit', 'Change the mailbox', '确认更换');
 const changeBusyText = t('ownerMailChangeBusy', 'Changing…', '正在更换…');
 const changeDoneText = t(
   'ownerMailChangeDone',
-  'The new address has to be confirmed — the old management token is already void. Paste the new token below once the mail arrived.',
-  '新地址需要确认——旧管理令牌已立即失效。收到确认信后，请把新令牌粘贴到下方。',
+  'Confirmation mail sent to the new address. After confirming it, save the new token and paste it below. The old token stops working only after confirmation.',
+  '确认信已发往新邮箱。确认后请保存新管理令牌，并将其粘贴到下方。旧令牌在确认后才会失效。',
 );
 const checklistTitle = t('ownerMailChecklistTitle', 'What AFR saw on your domain', 'AFR 在你的域名上看到的情况');
 const sentTitle = t('ownerMailSentTitle', 'Confirmation mail sent', '确认信已寄出');
@@ -90,18 +90,11 @@ const sentBody = t(
   'Open the link in the mail. It shows your management token exactly once — save it right away.',
   '打开邮件中的链接。它会一次性显示管理令牌——请立即保存。',
 );
-const storedTitle = t('ownerMailStoredTitle', 'The mail channel is not configured', '邮件通道未配置');
-const storedBody = t(
-  'ownerMailStoredBody',
-  'No mail could be sent, but the link below completes the confirmation just as well and works once.',
-  '无法发送邮件，但下面的确认链接作用相同，且只能使用一次。',
-);
-const verifyLinkText = t('ownerMailVerifyLink', 'Finish the confirmation here', '在此完成确认');
 const tokenLabel = t('ownerMailTokenLabel', 'Management token', '管理令牌');
 const tokenHelp = t(
   'ownerMailTokenHelp',
-  'The management token is shown once, lives only in this browser, and is lost when you change browser or clear the cache. Paste it here to restore the mailbox on another device.',
-  '管理令牌只显示一次、只存在本机浏览器；换浏览器或清缓存即失效。可在此粘贴，在别的设备上恢复邮箱管理。',
+  'The management token is shown only once. Save it securely, then paste it here to manage the mailbox on this or another device.',
+  '管理令牌只显示一次。请妥善保存，再粘贴到此处，即可在当前设备或其他设备管理邮箱。',
 );
 const tokenUseText = t('ownerMailTokenUse', 'Use this token', '使用该令牌');
 const tokenSavedText = t('ownerMailTokenSaved', 'Management token saved in this browser.', '管理令牌已保存在本机浏览器。');
@@ -141,6 +134,7 @@ const errTurnstile = t('ownerMailErrTurnstile', 'Human verification failed — p
 const errTurnstileRequired = t('ownerMailErrTurnstileRequired', 'Please complete the human verification, then try again.', '请先完成人机验证，然后重试。');
 const errTurnstileUnavailable = t('ownerMailErrTurnstileUnavailable', 'The human check could not be loaded — check your connection and try again.', '人机验证组件加载失败——请检查网络后重试。');
 const errNotConfigured = t('ownerMailErrNotConfigured', 'The owner-mail feature is not configured on this deployment.', '当前部署未配置站主邮箱功能。');
+const errDelivery = t('ownerMailErrDelivery', 'The confirmation email could not be sent. Try again later.', '确认信未能发送，请稍后重试。');
 ---
 
 <section
@@ -164,6 +158,8 @@ const errNotConfigured = t('ownerMailErrNotConfigured', 'The owner-mail feature 
   data-msg-token-saved={tokenSavedText}
   data-msg-token-invalid={tokenInvalidText}
   data-msg-notify-saved={notifySavedText}
+  data-msg-change-sent={changeDoneText}
+  data-err-delivery={errDelivery}
   data-msg-signed-out={signedOutText}
   data-err-invalid-email={errInvalidEmail}
   data-err-invalid-domain={errInvalidDomain}
@@ -308,13 +304,9 @@ const errNotConfigured = t('ownerMailErrNotConfigured', 'The owner-mail feature 
 
   {/* ── state: the mailbox is registered, waiting for the mail ─── */}
   <div class="om-state" data-om-state="sent" hidden>
-    <p class="om-title-sm" data-om-sent-title data-sent={sentTitle} data-stored={storedTitle}>{sentTitle}</p>
-    <p class="om-note" data-om-sent-body data-sent={sentBody} data-stored={storedBody}>{sentBody}</p>
-    <p class="om-note" data-om-change-note hidden>{changeDoneText}</p>
+    <p class="om-title-sm">{sentTitle}</p>
+    <p class="om-note">{sentBody}</p>
     <p class="om-note">{tokenHelp}</p>
-    <a class="btn om-btn" data-om-verify-link hidden target="_blank" rel="noopener noreferrer">
-      {verifyLinkText}
-    </a>
   </div>
 
   {/* ── state: the mailbox is confirmed ────────────────────────── */}
@@ -729,11 +721,9 @@ const errNotConfigured = t('ownerMailErrNotConfigured', 'The owner-mail feature 
     const changeForm = root.querySelector<HTMLFormElement>('[data-om-change-form]');
     const changeEmailInput = root.querySelector<HTMLInputElement>('[data-om-change-email]');
     const changeSubmitBtn = root.querySelector<HTMLButtonElement>('[data-om-change-submit]');
-    const changeNote = root.querySelector<HTMLElement>('[data-om-change-note]');
+
     const maskedOut = root.querySelector<HTMLElement>('[data-om-masked]');
-    const verifyLink = root.querySelector<HTMLAnchorElement>('[data-om-verify-link]');
-    const sentTitle = root.querySelector<HTMLElement>('[data-om-sent-title]');
-    const sentBody = root.querySelector<HTMLElement>('[data-om-sent-body]');
+
     const checksBox = root.querySelector<HTMLElement>('[data-om-checks]');
     const checksList = root.querySelector<HTMLElement>('[data-om-check-list]');
     const status = root.querySelector<HTMLElement>('[data-om-status]');
@@ -821,6 +811,8 @@ const errNotConfigured = t('ownerMailErrNotConfigured', 'The owner-mail feature 
           return attr('data-err-turnstile');
         case 'email_not_configured':
           return attr('data-err-not-configured');
+        case 'email_delivery_failed':
+          return attr('data-err-delivery');
         default:
           return attr('data-msg-error');
       }
@@ -1056,18 +1048,7 @@ const errNotConfigured = t('ownerMailErrNotConfigured', 'The owner-mail feature 
       })
         .then((r) => readJson(r).then((body) => ({ r, body })))
         .then(({ r, body }) => {
-          if (r.status >= 200 && r.status < 300) {
-            const emailed = body && body.emailed === true;
-            const url = body && typeof body.verifyUrl === 'string' ? body.verifyUrl : '';
-            /* the mail channel decides which wording the owner sees */
-            if (sentTitle) sentTitle.textContent = emailed ? sentTitle.dataset.sent ?? '' : sentTitle.dataset.stored ?? '';
-            if (sentBody) sentBody.textContent = emailed ? sentBody.dataset.sent ?? '' : sentBody.dataset.stored ?? '';
-            if (!emailed && url && verifyLink) {
-              verifyLink.hidden = false;
-              verifyLink.href = url;
-            } else if (verifyLink) {
-              verifyLink.hidden = true;
-            }
+          if (r.ok && body?.emailed === true) {
             setState('sent');
             say('');
             return;
@@ -1102,9 +1083,8 @@ const errNotConfigured = t('ownerMailErrNotConfigured', 'The owner-mail feature 
     /* ── change the mailbox: POST /api/v1/owners/email/change ──
      *
      * The management token is the lock here: it proves that this browser
-     * owns the confirmed mailbox. The change voids that token at once, so
-     * the local copy is dropped immediately — the new token arrives with
-     * the confirmation of the new address. */
+     * owns the confirmed mailbox. Keep the current state and local token
+     * until the owner confirms the new address and retrieves the new token. */
     changeForm?.addEventListener('submit', (event) => {
       event.preventDefault();
       const value = (changeEmailInput?.value ?? '').trim();
@@ -1150,26 +1130,10 @@ const errNotConfigured = t('ownerMailErrNotConfigured', 'The owner-mail feature 
               changeSubmitBtn.textContent = attr('data-label-change-submit');
             }
           };
-          if (r.status >= 200 && r.status < 300) {
-            const emailed = body && body.emailed === true;
-            const url = body && typeof body.verifyUrl === 'string' ? body.verifyUrl : '';
-            /* the old token is void from now on — it must not stay behind */
-            dropToken();
-            if (sentTitle) sentTitle.textContent = emailed ? sentTitle.dataset.sent ?? '' : sentTitle.dataset.stored ?? '';
-            if (sentBody) sentBody.textContent = emailed ? sentBody.dataset.sent ?? '' : sentBody.dataset.stored ?? '';
-            if (!emailed && url && verifyLink) {
-              verifyLink.hidden = false;
-              verifyLink.href = url;
-            } else if (verifyLink) {
-              verifyLink.hidden = true;
-            }
-            /* the change needs one more step than a registration: the new
-             * address has to be confirmed, and only then is there a new
-             * management token */
-            if (changeNote) changeNote.hidden = false;
+          if (r.ok && body?.emailed === true) {
             restoreBtn();
-            setState('sent');
-            say('');
+            if (changeEmailInput) changeEmailInput.value = '';
+            say(attr('data-msg-change-sent'), 'ok');
             return;
           }
           if (r.status === 429) {
@@ -1213,30 +1177,6 @@ const errNotConfigured = t('ownerMailErrNotConfigured', 'The owner-mail feature 
       setState('idle');
       say('');
       emailInput?.focus();
-    });
-
-    /* ── the confirmation link (only when the mail channel is down) ── */
-    verifyLink?.addEventListener('click', (event) => {
-      event.preventDefault();
-      const url = verifyLink.href;
-      if (!url) return;
-      fetch(url, { headers: { accept: 'application/json' } })
-        .then((r) => readJson(r).then((body) => ({ r, body })))
-        .then(({ r, body }) => {
-          if (r.ok && body && typeof body.manageToken === 'string' && body.manageToken) {
-            saveToken(body.manageToken);
-            say(attr('data-msg-token-saved'), 'ok');
-            showMailbox(body.manageToken);
-            return;
-          }
-          /* the browser can still open the link by hand */
-          window.open(url, '_blank', 'noopener');
-          say(attr('data-msg-token-invalid'), 'error');
-        })
-        .catch(() => {
-          window.open(url, '_blank', 'noopener');
-          say(attr('data-msg-token-invalid'), 'error');
-        });
     });
 
     /* ── the notification switch ── */

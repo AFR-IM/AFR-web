@@ -8,11 +8,16 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import type { Context, MiddlewareHandler } from 'hono';
 import type { D1Database, ExecutionContext, KVNamespace, ScheduledController } from '@cloudflare/workers-types';
-import { GRADE_THRESHOLDS, LAYER_MAX } from '../../../packages/shared/src/index.ts';
+import { AFR_METHOD } from '../../../packages/afr/src/method.ts';
+import { LAYER_MAX } from '../../../packages/shared/src/index.ts';
 import { AFR_LAYERS, AFR_VERSION } from './method-checks.ts';
-import { GRADE_COLORS } from './grade-colors.ts';
 import { badgeSvg } from './badge.ts';
+import { handleAdmin } from './admin.ts';
+import { applyAipayWebhook, getAipayOrder, runAipayReconcileCron, type AipayEnv } from './aipay.ts';
+import type { AdminAccessEnv } from './admin-access.ts';
+import type { AdminLoginEnv } from './admin-login.ts';
 import { githubAuthedFetch, runDailySync } from './cron.ts';
+import { DATA_COMMIT_RE } from './d1-sync.ts';
 import { createD1Db, type Db, type Row, type SqlParam } from './db.ts';
 import { normalizeDomain, registrableDomain } from './domain.ts';
 import { handleMcpRequest, MCP_RATE_LIMIT, MCP_RATE_WINDOW_MS } from './mcp.ts';
@@ -70,7 +75,7 @@ import {
 } from './turnstile.ts';
 
 /** Cloudflare bindings (wrangler.toml) */
-export interface WorkerEnv {
+export interface WorkerEnv extends AdminAccessEnv, AdminLoginEnv, AipayEnv {
   DB: D1Database;
   /** Optional: when missing the rate limiter falls back to an in-memory counter */
   KV?: KVNamespace;
@@ -522,6 +527,11 @@ function emailLimitsOf(c: Context<AppEnv>, overrides: AppOverrides): EmailRateLi
 /** Public base URL used in magic links and report links */
 function baseUrlOf(c: Context<AppEnv>): string {
   return (c.env?.PUBLIC_SITE_URL ?? DEFAULT_BASE_URL).replace(/\/+$/, '');
+}
+
+/** Namespace email-only confirmations so links issued before this fix expire at deploy. */
+function mailboxConfirmationHash(token: string): Promise<string> {
+  return hashToken(`owner-mail-confirmation:v2:${token}`);
 }
 
 /** Sender address of owner mail */
@@ -1079,6 +1089,11 @@ const edgeCache: MiddlewareHandler<AppEnv> = async (c, next) => {
 export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
 
+  const admin = (c: Context<AppEnv>) => handleAdmin(c.req.raw, c.env ?? {}, () => dbOf(c, overrides));
+  app.all('/admin', admin);
+  app.all('/admin/*', admin);
+  app.get('/robots.txt', (c) => c.text('User-agent: *\nDisallow: /admin\n'));
+
   // T4 read path: edge cache in front of D1, registered before CORS so a hit
   // can short-circuit without running any handler.
   app.use('*', edgeCache);
@@ -1086,6 +1101,64 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
   // CORS open for the whole API surface (all JSON endpoints, open CORS).
   // The /badge/* route is an <img> asset and does not need CORS.
   app.use('/api/v1/*', cors({ origin: '*' }));
+  app.post('/api/v1/_aipay/webhook', async (c) => {
+    c.header('Cache-Control', 'no-store');
+    c.header('Cloudflare-CDN-Cache-Control', 'no-store');
+    const env = c.env;
+    const secret = env?.AIPAY_WEBHOOK_SECRET;
+    if (!secret?.trim() || !env?.AIPAY_API_KEY?.trim()) {
+      return c.json({ error: 'webhook_unavailable' }, 503);
+    }
+
+    const maxBytes = 16_384; // Keep aligned with the verifier's raw-byte limit.
+    const request = c.req.raw;
+    if (Number(request.headers.get('Content-Length')) > maxBytes) {
+      return c.json({ error: 'payload_too_large' }, 413);
+    }
+    if (!request.body) return c.json({ error: 'invalid_webhook' }, 400);
+
+    // Content-Length is only an early rejection hint; enforce the actual size
+    // while reading and authenticate the original bytes, not re-encoded JSON.
+    const raw = new Uint8Array(maxBytes);
+    let size = 0;
+    try {
+      const reader = request.body.getReader();
+      try {
+        for (;;) {
+          const chunk = await reader.read();
+          if (chunk.done) break;
+          if (chunk.value.byteLength > maxBytes - size) {
+            void reader.cancel().catch(() => undefined);
+            return c.json({ error: 'payload_too_large' }, 413);
+          }
+          raw.set(chunk.value, size);
+          size += chunk.value.byteLength;
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    } catch {
+      return c.json({ error: 'invalid_webhook' }, 400);
+    }
+
+    try {
+      const result = await applyAipayWebhook(
+        dbOf(c, overrides), raw.subarray(0, size), request.headers, secret,
+        (reference) => getAipayOrder(env, reference),
+      );
+      if (result === 'invalid') return c.json({ error: 'invalid_webhook' }, 400);
+      if (result === 'ignored') return c.json({ ok: true, ignored: true }, 202);
+      return c.json({ ok: true, result });
+    } catch {
+      return c.json({ error: 'webhook_unavailable' }, 503);
+    }
+  });
+  app.use('/api/v1/owners/*', async (c, next) => {
+    c.header('Cache-Control', 'no-store');
+    c.header('Cloudflare-CDN-Cache-Control', 'no-store');
+    c.header('Referrer-Policy', 'no-referrer');
+    await next();
+  });
 
   // -------------------------------------------------------------------------
   // Directory
@@ -1360,12 +1433,9 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
       weight: LAYER_MAX[layer.id],
       checks: layer.checks,
     }));
-    const grades = GRADE_THRESHOLDS.map((t) => ({
-      min: t.min,
-      grade: t.grade,
-      color: GRADE_COLORS[t.grade],
-    }));
-    return c.json({ standard: 'AFR', version: AFR_VERSION, layers, grades });
+    const { grades, ...scoring } = AFR_METHOD;
+    // Keep the legacy shape for existing clients. Only scoring describes executed rules.
+    return c.json({ standard: 'AFR', version: AFR_VERSION, layers, grades, legacyLayersDeprecated: true, scoring });
   });
 
   // -------------------------------------------------------------------------
@@ -1735,35 +1805,37 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
   // -------------------------------------------------------------------------
 
   // POST /api/v1/_internal/sync — run one page of the D1 sync immediately.
-  // Called by the site-rebuild workflow right after it publishes new static
-  // data, so the static build and D1 always carry the same snapshot set
-  // (the 04:30 UTC cron remains as a fallback). Body: { date?, offset?, limit? }
-  // — one invocation may only fetch ~44 snapshots (free-plan subrequest cap),
-  // so the caller pages with {offset} until nextOffset is null.
+  // Release caller supplies an immutable data commit and pages by offset.
   app.post('/api/v1/_internal/sync', async (c) => {
     const token = c.env?.QUEUE_TOKEN;
     if (!token || c.req.header('x-queue-token') !== token) {
       return c.json({ error: 'unauthorized' }, 401);
     }
-    let body: { date?: string; offset?: number; limit?: number } = {};
+    let body: { date?: string; offset?: number; limit?: number; dataSha?: string };
     try {
-      const parsed = await c.req.json<{ date?: string; offset?: number; limit?: number }>();
-      if (parsed && typeof parsed === 'object') body = parsed;
+      body = await c.req.json();
     } catch {
-      // no/invalid body → defaults (latest date, first page)
+      return c.json({ error: 'invalid_json' }, 400);
     }
-    if (body.date !== undefined && !/^\d{4}\/\d{2}\/\d{2}$/.test(body.date)) {
+    if (typeof body?.dataSha !== 'string' || !DATA_COMMIT_RE.test(body.dataSha)) {
+      return c.json({ error: 'invalid_data_sha' }, 400);
+    }
+    if (typeof body.date !== 'string' || !/^\d{4}\/\d{2}\/\d{2}$/.test(body.date)) {
       return c.json({ error: 'invalid_date', message: 'date must be YYYY/MM/DD' }, 400);
+    }
+    if ((body.offset !== undefined && (!Number.isSafeInteger(body.offset) || body.offset < 0)) ||
+        (body.limit !== undefined && (!Number.isSafeInteger(body.limit) || body.limit < 1))) {
+      return c.json({ error: 'invalid_pagination' }, 400);
     }
     try {
       const result = await runDailySync(
         {
-          db: createD1Db(c.env.DB),
-          fetchImpl: githubAuthedFetch(c.env.GITHUB_DISPATCH_TOKEN, fetch),
+          db: dbOf(c, overrides),
+          fetchImpl: githubAuthedFetch(c.env.GITHUB_DISPATCH_TOKEN, overrides.fetchImpl ?? fetch),
         },
-        { date: body.date, offset: body.offset, limit: body.limit },
+        { date: body.date, offset: body.offset, limit: body.limit, dataSha: body.dataSha },
       );
-      if (!result) return c.json({ ok: true, date: null, nextOffset: null, note: 'no_snapshot_date' });
+      if (!result) throw new Error('requested sync date did not run');
       // Owner notifications run after a successful sync: the sync may have
       // moved the grade of a site and the owner wants to know. The event is
       // recorded here (cheap, local); the mail itself is delivered off the
@@ -1772,8 +1844,10 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
       await enqueueOwnerNotifications(db, c.env);
       scheduleOwnerNotificationDrain(c, db, c.env, overrides.fetchImpl ?? fetch);
       return c.json({
-        ok: true,
+        ok: result.errors.length === 0,
         date: result.date,
+        dataSha: body.dataSha,
+        offset: body.offset ?? 0,
         listed: result.listed,
         skipped: result.skipped,
         sites: result.sitesUpserted,
@@ -1782,6 +1856,7 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
         nextOffset: result.nextOffset,
         errors: result.errors.length,
         firstError: result.errors[0] ?? null,
+        failedPaths: result.errors.map((error) => error.path),
       });
     } catch (err) {
       console.error('internal sync failed:', err);
@@ -2028,8 +2103,8 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     return c.json({ verified: false, checks: results });
   });
 
-  // POST /api/v1/claims {domain, statement} — statement from a verified owner.
-  // Rows land as pending; statements are published after editorial review.
+  // POST /api/v1/claims {domain, statement} — requires the confirmed
+  // mailbox management token of that exact domain. Rows land as pending.
   app.post('/api/v1/claims', async (c) => {
     let body: unknown;
     try {
@@ -2053,15 +2128,19 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
       return c.json({ error: 'invalid_statement', message: 'statement must be 1-200 characters' }, 400);
     }
 
+    const token = bearerToken(c);
+    if (!token) return c.json({ error: 'unauthorized' }, 401);
     const db = dbOf(c, overrides);
-    const site = await db
-      .prepare('SELECT verified FROM sites WHERE domain = ?')
-      .get<{ verified: number | null }>(domain);
-    const owner = await db
-      .prepare('SELECT domain FROM owners WHERE domain = ?')
-      .get<{ domain: string }>(domain);
-    // Unknown to both tables → 404; listed but unverified → 403. A recorded
-    // owner row also counts as verified (either signal is enough).
+    const tokenHash = await hashToken(token);
+    const mailbox = await db
+      .prepare('SELECT domain FROM owner_emails WHERE domain = ? AND manage_token_hash = ? AND verified_at IS NOT NULL')
+      .get<{ domain: string }>(domain, tokenHash);
+    if (!mailbox) return c.json({ error: 'unauthorized' }, 401);
+
+    const [site, owner] = await Promise.all([
+      db.prepare('SELECT verified FROM sites WHERE domain = ?').get<{ verified: number | null }>(domain),
+      db.prepare('SELECT domain FROM owners WHERE domain = ?').get<{ domain: string }>(domain),
+    ]);
     if (!site && !owner) return c.json({ error: 'unknown_domain' }, 404);
     if (!(site?.verified === 1 || owner)) return c.json({ error: 'not_verified' }, 403);
 
@@ -2075,11 +2154,15 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
         { 'Retry-After': String(retryAfter) },
       );
     }
+    // Recheck the mailbox at insertion so a rotated token cannot write a claim
+    // after the authorization read. A rejected request never spends quota.
+    const result = await db
+      .prepare(`INSERT INTO claims (domain, statement, status, created_at)
+        SELECT domain, ?, 'pending', ? FROM owner_emails
+        WHERE domain = ? AND manage_token_hash = ? AND verified_at IS NOT NULL`)
+      .run(statement, new Date().toISOString(), domain, tokenHash);
+    if (result.changes !== 1) return c.json({ error: 'unauthorized' }, 401);
     await limits.domain.consume(domain);
-
-    await db
-      .prepare(`INSERT INTO claims (domain, statement, status, created_at) VALUES (?, ?, 'pending', ?)`)
-      .run(domain, statement, new Date().toISOString());
     return c.json({ status: 'pending' }, 201);
   });
 
@@ -2223,10 +2306,8 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
   // (AES-256-GCM); the challenge proves that the requester controls the
   // domain, the magic link proves that the requester controls the mailbox.
   //
-  // Order matters: validation → configuration → challenge → domain proof →
-  // existing mailbox → rate limit → write. Every check that can fail runs
-  // before the limiter is consumed, so a rejected request never burns the
-  // domain or IP budget.
+  // Validate the requester and challenge before consuming the send budget.
+  // Delivery attempts are counted even when the provider rejects them.
   app.post('/api/v1/owners/email', async (c) => {
     let body: unknown;
     try {
@@ -2314,10 +2395,8 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     // address owns the management token, and replacing it would hand the
     // notification channel to whoever published a challenge last.
     //
-    // The holder of that token may re-confirm the mailbox (the "re-confirm"
-    // path): the write below resets the mailbox to the unconfirmed state,
-    // voids the old token and mails a fresh confirmation link. The token is
-    // compared by hash — only the hash is stored.
+    // The holder may re-confirm by staging a new address. The existing
+    // address and token stay active until confirmation succeeds.
     const existing = await db
       .prepare('SELECT verified_at, manage_token_hash FROM owner_emails WHERE domain = ?')
       .get<{ verified_at: string | null; manage_token_hash: string | null }>(canonical);
@@ -2359,69 +2438,52 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     const expiresAt = new Date(now.getTime() + EMAIL_VERIFY_TTL_MS).toISOString();
     const { cipher, hash } = await encryptEmail(email, secret);
 
-    // The challenge is single-use: it is consumed together with the mailbox
-    // write, so it cannot be replayed for a second registration.
-    await db
-      .prepare('UPDATE email_challenges SET used_at = ? WHERE id = ?')
-      .run(now.toISOString(), pending.id);
-    await db
-      .prepare(
-        `INSERT INTO owner_emails
-           (domain, email_cipher, email_hash, verified_at, verify_token_hash, verify_expires_at, manage_token_hash, notify, created_at, updated_at)
-         VALUES (?, ?, ?, NULL, ?, ?, NULL, 1, ?, ?)
-         ON CONFLICT(domain) DO UPDATE SET
-           email_cipher = excluded.email_cipher,
-           email_hash = excluded.email_hash,
-           verified_at = NULL,
-           verify_token_hash = excluded.verify_token_hash,
-           verify_expires_at = excluded.verify_expires_at,
-           manage_token_hash = NULL,
-           updated_at = excluded.updated_at`,
-      )
-      .run(
-        canonical,
-        cipher,
-        hash,
-        await hashToken(token),
-        expiresAt,
-        now.toISOString(),
-        now.toISOString(),
-      );
-
+    const resendKey = c.env?.RESEND_API_KEY;
+    if (!resendKey) return c.json({ error: 'email_not_configured', retryable: true }, 503);
     for (const [key, limiter] of tiers) await limiter.consume(key);
 
-    // The magic link is the second lock: only the holder of the mailbox can
-    // confirm it and receive the management token.
     const verifyUrl = magicLinkUrl(baseUrlOf(c), token);
-    const resendKey = c.env?.RESEND_API_KEY;
-    if (!resendKey) {
-      // Without a mail provider the mailbox is still stored — the link is
-      // handed back to the caller so the flow can still be completed (same
-      // convention as the domain-verification token).
-      return c.json({ status: 'stored', emailed: false, verifyUrl });
-    }
-
     const mail = renderVerificationEmail({ domain: canonical, verifyUrl });
-    const sent = await sendEmailViaResend(
+    const sent = await sendEmailViaResend({
+      apiKey: resendKey,
+      from: fromOf(c),
+      to: email,
+      subject: mail.subject,
+      text: mail.text,
+      html: mail.html,
+      idempotencyKey: `email-verify:${canonical}:${await hashToken(token)}`,
+    }, overrides.fetchImpl ?? fetch);
+    if (!sent.ok) return c.json({ error: 'email_delivery_failed', retryable: true }, 502);
+
+    const stamp = new Date().toISOString();
+    const verifyHash = await mailboxConfirmationHash(token);
+    const bearer = bearerToken(c);
+    // D1 executes both writes in one transaction. The upsert checks the live
+    // challenge and authorization again after the provider round trip.
+    const [written] = await db.batch([
       {
-        apiKey: resendKey,
-        from: fromOf(c),
-        to: email,
-        subject: mail.subject,
-        text: mail.text,
-        html: mail.html,
-        // The token is part of the key: a retried registration mails a new
-        // link, the same registration never mails twice.
-        idempotencyKey: `email-verify:${canonical}:${token}`,
+        sql: `INSERT INTO owner_emails
+           (domain, email_cipher, email_hash, verify_token_hash, verify_expires_at, notify, created_at, updated_at)
+         SELECT ?, ?, ?, ?, ?, 1, ?, ? FROM email_challenges
+         WHERE id = ? AND used_at IS NULL AND expires_at > ?
+         ON CONFLICT(domain) DO UPDATE SET
+           email_cipher = CASE WHEN owner_emails.verified_at IS NULL THEN excluded.email_cipher ELSE owner_emails.email_cipher END,
+           email_hash = CASE WHEN owner_emails.verified_at IS NULL THEN excluded.email_hash ELSE owner_emails.email_hash END,
+           pending_email_cipher = CASE WHEN owner_emails.verified_at IS NOT NULL THEN excluded.email_cipher END,
+           pending_email_hash = CASE WHEN owner_emails.verified_at IS NOT NULL THEN excluded.email_hash END,
+           verify_token_hash = excluded.verify_token_hash,
+           verify_expires_at = excluded.verify_expires_at,
+           updated_at = excluded.updated_at
+         WHERE owner_emails.verified_at IS NULL OR owner_emails.manage_token_hash = ?`,
+        params: [canonical, cipher, hash, verifyHash, expiresAt, stamp, stamp, pending.id, stamp, bearer ? await hashToken(bearer) : null],
       },
-      overrides.fetchImpl ?? fetch,
-    );
-    if (!sent.ok) {
-      // The mailbox is stored; the confirmation mail did not go out. The error
-      // is redacted by sendEmailViaResend (no key, no full address).
-      console.warn(`owner email: confirmation mail failed (${sent.error ?? 'unknown error'})`);
-      return c.json({ status: 'stored', emailed: false, verifyUrl });
-    }
+      {
+        sql: `UPDATE email_challenges SET used_at = ? WHERE id = ? AND used_at IS NULL
+              AND EXISTS (SELECT 1 FROM owner_emails WHERE domain = ? AND verify_token_hash = ?)`,
+        params: [stamp, pending.id, canonical, verifyHash],
+      },
+    ]);
+    if (!written) return c.json({ error: 'registration_state_changed' }, 409);
     return c.json({ status: 'sent', emailed: true });
   });
 
@@ -2434,20 +2496,9 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
   // when the mailbox was registered — but the new address has to prove
   // mailbox control once more, through the confirmation mail.
   //
-  // What the change does to the old address:
-  //   - its management token dies immediately (manage_token_hash = NULL), so
-  //     nobody can read or toggle the mailbox with it any more,
-  //   - the mailbox goes back to the unconfirmed state (verified_at = NULL),
-  //     and the score-change notifications stop for it: both the enqueue and
-  //     the drain require a confirmed mailbox, so the old address receives
-  //     nothing from now on,
-  //   - the notification preference (notify) is kept, so the new address
-  //     starts with the same setting once it is confirmed.
-  //
-  // Order matters: validation → configuration → human check → lock →
-  // same address → rate limit → write. Every check that can fail runs
-  // before the limiter is consumed, so a refused request never burns the
-  // domain or IP budget.
+  // Stage the new address after the mail provider accepts delivery. Keep
+  // the old address, management token and notification preference until
+  // the one-time confirmation promotes the new address.
   app.post('/api/v1/owners/email/change', async (c) => {
     let body: unknown;
     try {
@@ -2524,56 +2575,32 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     }
 
     const now = new Date();
-    // A fresh confirmation token for the new address; the old management
-    // token dies with the write.
     const token = buildMagicToken();
     const expiresAt = new Date(now.getTime() + EMAIL_VERIFY_TTL_MS).toISOString();
     const { cipher, hash } = await encryptEmail(email, secret);
-
-    await db
-      .prepare(
-        `UPDATE owner_emails
-         SET email_cipher = ?, email_hash = ?, verified_at = NULL,
-             verify_token_hash = ?, verify_expires_at = ?, manage_token_hash = NULL,
-             updated_at = ?
-         WHERE domain = ?`,
-      )
-      .run(cipher, hash, await hashToken(token), expiresAt, now.toISOString(), canonical);
-
+    const resendKey = c.env?.RESEND_API_KEY;
+    if (!resendKey) return c.json({ error: 'email_not_configured', retryable: true }, 503);
     for (const [key, limiter] of tiers) await limiter.consume(key);
 
-    // The magic link is the second lock again: only the holder of the NEW
-    // mailbox can confirm it and receive the new management token.
     const verifyUrl = magicLinkUrl(baseUrlOf(c), token);
-    const resendKey = c.env?.RESEND_API_KEY;
-    if (!resendKey) {
-      // Without a mail provider the mailbox is still stored — the link is
-      // handed back to the caller so the flow can still be completed (same
-      // convention as the domain-verification token).
-      return c.json({ status: 'stored', emailed: false, verifyUrl });
-    }
-
     const mail = renderVerificationEmail({ domain: canonical, verifyUrl });
-    const sent = await sendEmailViaResend(
-      {
-        apiKey: resendKey,
-        from: fromOf(c),
-        to: email,
-        subject: mail.subject,
-        text: mail.text,
-        html: mail.html,
-        // The token is part of the key: a retried change mails a new link,
-        // the same change never mails twice.
-        idempotencyKey: `email-verify:${canonical}:${token}`,
-      },
-      overrides.fetchImpl ?? fetch,
-    );
-    if (!sent.ok) {
-      // The mailbox is stored; the confirmation mail did not go out. The error
-      // is redacted by sendEmailViaResend (no key, no full address).
-      console.warn(`owner email: change confirmation mail failed (${sent.error ?? 'unknown error'})`);
-      return c.json({ status: 'stored', emailed: false, verifyUrl });
-    }
+    const sent = await sendEmailViaResend({
+      apiKey: resendKey,
+      from: fromOf(c),
+      to: email,
+      subject: mail.subject,
+      text: mail.text,
+      html: mail.html,
+      idempotencyKey: `email-verify:${canonical}:${await hashToken(token)}`,
+    }, overrides.fetchImpl ?? fetch);
+    if (!sent.ok) return c.json({ error: 'email_delivery_failed', retryable: true }, 502);
+
+    const result = await db.prepare(
+      `UPDATE owner_emails SET pending_email_cipher = ?, pending_email_hash = ?,
+          verify_token_hash = ?, verify_expires_at = ?
+        WHERE domain = ? AND verified_at IS NOT NULL AND manage_token_hash = ?`,
+    ).run(cipher, hash, await mailboxConfirmationHash(token), expiresAt, canonical, await hashToken(bearerToken(c)!));
+    if (!result.changes) return c.json({ error: 'unauthorized' }, 401);
     return c.json({ status: 'sent', emailed: true });
   });
 
@@ -2602,25 +2629,19 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
 
     const db = dbOf(c, overrides);
     const now = new Date();
-    const row = await db
-      .prepare(
-        `SELECT domain FROM owner_emails
-         WHERE verify_token_hash = ? AND verify_expires_at IS NOT NULL AND verify_expires_at > ?
-         LIMIT 1`,
-      )
-      .get<{ domain: string }>(await hashToken(token), now.toISOString());
-    if (!row) return c.json({ error: 'invalid_or_expired_token' }, 400);
-
-    // The management token is shown exactly once — only its hash is kept.
+    const stamp = now.toISOString();
     const manageToken = buildManageToken();
-    await db
-      .prepare(
-        `UPDATE owner_emails
-         SET verified_at = ?, verify_token_hash = NULL, verify_expires_at = NULL,
-             manage_token_hash = ?, updated_at = ?
-         WHERE domain = ?`,
-      )
-      .run(now.toISOString(), await hashToken(manageToken), now.toISOString(), row.domain);
+    const row = await db.prepare(
+      `UPDATE owner_emails
+        SET email_cipher = COALESCE(pending_email_cipher, email_cipher),
+            email_hash = COALESCE(pending_email_hash, email_hash),
+            pending_email_cipher = NULL, pending_email_hash = NULL,
+            verified_at = ?, verify_token_hash = NULL, verify_expires_at = NULL,
+            manage_token_hash = ?, updated_at = ?
+        WHERE verify_token_hash = ? AND verify_expires_at > ?
+        RETURNING domain`,
+    ).get<{ domain: string }>(stamp, await hashToken(manageToken), stamp, await mailboxConfirmationHash(token), stamp);
+    if (!row) return c.json({ error: 'invalid_or_expired_token' }, 400);
     return c.json({ verified: true, domain: row.domain, manageToken });
   });
 
@@ -2822,14 +2843,18 @@ export default {
     return app.fetch(request, env, ctx);
   },
 
-  /** Daily cron (wrangler.toml [triggers] crons): sync the newest snapshot
-   * from the data repo into D1. The Worker never scans — scanners run in
-   * GitHub Actions (scan.yml), which reports back via /api/v1/queue/:domain/done. */
+  /** Daily maintenance; releases separately own scan ingestion. */
   async scheduled(_controller: ScheduledController, env: WorkerEnv, ctx: ExecutionContext): Promise<void> {
+    if (env.AIPAY_RECONCILE_ENABLED === 'true' && env.AIPAY_API_KEY?.trim()) {
+      ctx.waitUntil(runAipayReconcileCron(createD1Db(env.DB), env).catch((error) => {
+        console.error('AIPAY reconciliation failed; checkpoint not advanced for failed page');
+        throw error;
+      }));
+    }
     ctx.waitUntil(
       (async () => {
         const db = createD1Db(env.DB);
-        await runDailySync({ db, fetchImpl: githubAuthedFetch(env.GITHUB_DISPATCH_TOKEN, fetch) });
+        // Releases own scan ingestion. A mutable branch sync could race a pinned release.
         // Score-change mails for the owners who asked for them (no-op when
         // the mail subsystem is not configured).
         await runOwnerNotifications(db, env, fetch);

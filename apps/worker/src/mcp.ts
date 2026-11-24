@@ -92,7 +92,7 @@ export const MCP_TOOLS: readonly McpTool[] = [
       'Search the afr.im directory of AI-friendliness ratings and get graded sites (A–F) ' +
       'with their own name and Tranco rank, ranked by score descending. Only public, ' +
       'reproducible scan results are returned — ' +
-      'pending (unscanned) sites are excluded.',
+      'Pending sites without sufficient rating evidence are excluded.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -120,7 +120,7 @@ export const MCP_TOOLS: readonly McpTool[] = [
     name: 'grade_distribution',
     description:
       'Get directory-wide totals for afr.im: overall site count, verified count, pending ' +
-      '(unscanned) count, average score and per-grade counts A–F. Derived from the same public, ' +
+      '(insufficient rating evidence) count, average score and per-grade counts A–F. Derived from the same public, ' +
       'reproducible scan results as every published rating.',
     inputSchema: {
       type: 'object',
@@ -190,6 +190,8 @@ interface RatingRow extends Row {
   rank: number | null;
   strategy_tag: string | null;
   scanned_at: string | null;
+  status: string;
+  engine_version: string | null;
 }
 
 interface SearchRow extends Row {
@@ -218,8 +220,9 @@ async function toolSiteRating(db: Db, args: Record<string, unknown>): Promise<un
   if (!domain) throw new ToolFailure('site not found');
   const site = await db
     .prepare(
-      `SELECT s.*, c.slug AS category_slug FROM sites s
-       LEFT JOIN categories c ON c.id = s.category_id WHERE s.domain = ?`,
+      `SELECT s.*, (SELECT engine_version FROM scans WHERE domain = s.domain
+                       ORDER BY started_at DESC, id DESC LIMIT 1) AS engine_version
+       FROM sites s WHERE s.domain = ?`,
     )
     .get<RatingRow>(domain);
   if (!site) throw new ToolFailure('site not found');
@@ -245,6 +248,9 @@ async function toolSiteRating(db: Db, args: Record<string, unknown>): Promise<un
     rank: site.rank ?? null,
     strategyTag: site.strategy_tag ?? null,
     scannedAt: site.scanned_at ?? null,
+    status: site.status,
+    engineVersion: site.engine_version ?? null,
+    reportUrl: `https://afr.im/site/${encodeURIComponent(site.domain)}/`,
     views,
   };
 }

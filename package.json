@@ -13,5 +13,8 @@
   "scripts": {
     "test": "node --test packages/*/test/*.test.ts scripts/*.test.mjs",
     "test:afr": "node --test packages/afr/test/*.test.ts"
+  },
+  "devDependencies": {
+    "ignore": "5.3.2"
   }
 }

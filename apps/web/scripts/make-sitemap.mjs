@@ -30,12 +30,12 @@ import {
 } from './sitemap-contract.mjs';
 
 const webDir = dirname(dirname(fileURLToPath(import.meta.url)));
-const publicDir = join(webDir, 'public');
+const publicDir = process.argv[2] ?? join(webDir, 'public');
 const shardDir = join(publicDir, SHARD_DIR);
 
 const LASTMOD = new Date().toISOString().slice(0, 10); // the day this file is generated
 
-const sites = siteDomains(webDir);
+const sites = siteDomains(webDir, { required: true });
 const staticPaths = [...TOP, ...CATS.map((s) => `/c/${s}`)];
 const sitePaths = sites.map((d) => `/site/${d}`);
 

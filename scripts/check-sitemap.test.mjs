@@ -1,6 +1,5 @@
-// scripts/check-sitemap.test.mjs — the sitemap guard must pass on the current
-// tree, and it must actually fail when the contract is broken (a guard that
-// cannot fail is worse than none).
+// Use fixed fixtures for unit tests. sync-site runs the same guard against
+// the generated catalog and the assets it will deploy.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -49,9 +48,11 @@ test('the guard passes on a well-formed tree', () => {
   });
 });
 
-test('the guard passes on the repository tree', () => {
-  const { failures } = runChecks();
-  assert.deepEqual(failures, []);
+test('an otherwise valid sitemap from an older catalog is rejected for release', () => {
+  withTree(({ dir }) => {
+    const { failures } = runChecks({ publicDir: dir, sites: [...SITES, 'delta.com'] });
+    assert.ok(failures.some((f) => f.includes('/site/delta.com/') && f.includes('missing from')));
+  });
 });
 
 test('a missing shard is caught', () => {

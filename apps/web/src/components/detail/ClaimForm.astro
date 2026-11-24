@@ -1,9 +1,10 @@
 ---
-// ClaimForm — owner statement form (≤200 chars), right column. Rendered
+// ClaimForm — verified owner statement form (≤200 chars), right column. Rendered
 // only when the site is verified or already carries a published claim (the
 // published text itself keeps rendering through ClaimBlock — read path
 // untouched). Submit → POST /api/v1/claims:
 //   201 → form replaced by the "submitted — published after review" note
+//   401 → prompt to confirm the mailbox or restore its management token
 //   403 → inline hint + link that scrolls to the VerifyPanel
 //   400 / 5xx / network → inline error, form stays usable
 // Live n/200 counter; aria-live status; no alert/toast.
@@ -34,6 +35,11 @@ const notVerifiedText = uiText(L.ui, 'claimNotVerified', loc);
 const invalidText = uiText(L.ui, 'claimInvalid', loc);
 const errorText = uiText(L.ui, 'claimError', loc);
 const verifyCta = uiText(L.ui, 'verifyCta', loc);
+const manageCta = T('Manage owner mailbox', '管理站主邮箱');
+const unauthorizedText = T(
+  'Confirm the owner mailbox or paste its current management token before submitting.',
+  '请先确认站主邮箱，或粘贴该邮箱当前的管理令牌，再提交声明。',
+);
 ---
 
 <form
@@ -46,7 +52,7 @@ const verifyCta = uiText(L.ui, 'verifyCta', loc);
   data-not-verified={notVerifiedText}
   data-invalid={invalidText}
   data-error={errorText}
-  data-verify-cta={verifyCta}
+  data-unauthorized={unauthorizedText}
   data-locale={loc}
   hidden={!visible}
   aria-labelledby="claim-form-title"
@@ -75,6 +81,7 @@ const verifyCta = uiText(L.ui, 'verifyCta', loc);
   <p class="cf-hint" data-claim-hint hidden>
     <span data-claim-hint-text></span>
     <a href="#verify-panel" data-claim-verify-link>{verifyCta} →</a>
+    <a href="#owner-mailbox-title" data-claim-mailbox-link hidden>{manageCta} →</a>
   </p>
 </form>
 
@@ -223,6 +230,8 @@ const verifyCta = uiText(L.ui, 'verifyCta', loc);
     const status = form.querySelector<HTMLElement>('[data-claim-status]');
     const hint = form.querySelector<HTMLElement>('[data-claim-hint]');
     const hintText = form.querySelector<HTMLElement>('[data-claim-hint-text]');
+    const verify = form.querySelector<HTMLAnchorElement>('[data-claim-verify-link]');
+    const mailbox = form.querySelector<HTMLAnchorElement>('[data-claim-mailbox-link]');
     const doneBox = document.querySelector<HTMLElement>('[data-claim-done]');
 
     const attr = (name: string) => form.getAttribute(name) ?? '';
@@ -232,6 +241,15 @@ const verifyCta = uiText(L.ui, 'verifyCta', loc);
       status.textContent = msg;
       if (tone) status.dataset.tone = tone;
       else delete status.dataset.tone;
+    }
+
+    function showHint(needsToken: boolean) {
+      const msg = attr(needsToken ? 'data-unauthorized' : 'data-not-verified');
+      if (hintText) hintText.textContent = msg;
+      if (verify) verify.hidden = needsToken;
+      if (mailbox) mailbox.hidden = !needsToken;
+      if (hint) hint.hidden = false;
+      say(msg, 'error');
     }
 
     function paintCount() {
@@ -256,6 +274,13 @@ const verifyCta = uiText(L.ui, 'verifyCta', loc);
         return;
       }
 
+      let token = '';
+      try { token = localStorage.getItem(`afr-owner-mail-${domain}`) ?? ''; } catch { /* storage blocked */ }
+      if (!token) {
+        showHint(true);
+        return;
+      }
+
       btn.disabled = true;
       btn.textContent = attr('data-label-busy');
       say('');
@@ -263,7 +288,7 @@ const verifyCta = uiText(L.ui, 'verifyCta', loc);
 
       fetch('/api/v1/claims', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        headers: { 'content-type': 'application/json', accept: 'application/json', authorization: `Bearer ${token}` },
         body: JSON.stringify({ domain, statement }),
       })
         .then((r) => readJson(r).then((body) => ({ r, body })))
@@ -274,11 +299,8 @@ const verifyCta = uiText(L.ui, 'verifyCta', loc);
             if (doneBox) doneBox.hidden = false;
             return;
           }
-          if (r.status === 403) {
-            /* not verified — inline hint + scroll link to the VerifyPanel */
-            if (hintText) hintText.textContent = attr('data-not-verified');
-            if (hint) hint.hidden = false;
-            say(attr('data-not-verified'), 'error');
+          if (r.status === 401 || r.status === 403) {
+            showHint(r.status === 401);
             btn.disabled = false;
             btn.textContent = attr('data-label-idle');
             return;

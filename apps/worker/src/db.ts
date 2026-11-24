@@ -28,6 +28,7 @@ export interface Prepared {
 
 export interface Db {
   prepare(sql: string): Prepared;
+  batch(writes: { sql: string; params: SqlParam[] }[]): Promise<number[]>;
   /** Run one or more statements (schema.sql in tests) */
   exec(sql: string): Promise<void>;
 }
@@ -41,11 +42,12 @@ export interface D1StatementLike {
   bind(...values: SqlParam[]): D1StatementLike;
   all<T = Row>(): Promise<{ results: T[] }>;
   first<T = Row>(): Promise<T | null>;
-  run(): Promise<{ meta?: { last_row_id?: number }; changes?: number }>;
+  run(): Promise<{ meta?: { changes?: number; last_row_id?: number }; changes?: number; lastInsertRowid?: number }>;
 }
 
 /** Structural view of D1Database — satisfied by the `DB` binding */
 export interface D1Like {
+  batch?(writes: D1StatementLike[]): Promise<{ meta: { changes: number } }[]>;
   prepare(sql: string): D1StatementLike;
   /** Multi-statement execution (D1 exposes `exec` for raw SQL batches) */
   exec(sql: string): Promise<unknown>;
@@ -74,6 +76,11 @@ export function createD1Db(d1: D1Like): Db {
           };
         },
       };
+    },
+    async batch(writes) {
+      if (!d1.batch) throw new Error('D1 atomic batch unavailable');
+      const results = await d1.batch(writes.map(({ sql, params }) => d1.prepare(sql).bind(...params)));
+      return results.map(({ meta }) => meta.changes);
     },
     async exec(sql: string): Promise<void> {
       await d1.exec(sql);
@@ -117,6 +124,17 @@ export function createSqliteDb(handle: SqliteHandleLike): Db {
           };
         },
       };
+    },
+    async batch(writes) {
+      handle.exec('BEGIN');
+      try {
+        const changes = writes.map(({ sql, params }) => Number(handle.prepare(sql).run(...params).changes));
+        handle.exec('COMMIT');
+        return changes;
+      } catch (error) {
+        handle.exec('ROLLBACK');
+        throw error;
+      }
     },
     async exec(sql: string): Promise<void> {
       handle.exec(sql);

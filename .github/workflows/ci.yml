@@ -3,6 +3,10 @@ name: ci
 on:
   push:
   pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -12,6 +16,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      # Zero dependencies: the AFR engine runs with Node's built-in test runner + native TS type stripping
-      - name: AFR engine unit tests
-        run: node --test packages/afr/test/*.test.ts
+      - name: Install dependencies
+        run: npm ci
+      - name: Root package and publishing-tool tests
+        run: npm test
+      - name: API Worker tests
+        run: npm test --workspace apps/worker
+      - name: Mail Worker tests
+        run: node --test apps/mail-worker/test/*.test.ts
+      - name: Check OpenAPI JSON
+        run: node -e 'JSON.parse(require("fs").readFileSync("apps/web/public/openapi.json", "utf8"))'

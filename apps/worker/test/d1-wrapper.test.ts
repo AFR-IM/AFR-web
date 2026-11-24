@@ -18,6 +18,32 @@ function fakeD1(runResult: Record<string, unknown>): D1Like {
   };
 }
 
+describe('createD1Db batch()', () => {
+  it('binds each statement and sends all writes in a single D1 batch', async () => {
+    const bound: Array<[string, ...unknown[]]> = [];
+    const d1 = fakeD1({});
+    const originalPrepare = d1.prepare;
+    d1.prepare = (sql) => {
+      const statement = originalPrepare(sql);
+      statement.bind = (...params) => {
+        bound.push([sql, ...params]);
+        return statement;
+      };
+      statement.run = async () => assert.fail('writes must use the batch');
+      return statement;
+    };
+    d1.batch = async (statements) => {
+      assert.equal(statements.length, 2);
+      return [{ meta: { changes: 1 } }, { meta: { changes: 0 } }];
+    };
+    assert.deepEqual(await createD1Db(d1).batch([
+      { sql: 'UPDATE a SET value = ?', params: ['example'] },
+      { sql: 'UPDATE b SET value = ?', params: [null] },
+    ]), [1, 0]);
+    assert.deepEqual(bound, [['UPDATE a SET value = ?', 'example'], ['UPDATE b SET value = ?', null]]);
+  });
+});
+
 describe('createD1Db run() result mapping', () => {
   it('reads changes from meta (real D1 shape)', async () => {
     const db = createD1Db(fakeD1({ meta: { changes: 3, last_row_id: 7 }, results: [] }));

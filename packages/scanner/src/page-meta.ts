@@ -70,7 +70,7 @@ export interface PageMeta {
 export function extractPageTitle(body: unknown): string | undefined {
   if (typeof body !== 'string') return undefined;
   const m = body.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-  if (!m) return undefined;
+  if (!m?.[1]) return undefined;
   const text = m[1]
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')

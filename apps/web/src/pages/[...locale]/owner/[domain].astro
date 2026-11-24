@@ -1,0 +1,53 @@
+---
+import Base from '../../../layouts/Base.astro';
+import VerifyPanel from '../../../components/detail/VerifyPanel.astro';
+import OwnerMailbox from '../../../components/detail/OwnerMailbox.astro';
+import ClaimForm from '../../../components/detail/ClaimForm.astro';
+import { loadRuntimeDetail } from '../../../data/runtime-detail.ts';
+import { pathFor, toLocale } from '../../../i18n/loader.ts';
+
+export const prerender = false;
+
+const locale = toLocale(Astro.params.locale);
+const zh = locale === 'zh-CN';
+const domain = Astro.params.domain ?? '';
+const site = await loadRuntimeDetail(
+  domain,
+  Astro.locals.runtime as unknown as Parameters<typeof loadRuntimeDetail>[1],
+  Astro.url.origin,
+);
+const available = site && !site.delistedNote;
+const title = zh ? '站主管理' : 'Site owner';
+
+Astro.response.headers.set('Cache-Control', 'no-store');
+Astro.response.headers.set('cloudflare-cdn-cache-control', 'no-store');
+Astro.response.headers.set('X-Robots-Tag', 'noindex, nofollow');
+if (!available) Astro.response.status = 404;
+---
+
+<Base title={title}>
+  <section class="owner-workspace">
+    <h1>{title}{available && ` · ${site.domain}`}</h1>
+    {available ? (
+      <>
+        <p>{zh ? '验证域名并确认邮箱后，可以管理评分通知、换绑邮箱和提交站主声明。' : 'Verify your domain and confirm your email to manage score notifications, change your mailbox, and submit a site statement.'}</p>
+        <a href={pathFor(locale, `/site/${site.domain}/`)}>{zh ? '查看公开报告' : 'View public report'}</a>
+        <VerifyPanel domain={site.domain} locale={locale} verified={!!site.verified} />
+        <OwnerMailbox domain={site.domain} locale={locale} />
+        <ClaimForm domain={site.domain} locale={locale} visible={!!site.verified || !!site.claim} />
+      </>
+    ) : (
+      <p>{zh ? '此站点当前没有可用的站主管理页。' : 'Owner tools are unavailable for this site.'} <a href={pathFor(locale, '/search')}>{zh ? '查找站点' : 'Find a site'}</a></p>
+    )}
+  </section>
+</Base>
+
+<style>
+  .owner-workspace {
+    display: grid;
+    gap: 1rem;
+    max-width: 48rem;
+    padding: 2rem 1rem;
+    margin-inline: auto;
+  }
+</style>

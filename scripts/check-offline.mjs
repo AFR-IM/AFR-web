@@ -160,6 +160,9 @@ export function createWorkerSandbox(swSource) {
     async put(request, response) {
       store.set(key(request), response);
     },
+    async delete(request) {
+      return store.delete(key(request));
+    },
     async addAll(urls) {
       for (const url of urls) {
         store.set(url, new FakeResponse(`precached:${url}`, { status: 200 }));
@@ -218,11 +221,13 @@ export function createWorkerSandbox(swSource) {
     if (handlers.length === 0) throw new Error('the service worker registered no fetch handler');
     const request = { method: 'GET', url: `https://afr.im${path}`, mode };
     let answered = null;
+    const jobs = [];
     for (const handler of handlers) {
-      handler({ request, respondWith: (promise) => { answered = promise; } });
+      handler({ request, respondWith: (promise) => { answered = promise; }, waitUntil: (job) => jobs.push(job) });
     }
     if (!answered) return null;
     const response = await answered;
+    await Promise.all(jobs);
     return {
       status: response.status,
       body: typeof response.body === 'string' ? response.body : await response.text(),

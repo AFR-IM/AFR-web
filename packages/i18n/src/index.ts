@@ -262,24 +262,21 @@ const en: Catalog = {
     // replacing the mailbox of a confirmed domain (POST /api/v1/owners/email/change)
     ownerMailChangeTitle: 'Change the mailbox',
     ownerMailChangeDesc:
-      'The old address stops receiving notifications right away — a mail that is already on its way cannot be recalled. To keep it, register it again.',
+      'Your current address and management token stay active until you confirm the new address. Your notification preference is kept.',
     ownerMailChangeLabel: 'New email address',
     ownerMailChangeSubmit: 'Change the mailbox',
     ownerMailChangeBusy: 'Changing…',
     ownerMailChangeDone:
-      'The new address has to be confirmed — the old management token is already void. Paste the new token below once the mail arrived.',
+      'Confirmation mail sent to the new address. After confirming it, save the new token and paste it below. The old token stops working only after confirmation.',
     ownerMailErrSameEmail: 'This is already the registered mailbox.',
     ownerMailChecklistTitle: 'What AFR saw on your domain',
     ownerMailSentTitle: 'Confirmation mail sent',
     ownerMailSentBody:
       'Open the link in the mail. It shows your management token exactly once — save it right away.',
-    ownerMailStoredTitle: 'The mail channel is not configured',
-    ownerMailStoredBody:
-      'No mail could be sent, but the link below completes the confirmation just as well and works once.',
-    ownerMailVerifyLink: 'Finish the confirmation here',
+    ownerMailErrDelivery: 'The confirmation email could not be sent. Try again later.',
     ownerMailTokenLabel: 'Management token',
     ownerMailTokenHelp:
-      'The management token is shown once, lives only in this browser, and is lost when you change browser or clear the cache. Paste it here to restore the mailbox on another device.',
+      'The management token is shown only once. Save it securely, then paste it here to manage the mailbox on this or another device.',
     ownerMailTokenUse: 'Use this token',
     ownerMailTokenSaved: 'Management token saved in this browser.',
     ownerMailTokenInvalid: 'This management token is not valid — confirm the mailbox again.',
@@ -680,18 +677,16 @@ const zhCN: Catalog = {
     ownerMailChangeEmail: '换个邮箱',
     // 更换已确认域名的邮箱（POST /api/v1/owners/email/change）
     ownerMailChangeTitle: '更换邮箱',
-    ownerMailChangeDesc: '旧地址会立即停止接收通知——已在途的邮件无法追回。若想继续使用它，请重新登记。',
+    ownerMailChangeDesc: '确认新地址前，当前邮箱和管理令牌仍然有效。通知偏好会保留。',
     ownerMailChangeLabel: '新的邮箱地址',
     ownerMailChangeSubmit: '确认更换',
     ownerMailChangeBusy: '正在更换…',
-    ownerMailChangeDone: '新地址需要确认——旧管理令牌已立即失效。收到确认信后，请把新令牌粘贴到下方。',
+    ownerMailChangeDone: '确认信已发往新邮箱。确认后请保存新管理令牌，并将其粘贴到下方。旧令牌在确认后才会失效。',
     ownerMailErrSameEmail: '这已经是当前登记的邮箱。',
     ownerMailChecklistTitle: 'AFR 在你的域名上看到的情况',
     ownerMailSentTitle: '确认信已寄出',
     ownerMailSentBody: '打开邮件中的链接。它会一次性显示管理令牌——请立即保存。',
-    ownerMailStoredTitle: '邮件通道未配置',
-    ownerMailStoredBody: '无法发送邮件，但下面的确认链接作用相同，且只能使用一次。',
-    ownerMailVerifyLink: '在此完成确认',
+    ownerMailErrDelivery: '确认信未能发送，请稍后重试。',
     ownerMailTokenLabel: '管理令牌',
     ownerMailTokenHelp:
       '管理令牌只显示一次、只存在本机浏览器；换浏览器或清缓存即失效。可在此粘贴，在别的设备上恢复邮箱管理。',

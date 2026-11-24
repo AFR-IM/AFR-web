@@ -4,53 +4,69 @@
 # API endpoint is reachable without login. All crawlers are welcome; the 14
 # AI crawler families below are explicitly allowed (not left to the default).
 
+# The public directory is crawlable; private administration is excluded.
 # Search-type AI crawlers (fetch live/indexed content for AI answers)
 User-agent: OAI-SearchBot
 Allow: /
+Disallow: /admin
 
 User-agent: Claude-SearchBot
 Allow: /
+Disallow: /admin
 
 User-agent: PerplexityBot
 Allow: /
+Disallow: /admin
 
 User-agent: Googlebot
 Allow: /
+Disallow: /admin
 
 # Hybrid AI crawlers (user-triggered fetches + retrieval-augmented training)
 User-agent: ChatGPT-User
 Allow: /
+Disallow: /admin
 
 User-agent: Claude-User
 Allow: /
+Disallow: /admin
 
 User-agent: Perplexity-User
 Allow: /
+Disallow: /admin
 
 User-agent: Google-Extended
 Allow: /
+Disallow: /admin
 
 # Training AI crawlers (used as model training corpus)
 User-agent: GPTBot
 Allow: /
+Disallow: /admin
 
 User-agent: ClaudeBot
 Allow: /
+Disallow: /admin
 
 User-agent: CCBot
 Allow: /
+Disallow: /admin
 
 User-agent: Bytespider
 Allow: /
+Disallow: /admin
 
 User-agent: Amazonbot
 Allow: /
+Disallow: /admin
 
 User-agent: Applebot-Extended
 Allow: /
+Disallow: /admin
 
 # All other crawlers: same open policy
 User-agent: *
 Allow: /
+Disallow: /admin
 
 Sitemap: https://afr.im/sitemap.xml

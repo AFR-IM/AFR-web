@@ -6,6 +6,8 @@ import { describe, it } from 'node:test';
 import { GRADE_THRESHOLDS, LAYER_MAX } from '../../../packages/shared/src/index.ts';
 import { LAYER_NAMES } from '../src/method-checks.ts';
 import { createApp } from '../src/index.ts';
+import { ENGINE_VERSION, scoreAfr } from '../../../packages/afr/src/index.ts';
+import { AFR_METHOD } from '../../../packages/afr/src/method.ts';
 
 async function fetchMethod() {
   const app = createApp({});
@@ -15,6 +17,27 @@ async function fetchMethod() {
 }
 
 describe('GET /api/v1/method', () => {
+  it('publishes the shared scoring rules using engine evidence IDs and maxima', async () => {
+    const body = await fetchMethod();
+    const { grades, ...scoring } = AFR_METHOD;
+    assert.deepEqual(body.scoring, scoring);
+    assert.deepEqual(body.grades, grades);
+    assert.equal(body.legacyLayersDeprecated, true);
+    assert.equal(body.scoring.engineVersion, ENGINE_VERSION);
+    assert.equal(scoring.robotsFamilies.flatMap((f) => f.userAgents).length, 14);
+    const result = scoreAfr({
+      domain: 'example.com', fetchedAt: '2026-11-24T00:00:00Z', scannerVersion: 'fixture',
+      homepage: { status: 200, body: '<html></html>' }, llms: { status: 200, body: 'Hello' },
+    });
+    assert.equal(result.breakdown['l2.llms-family'], 9);
+    assert.equal(result.breakdown['l3.public-api'], 0);
+    for (const [i, layer] of scoring.layers.entries()) {
+      assert.deepEqual(layer.checks.map(({ id, points }) => [id, points]),
+        result.layers[i]!.checks.map(({ id, max }) => [id, max]));
+      assert.equal(layer.checks.reduce((n, c) => n + c.points, 0), layer.weight);
+      assert.ok(layer.checks.every(({ rule }) => rule.en && rule.zh));
+    }
+  });
   it('declares standard AFR with a version', async () => {
     const body = await fetchMethod();
     assert.equal(body.standard, 'AFR');

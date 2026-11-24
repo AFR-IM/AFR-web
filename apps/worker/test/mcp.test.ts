@@ -215,8 +215,31 @@ describe('POST /mcp — tools/call site_rating', () => {
       rank: 100,
       strategyTag: 'AI-Open',
       scannedAt: '2026-11-10T10:00:00.000Z',
+      status: 'active',
+      engineVersion: 'afr-1.0.0',
+      reportUrl: 'https://afr.im/site/example.com/',
       views: 0,
     });
+  });
+
+  it('distinguishes Pending and historical records in the same lookup tool', async () => {
+    const { db, raw } = openSeededDb();
+    raw.prepare("UPDATE sites SET status = 'declined' WHERE domain = 'example.com'").run();
+    const target = createApp({ db });
+    for (const [domain, grade, status, engineVersion] of [
+      ['example.com', 'A', 'declined', 'afr-1.0.0'],
+      ['pending.dev', 'Pending', 'active', null],
+    ]) {
+      const body = await rpc(target, {
+        jsonrpc: '2.0', id: 11, method: 'tools/call',
+        params: { name: 'site_rating', arguments: { domain } },
+      });
+      assert.equal(body.result.isError, false);
+      const result = JSON.parse(body.result.content[0].text);
+      assert.equal(result.grade, grade);
+      assert.equal(result.status, status);
+      assert.equal(result.engineVersion, engineVersion);
+    }
   });
 
   it('accepts assistant-friendly inputs like a full URL', async () => {

@@ -6,7 +6,7 @@
 // --offset skips the first N domains of the combined list, --limit keeps at most N after the offset.
 // Output: {out}/{domain}.json = { signals, afr } (local version of the spec's scans snapshot structure)
 
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { scoreAfr, type AfrResult } from '../../afr/src/index.ts';
 import type { ScanSignals } from '../../shared/src/index.ts';
@@ -19,6 +19,7 @@ interface CliOptions {
   concurrency: number;
   offset: number;
   limit: number;
+  successFile?: string;
 }
 
 export async function parseArgs(argv: string[]): Promise<CliOptions> {
@@ -27,6 +28,11 @@ export async function parseArgs(argv: string[]): Promise<CliOptions> {
     const a = argv[i]!;
     if (a === '--file') opts.domains.push(...(await readFileLines(argv[++i])));
     else if (a === '--out') opts.out = argv[++i]!;
+    else if (a === '--success-file') {
+      const file = argv[++i];
+      if (!file || file.startsWith('--')) throw new Error('--success-file requires a path');
+      opts.successFile = file;
+    }
     else if (a === '--concurrency') opts.concurrency = Math.max(1, Number(argv[++i]));
     else if (a === '--offset') opts.offset = Math.max(0, Number(argv[++i]) || 0);
     else if (a === '--limit') opts.limit = Math.max(0, Number(argv[++i]) || Infinity);
@@ -58,7 +64,7 @@ export interface SiteReport {
 /** Concurrently scan a batch of domains (concurrency ≤5, spec §4) */
 export async function scanBatch(
   domains: string[],
-  opts: { concurrency?: number; out?: string; onDone?: (r: SiteReport) => void } = {},
+  opts: { concurrency?: number; out?: string; scan?: typeof scanSite; onDone?: (r: SiteReport) => void } = {},
 ): Promise<{ reports: SiteReport[]; results: { domain: string; signals: ScanSignals; afr: AfrResult }[] }> {
   const concurrency = Math.min(opts.concurrency ?? 5, 5); // hard rule: concurrency never exceeds 5
   const queue = [...new Set(domains.map(normalizeDomain).filter(Boolean))];
@@ -73,7 +79,7 @@ export async function scanBatch(
       const domain = queue[cursor++]!;
       const t0 = Date.now();
       try {
-        const signals = await scanSite(domain);
+        const signals = await (opts.scan ?? scanSite)(domain);
         const afr = scoreAfr(signals);
         const report: SiteReport = {
           domain,
@@ -84,11 +90,18 @@ export async function scanBatch(
           requests: undefined,
           ms: Date.now() - t0,
         };
+        if (opts.out) {
+          const output = path.join(opts.out, `${domain}.json`);
+          const temporary = `${output}.${process.pid}.tmp`;
+          try {
+            await writeFile(temporary, JSON.stringify({ signals, afr }, null, 2));
+            await rename(temporary, output);
+          } finally {
+            await rm(temporary, { force: true });
+          }
+        }
         reports.push(report);
         results.push({ domain, signals, afr });
-        if (opts.out) {
-          await writeFile(path.join(opts.out, `${domain}.json`), JSON.stringify({ signals, afr }, null, 2));
-        }
         opts.onDone?.(report);
       } catch (err) {
         const report: SiteReport = { domain, ok: false, error: (err as Error).message, ms: Date.now() - t0 };
@@ -109,6 +122,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  if (opts.successFile) await rm(opts.successFile, { force: true });
   const { reports } = await scanBatch(opts.domains, {
     concurrency: opts.concurrency,
     out: opts.out,
@@ -122,6 +136,9 @@ async function main(): Promise<void> {
   });
 
   const ok = reports.filter((r) => r.ok);
+  if (opts.successFile) {
+    await writeFile(opts.successFile, ok.map((r) => `${r.domain}\n`).sort().join(''));
+  }
   console.log('\n── Summary ──');
   console.log(`Succeeded ${ok.length}/${reports.length}`);
   if (ok.length) {

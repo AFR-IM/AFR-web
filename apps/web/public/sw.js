@@ -4,9 +4,9 @@
  *   - install  → precache the app shell (offline fallback page + chrome)
  *   - activate → delete caches from older versions, then claim clients
  *   - fetch    → GET only, same-origin only:
- *       navigations        → network-first, cache fallback, /offline last resort
+ *       /api/*             → network only, friendly JSON offline error
+ *       navigations        → stale-while-revalidate, /offline last resort
  *       /data/*, /search-index.json → stale-while-revalidate
- *       /api/*             → network-first, friendly JSON offline error
  *       static artifacts  → cache-first (build output, icons, fonts, and the
  *                            machine-readable agent documents)
  *
@@ -19,7 +19,7 @@
  * rules (or refreshes a cached agent document) must bump it too.
  */
 
-const VERSION = 'afr-sw-v4';
+const VERSION = 'afr-sw-v5';
 const PRECACHE = `afr-precache-${VERSION}`;
 const RUNTIME = `afr-runtime-${VERSION}`;
 const OFFLINE_CANONICAL = '/offline';
@@ -63,42 +63,34 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-/** Stale-while-revalidate for pages: instant paint from cache, refresh in
- *  background. Data only changes on daily syncs, so a <=10 min stale copy is
- *  acceptable and repeat navigations stop hitting the origin entirely (T2). */
-async function staleWhileRevalidateNavigation(request) {
-  const cache = await caches.open(RUNTIME);
-  const cached = await cache.match(request);
-  const network = fetch(request)
-    .then((response) => {
-      if (response && response.ok && response.type === 'basic') {
-        cache.put(request, response.clone()).catch(() => {});
-      }
-      return response;
-    })
-    .catch(() => undefined);
-  if (cached) {
-    return cached; // serve stale now, `network` refreshes the cache above
-  }
-  {
-    const response = await network;
+/** Public pages paint from cache while refreshing. If the server stops
+ *  allowing storage or redirects this URL, evict any earlier copy. */
+function handleNavigation(event) {
+  const request = event.request;
+  const runtime = caches.open(RUNTIME);
+  const cached = runtime.then((cache) => cache.match(request)).catch(() => undefined);
+  const network = fetch(request).catch(() => undefined);
+  event.waitUntil(Promise.all([runtime, network]).then(async ([cache, response]) => {
+    if (!response) return;
+    if (response.redirected || response.type === 'opaqueredirect' || isNoStore(response)) {
+      await cache.delete(request);
+    } else if (response.ok && response.type === 'basic') {
+      await cache.put(request, response.clone());
+    }
+  }).catch(() => {}));
+  event.respondWith((async () => {
+    const response = await cached || await network;
     if (response) return response;
-    {
-    // Locale-aware fallback: the zh-CN offline page if this was a zh page,
-    // otherwise the canonical English offline page.
-    const url = new URL(request.url);
-    if (url.pathname.startsWith('/zh-CN')) {
-      const zh = await caches.match(OFFLINE_ZH);
+    const shell = await caches.open(PRECACHE);
+    if (new URL(request.url).pathname.startsWith('/zh-CN/')) {
+      const zh = await shell.match(OFFLINE_ZH);
       if (zh) return zh;
     }
-    const shell = await caches.match(OFFLINE_CANONICAL);
-    if (shell) return shell;
-    return new Response(
+    return (await shell.match(OFFLINE_CANONICAL)) || new Response(
       'You are offline and no cached copy is available yet. Reconnect and refresh.',
       { status: 503, headers: { 'content-type': 'text/plain; charset=utf-8' } },
     );
-    }
-  }
+  })());
 }
 
 /** Stale-while-revalidate for data payloads: answer fast, refresh in background. */
@@ -123,10 +115,8 @@ async function staleWhileRevalidate(request) {
 /** Network-first for the API: live data when online, friendly JSON error when not. */
 async function networkFirstApi(request) {
   try {
-    return await fetch(request);
+    return await fetch(request, { cache: 'no-store' });
   } catch {
-    const cached = await caches.match(request);
-    if (cached) return cached;
     return new Response(
       JSON.stringify({
         error: 'offline',
@@ -136,6 +126,10 @@ async function networkFirstApi(request) {
       { status: 503, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } },
     );
   }
+}
+
+function isNoStore(response) {
+  return /(?:^|,)\s*no-store(?:\s*(?:,|$))/i.test(response.headers.get('cache-control') || '');
 }
 
 /** Cache-first for immutable static artifacts: content-hashed build output,
@@ -231,16 +225,17 @@ self.addEventListener('fetch', (event) => {
 
   const path = new URL(request.url).pathname;
 
+  if (path === '/api' || path.startsWith('/api/')) {
+    event.respondWith(networkFirstApi(request));
+    return;
+  }
+  if (/^\/(?:zh-CN\/)?(?:admin|owner)(?:\/|$)/.test(path)) return;
   if (request.mode === 'navigate') {
-    event.respondWith(staleWhileRevalidateNavigation(request));
+    handleNavigation(event);
     return;
   }
   if (path.startsWith('/data/') || path === '/search-index.json') {
     event.respondWith(staleWhileRevalidate(request));
-    return;
-  }
-  if (path.startsWith('/api/')) {
-    event.respondWith(networkFirstApi(request));
     return;
   }
   // Static assets (hashed build output, icons, fonts, agent documents):

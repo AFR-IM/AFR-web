@@ -3,20 +3,25 @@ main = "src/index.ts"
 compatibility_date = "2026-11-10"
 workers_dev = true
 
-# Daily cron (04:30 UTC): sync the newest scan snapshot from the data repo
-# into D1. The Worker never scans — scanners run in GitHub Actions (scan.yml),
-# which reports completions back via POST /api/v1/queue/:domain/done.
+# Daily cron (04:30 UTC): owner notifications and mail housekeeping.
+# Scan snapshots enter D1 through the pinned sync-site release workflow.
 [triggers]
 crons = ["30 4 * * *"]
 
 # Required secrets — set per environment, values are never committed:
 #   GITHUB_DISPATCH_TOKEN  token that can dispatch scan.yml (search-then-collect;
 #                          if unset the API still queues requests and the daily
-#                          cron picks them up — dispatch is reported as deferred)
+#                          scan.yml schedule picks them up; dispatch is deferred)
 #     wrangler secret put GITHUB_DISPATCH_TOKEN
 #   QUEUE_TOKEN           shared token the scan runner must present as the
 #                          X-Queue-Token header when marking a queue item done
 #     wrangler secret put QUEUE_TOKEN
+#   AIPAY_API_KEY         merchant key; absent disables billing calls
+#   AIPAY_WEBHOOK_SECRET  webhook secret; both credentials required, otherwise 503
+#   AIPAY_RECONCILE_ENABLED  set to true explicitly to enable daily reconciliation
+#                            (one page, at most 10 orders; off by default)
+#     wrangler secret put AIPAY_API_KEY
+#     wrangler secret put AIPAY_WEBHOOK_SECRET
 
 # D1 database binding (apply schema.sql first):
 #   wrangler d1 execute aiapp --file schema.sql --remote
@@ -40,6 +45,13 @@ pattern = "afr.im/badge/*"
 zone_name = "afr.im"
 [[routes]]
 pattern = "afr.im/badge"
+zone_name = "afr.im"
+# M9 admin is handled by this Worker. Configure the administrator login secrets before activation.
+[[routes]]
+pattern = "afr.im/admin"
+zone_name = "afr.im"
+[[routes]]
+pattern = "afr.im/admin/*"
 zone_name = "afr.im"
 # MCP endpoint — stateless JSON-RPC 2.0 over HTTP (POST /mcp)
 [[routes]]

@@ -240,7 +240,20 @@ export function runChecks({ publicDir = DEFAULT_PUBLIC_DIR, sites } = {}) {
 // ── CLI ────────────────────────────────────────────────────────────────────
 const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
 if (isMain) {
-  const { failures, notes, metrics } = runChecks();
+  const args = process.argv.slice(2);
+  const release = args[0] === '--release';
+  if (args.length > (release ? 2 : 0)) {
+    console.error('Usage: node scripts/check-sitemap.mjs [--release [asset-directory]]');
+    process.exit(1);
+  }
+  let sites;
+  try {
+    if (release) sites = siteDomains(WEB_DIR, { required: true });
+  } catch (error) {
+    console.error(`FAIL: ${error.message}`);
+    process.exit(1);
+  }
+  const { failures, notes, metrics } = runChecks({ publicDir: args[1], sites });
   for (const note of notes) console.log(`note: ${note}`);
   console.log(
     `sitemap: ${metrics.urls} urls in ${metrics.shards} shards ` +

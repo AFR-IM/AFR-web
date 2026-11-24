@@ -150,6 +150,7 @@ function instrumentDb(
   return {
     db: {
       prepare: (sql: string) => wrap(sql, db.prepare(sql)),
+      batch: db.batch.bind(db),
       exec: (sql: string) => db.exec(sql),
     },
     get maxInFlight() {
@@ -361,6 +362,7 @@ describe('sync page pipeline', () => {
           run: inner.run.bind(inner),
         };
       },
+      batch: db.batch.bind(db),
       exec: (sql: string) => db.exec(sql),
     };
 

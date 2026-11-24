@@ -123,7 +123,7 @@ describe('catalog parity', () => {
       'ownerMailChecking', 'ownerMailChangeEmail', 'ownerMailChecklistTitle', 'ownerMailSentTitle',
       'ownerMailChangeTitle', 'ownerMailChangeDesc', 'ownerMailChangeLabel', 'ownerMailChangeSubmit',
       'ownerMailChangeBusy', 'ownerMailChangeDone', 'ownerMailErrSameEmail',
-      'ownerMailSentBody', 'ownerMailStoredTitle', 'ownerMailStoredBody', 'ownerMailVerifyLink',
+      'ownerMailSentBody', 'ownerMailErrDelivery',
       'ownerMailTokenLabel', 'ownerMailTokenHelp', 'ownerMailTokenUse', 'ownerMailTokenSaved',
       'ownerMailTokenInvalid', 'ownerMailVerifiedTitle', 'ownerMailMaskedLabel', 'ownerMailNotifyLabel',
       'ownerMailNotifySaved', 'ownerMailSignOut', 'ownerMailSignedOut', 'ownerMailRestoreTitle',
