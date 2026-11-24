@@ -48,10 +48,10 @@ const PROSE = {
     botLink: 'What our own scanner fetches',
     ownerTitle: 'Owner mailbox (score-change notifications)',
     ownerBody:
-      'A site owner can register one mailbox per domain and receive a mail when the AFR rating of that domain changes. Three locks guard it, and all three must open: (1) domain control — AFR hands out a challenge and reads it back from the domain itself (DNS TXT record, /.well-known/afr-mail.txt, or a homepage meta tag); (2) mailbox control — AFR mails a single-use confirmation link to that address; (3) the management token — that confirmation returns the token exactly once, and every later read or notification switch has to present it. The address is stored encrypted and is only ever reported masked (o***@example.com). The management token is never shown a second time: keep it (the AFR panel stores it in your own browser, nothing else does). Both write endpoints are gated by the same human check as the scans: the body carries "turnstile_token" (action afr_owner_email), a missing token is answered 400 { "error": "turnstile_failed" }, and the X-AFR-Agent-Key header skips the check for agents. Limits: 3 challenges and 3 registrations per domain per day, 5 per IP per hour.',
+      'A site owner can register one mailbox per domain and receive a mail when the AFR rating of that domain changes. Three locks guard it, and all three must open: (1) domain control — AFR hands out a challenge and reads it back from the domain itself (DNS TXT record, /.well-known/afr-mail.txt, or a homepage meta tag); (2) mailbox control — AFR mails a single-use confirmation link to that address; (3) the management token — that confirmation returns the token exactly once, and every later read or notification switch has to present it. The address is stored encrypted and is only ever reported masked (o***@example.com). The management token is never shown a second time: keep it (the AFR panel stores it in your own browser, nothing else does) — if you lose it, POST /api/v1/owners/email/recover hands out a new one: it re-proves domain control with a fresh challenge, mails the reset to the confirmed address only, and rotates the token so the old one stops working. Both write endpoints are gated by the same human check as the scans: the body carries "turnstile_token" (action afr_owner_email), a missing token is answered 400 { "error": "turnstile_failed" }, and the X-AFR-Agent-Key header skips the check for agents. Limits: 3 challenges and 3 registrations per domain per day, 5 per IP per hour.',
     ownerErrorsTitle: 'Owner mailbox errors',
     ownerErrorsBody:
-      'invalid_email and invalid_challenge (400), unknown_domain (404), challenge_not_found, challenge_email_mismatch and domain_control_failed (403 — the answer carries a per-method "checks" summary of what AFR saw on the domain), mailbox_already_verified (409) and rate_limited (429).',
+      'invalid_email and invalid_challenge (400), unknown_domain (404), challenge_not_found, challenge_email_mismatch and domain_control_failed (403 — the answer carries a per-method "checks" summary of what AFR saw on the domain), mailbox_already_verified (409) and rate_limited (429). A refused recovery answers 403 recovery_not_available — one opaque code for "this domain has no confirmed mailbox" and "this address is not the confirmed mailbox" — and 403 challenge_not_found.',
   },
   'zh-CN': {
     title: 'API 文档',
@@ -80,10 +80,10 @@ const PROSE = {
     botLink: '我们自己的扫描器抓取什么',
     ownerTitle: '站主邮箱（评分变化通知）',
     ownerBody:
-      '站主可为每个域名登记一个邮箱，在该域名的 AFR 评级变化时收到邮件。三道锁必须全部打开：(1) 域名控制——AFR 发出挑战码，并亲自到域名上读取（DNS TXT 记录、/.well-known/afr-mail.txt 或首页 meta 标签）；(2) 邮箱控制——AFR 向该邮箱寄出一次性确认链接；(3) 管理令牌——确认时一次性返回，之后每次读取或开关通知都必须出示它。地址加密存储，对外只以掩码形式返回（o***@example.com）。管理令牌不会第二次显示：请自行保存（AFR 面板只把它保存在你自己的浏览器里）。两个写接口与扫描接口共用同一人机校验：请求体携带 "turnstile_token"（action afr_owner_email），缺少 token 返回 400 { "error": "turnstile_failed" }，agent 可用 X-AFR-Agent-Key 头跳过。限额：每域名每天 3 次挑战码与 3 次登记、每 IP 每小时 5 次。',
+      '站主可为每个域名登记一个邮箱，在该域名的 AFR 评级变化时收到邮件。三道锁必须全部打开：(1) 域名控制——AFR 发出挑战码，并亲自到域名上读取（DNS TXT 记录、/.well-known/afr-mail.txt 或首页 meta 标签）；(2) 邮箱控制——AFR 向该邮箱寄出一次性确认链接；(3) 管理令牌——确认时一次性返回，之后每次读取或开关通知都必须出示它。地址加密存储，对外只以掩码形式返回（o***@example.com）。管理令牌不会第二次显示：请自行保存（AFR 面板只把它保存在你自己的浏览器里）——若已丢失，POST /api/v1/owners/email/recover 可找回：它会重新验证域名控制（新挑战码）、只把重置邮件发往已确认地址，并轮换令牌（旧令牌立即失效）。两个写接口与扫描接口共用同一人机校验：请求体携带 "turnstile_token"（action afr_owner_email），缺少 token 返回 400 { "error": "turnstile_failed" }，agent 可用 X-AFR-Agent-Key 头跳过。限额：每域名每天 3 次挑战码与 3 次登记、每 IP 每小时 5 次。',
     ownerErrorsTitle: '站主邮箱错误码',
     ownerErrorsBody:
-      'invalid_email 与 invalid_challenge（400）、unknown_domain（404）、challenge_not_found、challenge_email_mismatch 与 domain_control_failed（403——响应附带平台在域名上看到情况的逐方式 "checks" 摘要）、mailbox_already_verified（409）以及 rate_limited（429）。',
+      'invalid_email 与 invalid_challenge（400）、unknown_domain（404）、challenge_not_found、challenge_email_mismatch 与 domain_control_failed（403——响应附带平台在域名上看到情况的逐方式 "checks" 摘要）、mailbox_already_verified（409）以及 rate_limited（429）。找回被拒时返回 403 recovery_not_available（“无已确认邮箱”与“地址不匹配”共用同一个不透明错误码）与 403 challenge_not_found。',
   },
 } as const;
 
@@ -299,6 +299,35 @@ const endpoints: Endpoint[] = [
     params: 'domain · email · Authorization: Bearer <manageToken>',
     example: `{ "status": "sent", "emailed": true }`,
   },
+  {
+    method: 'POST',
+    path: '/api/v1/owners/email/recover',
+    desc: T(
+      'Recover a lost management token. Body: { "domain": "example.com", "email": "owner@example.com", "challenge": "ch-…" } — the challenge has to be a fresh one (ask for it at /api/v1/owners/email/start), published on the domain and observed by AFR again. The reset mail goes to the confirmed address only, and the answer carries neither the link nor the token: { "status": "sent", "emailed": true }. A refused recovery answers 403 recovery_not_available — one opaque code for "this domain has no confirmed mailbox" and "this address is not the confirmed mailbox" — plus 403 challenge_not_found and 403 domain_control_failed (with the per-method "checks" summary). The human check applies (turnstile_token, action afr_owner_email; X-AFR-Agent-Key skips it). Limits: 3 recoveries per domain per day, 5 per IP per hour.',
+      '找回丢失的管理令牌。请求体：{ "domain": "example.com", "email": "owner@example.com", "challenge": "ch-…" }——挑战码必须是新发的（用 /api/v1/owners/email/start 申请）、已发布在域名上并被 AFR 再次观察到。重置邮件只发往已确认地址；响应不含链接与令牌：{ "status": "sent", "emailed": true }。被拒时返回 403 recovery_not_available（“无已确认邮箱”与“地址不匹配”共用同一个不透明错误码）、403 challenge_not_found 以及 403 domain_control_failed（带逐方式 "checks" 摘要）。同样需要人机校验（turnstile_token，action afr_owner_email；X-AFR-Agent-Key 可跳过）。限额：每域名每天 3 次、每 IP 每小时 5 次。',
+    ),
+    example: `{ "status": "sent", "emailed": true }`,
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/owners/email/recover/verify',
+    desc: T(
+      'Consume the single-use recovery link. The answer carries the new management token: { "verified": true, "domain": "example.com", "manageToken": "manage-…" } — the previous token stops working immediately. The link works once: replaying it is answered 400 invalid_or_expired_token.',
+      '消费一次性找回链接。响应给出新的管理令牌：{ "verified": true, "domain": "example.com", "manageToken": "manage-…" }——旧令牌立即失效。链接只能用一次：重放返回 400 invalid_or_expired_token。',
+    ),
+    example: `{ "verified": true, "domain": "example.com",
+  "manageToken": "manage-0123456789abcdef0123456789abcdef" }`,
+  },
+  {
+    method: 'DELETE',
+    path: '/api/v1/owners/email',
+    desc: T(
+      'Unregister the mailbox of a domain. Requires the management token of that mailbox: Authorization: Bearer manage-… — without it (or with a wrong token, or the token of another domain) the answer is 401 unauthorized. The score history and the notification outbox stay untouched.',
+      '注销某域名的邮箱。须携带该邮箱的管理令牌：Authorization: Bearer manage-…——缺少、错误或属于其他域名时返回 401 unauthorized。评分历史与通知队列不受影响。',
+    ),
+    params: 'domain · Authorization: Bearer <manageToken>',
+    example: `{ "deleted": true }`,
+  },
 ];
 ---
 
@@ -487,6 +516,10 @@ const endpoints: Endpoint[] = [
   .m-post {
     color: var(--grade-c, #eab308);
     border-color: color-mix(in srgb, var(--grade-c, #eab308) 45%, transparent);
+  }
+  .m-delete {
+    color: var(--grade-f, #ef4444);
+    border-color: color-mix(in srgb, var(--grade-f, #ef4444) 45%, transparent);
   }
   .ep-desc {
     margin: 8px 0 0;

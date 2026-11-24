@@ -32,6 +32,8 @@ import {
   maskEmail,
   normalizeEmail,
   probeMailChallenge,
+  recoveryLinkUrl,
+  renderRecoveryEmail,
   renderScoreChangeEmail,
   sendEmailViaResend,
 } from '../src/email.ts';
@@ -323,6 +325,17 @@ describe('magic tokens', () => {
     );
   });
 
+  it('escapes the token inside the recovery link', () => {
+    assert.equal(
+      recoveryLinkUrl('https://afr.im', 'abc+def/ghi'),
+      'https://afr.im/api/v1/owners/email/recover/verify?token=abc%2Bdef%2Fghi',
+    );
+    assert.equal(
+      recoveryLinkUrl('https://afr.im/', 'abc'),
+      'https://afr.im/api/v1/owners/email/recover/verify?token=abc',
+    );
+  });
+
   it('mints prefixed challenge and management tokens', () => {
     assert.match(buildMailChallenge(), /^ch-[0-9a-f]{32}$/);
     assert.match(buildManageToken(), /^manage-[0-9a-f]{32}$/);
@@ -351,6 +364,21 @@ describe('renderScoreChangeEmail', () => {
     assert.match(mail.html, /A \(92\)/);
     assert.match(mail.html, /B \(78\)/);
     assert.match(mail.html, /href="https:\/\/afr\.im\/site\/example\.com"/);
+    assert.ok(!/<script/i.test(mail.html), 'the HTML mail carries no script');
+  });
+});
+
+describe('renderRecoveryEmail', () => {
+  it('states what the link does and how long it lives', () => {
+    const mail = renderRecoveryEmail({
+      domain: 'example.com',
+      url: 'https://afr.im/api/v1/owners/email/recover/verify?token=abc',
+    });
+    assert.equal(mail.subject, 'Recover the AFR owner token for example.com');
+    assert.match(mail.text, /https:\/\/afr\.im\/api\/v1\/owners\/email\/recover\/verify\?token=abc/);
+    assert.match(mail.text, /works once and expires in 24 hours/);
+    assert.match(mail.text, /previous\s+management token stops working/);
+    assert.match(mail.html, /href="https:\/\/afr\.im\/api\/v1\/owners\/email\/recover\/verify\?token=abc"/);
     assert.ok(!/<script/i.test(mail.html), 'the HTML mail carries no script');
   });
 });

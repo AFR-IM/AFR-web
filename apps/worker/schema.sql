@@ -273,6 +273,24 @@ CREATE TABLE IF NOT EXISTS email_challenges (
 );
 CREATE INDEX IF NOT EXISTS idx_email_challenges_domain ON email_challenges(domain);
 
+-- Pending management-token recovery (the owner lost the token).
+-- The recovery re-proves domain control (a fresh challenge) and mailbox
+-- control (the reset mail goes to the confirmed address); the link rotates
+-- the management token. Only hashes are stored — the token itself exists
+-- once, in the mail that carries the link.
+-- Expired rows can be pruned (a cron statement):
+--   DELETE FROM owner_mailbox_recoveries WHERE expires_at < '2026-01-01T00:00:00.000Z';
+CREATE TABLE IF NOT EXISTS owner_mailbox_recoveries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  domain TEXT NOT NULL,
+  email_hash TEXT NOT NULL,          -- keyed HMAC of the confirmed address
+  token_hash TEXT NOT NULL UNIQUE,   -- hex SHA-256 of the recovery token
+  expires_at TEXT NOT NULL,
+  used_at TEXT,                      -- set when the link was spent
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_owner_mailbox_recoveries_domain ON owner_mailbox_recoveries(domain);
+
 -- Score-change notification outbox (one row per event; UNIQUE key makes retries idempotent)
 CREATE TABLE IF NOT EXISTS notify_outbox (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

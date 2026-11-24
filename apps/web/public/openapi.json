@@ -1174,6 +1174,61 @@
             }
           }
         }
+      },
+      "delete": {
+        "summary": "Unregister the mailbox of a domain",
+        "description": "The owner removes the mailbox of a domain: the confirmed row is deleted, so no score-change mail is sent any more. The management token of that mailbox is the lock — without it, with a wrong token, or with the token of another domain nothing is deleted (401 unauthorized). The AFR records (score history, notification outbox) stay untouched.",
+        "parameters": [
+          {
+            "name": "domain",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Bare registered domain, e.g. example.com",
+            "example": "example.com"
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Bearer token of the confirmed mailbox, e.g. 'Bearer manage-0123456789abcdef0123456789abcdef'"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The mailbox is gone",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deleted": { "type": "boolean", "enum": [true] }
+                  }
+                },
+                "example": { "deleted": true }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid parameter (invalid_domain)",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": { "error": "invalid_domain" }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized — the management token is missing, wrong or belongs to another domain",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": { "error": "unauthorized" }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/owners/email/change": {
@@ -1363,6 +1418,146 @@
                 "example": {
                   "error": "rate_limited"
                 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/owners/email/recover": {
+      "post": {
+        "summary": "Recover a lost management token",
+        "description": "Starts the recovery of a lost management token of a confirmed mailbox. None of the three locks weakens: the domain has to publish a fresh challenge (asked for at POST /api/v1/owners/email/start) and AFR has to observe it there, the reset mail goes to the confirmed address only, and the recovery link hands out a new management token and rotates the stored one — the old token stops working. The answer never carries the link or the token; they exist once, in the mail. Errors: 400 invalid_domain | invalid_email | invalid_challenge | turnstile_failed, 403 recovery_not_available (one opaque code for 'this domain has no confirmed mailbox' and 'this address is not the confirmed mailbox') | challenge_not_found | domain_control_failed (the answer carries a per-method 'checks' summary of what AFR saw on the domain), 429 rate_limited (3 recoveries per domain per day, 5 per IP per hour), 502 email_delivery_failed, 503 email_not_configured.",
+        "parameters": [
+          {
+            "name": "X-AFR-Agent-Key",
+            "in": "header",
+            "required": false,
+            "schema": { "type": "string" },
+            "description": "Agent key issued by AFR. When present and valid — the key's SHA-256 hash is in the api_keys table and not revoked — the human check is skipped and turnstile_token is not required. Self-service issuance is not open yet: ask AFR for a key."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["domain", "email", "challenge"],
+                "properties": {
+                  "domain": {
+                    "type": "string",
+                    "description": "Bare registered domain, e.g. example.com"
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "description": "The confirmed address of the mailbox — the reset mail goes there and nowhere else"
+                  },
+                  "challenge": {
+                    "type": "string",
+                    "description": "A fresh domain-control challenge, published on the domain, e.g. ch-0123456789abcdef0123456789abcdef"
+                  },
+                  "turnstile_token": {
+                    "type": "string",
+                    "description": "Human-verification token: a Cloudflare Turnstile token (action 'afr_owner_email') minted by the widget on the AFR site detail page. Optional in the schema, required in practice — a request without a valid token is answered 400 turnstile_failed — unless the caller sends a valid 'X-AFR-Agent-Key' header, which skips the human check."
+                  }
+                }
+              },
+              "example": {
+                "domain": "example.com",
+                "email": "owner@example.com",
+                "challenge": "ch-0123456789abcdef0123456789abcdef",
+                "turnstile_token": "0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The recovery mail was sent to the confirmed address",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OwnerRegistration" },
+                "example": { "status": "sent", "emailed": true }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid parameter (invalid_domain, invalid_email, invalid_challenge) or a failed human check — { \"error\": \"turnstile_failed\", \"reason\": \"missing_token\" | \"invalid_token\" | \"wrong_action\" | \"verify_failed\" }. Nothing is stored and no rate-limit budget is spent.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": { "error": "turnstile_failed", "reason": "missing_token" }
+              }
+            }
+          },
+          "403": {
+            "description": "recovery_not_available (the opaque code of a refused recovery — it never says whether the domain has a mailbox or which address it uses), challenge_not_found (no unused, unexpired challenge for this domain and address) or domain_control_failed (the platform did not see the challenge on the domain; the answer then carries a 'checks' array with one entry per method).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": { "error": "recovery_not_available" }
+              }
+            }
+          },
+          "502": { "$ref": "#/components/responses/OwnerEmailDeliveryFailed" },
+          "503": { "$ref": "#/components/responses/OwnerEmailNotConfigured" },
+          "429": {
+            "description": "Rate limited — 3 recoveries per domain per day, 5 per IP per hour",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": { "error": "rate_limited", "retryAfter": 3600 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/owners/email/recover/verify": {
+      "get": {
+        "summary": "Spend the recovery link and collect the new management token",
+        "description": "Consumes the single-use recovery token of the mail link. On success it answers { \"verified\": true, \"domain\": \"…\", \"manageToken\": \"manage-…\" } and rotates the management token of the mailbox: the previous token stops working immediately. The link works once — replaying it is answered 400 invalid_or_expired_token. 429 rate_limited (20 verifications per IP per hour).",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "The single-use recovery token from the mail link",
+            "example": "0123456789abcdef0123456789abcdef"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The recovery is done and a new management token is handed out — once",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OwnerVerification" },
+                "example": {
+                  "verified": true,
+                  "domain": "example.com",
+                  "manageToken": "manage-0123456789abcdef0123456789abcdef"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_or_expired_token — the token is unknown, expired or already spent",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": { "error": "invalid_or_expired_token" }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited — 20 verifications per IP per hour",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": { "error": "rate_limited" }
               }
             }
           }

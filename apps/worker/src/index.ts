@@ -47,11 +47,14 @@ import {
   maskEmail,
   normalizeEmail,
   probeMailChallengeAll,
+  recoveryLinkUrl,
+  renderRecoveryEmail,
   renderVerificationEmail,
   sendEmailViaResend,
   DEFAULT_BASE_URL,
   DEFAULT_FROM,
   EMAIL_CHALLENGE_TTL_MS,
+  EMAIL_RECOVERY_TTL_MS,
   EMAIL_VERIFY_TTL_MS,
 } from './email.ts';
 import {
@@ -534,6 +537,13 @@ function mailboxConfirmationHash(token: string): Promise<string> {
   return hashToken(`owner-mail-confirmation:v2:${token}`);
 }
 
+/** Namespace the recovery tokens: a recovery link must never unlock the
+ * mailbox confirmation flow (and the other way round), even if the random
+ * values ever collide. */
+function mailboxRecoveryHash(token: string): Promise<string> {
+  return hashToken(`owner-mail-recovery:v1:${token}`);
+}
+
 /** Sender address of owner mail */
 function fromOf(c: Context<AppEnv>): string {
   return c.env?.EMAIL_FROM ?? DEFAULT_FROM;
@@ -800,6 +810,58 @@ async function managedMailboxWithHash(
       notify: number | null;
     }>(domain, await hashToken(token));
   return row ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// Management-token recovery (owner lost the token)
+// ---------------------------------------------------------------------------
+
+/** The recovery table — pending management-token recoveries.
+ *
+ * Only hashes are stored: the address (as a keyed HMAC), the recovery token
+ * (as a SHA-256) and the domain. The plaintext token exists once, in the
+ * mail that carries the link. */
+const RECOVERY_TABLE_DDL = `
+CREATE TABLE IF NOT EXISTS owner_mailbox_recoveries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  domain TEXT NOT NULL,
+  email_hash TEXT NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at TEXT NOT NULL,
+  used_at TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_owner_mailbox_recoveries_domain ON owner_mailbox_recoveries(domain);
+`;
+
+/** The opaque error code of a refused recovery.
+ *
+ * "This domain has no confirmed mailbox" and "this address is not the
+ * confirmed mailbox" answer with the *same* code: a stranger must not learn
+ * which of the two it was (the difference would leak the mailbox of a
+ * domain). */
+const RECOVERY_REFUSED = 'recovery_not_available';
+
+/** Does the error say "the table is not there yet"? */
+function isMissingTableError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /no such table/i.test(message);
+}
+
+/** Run a statement against the recovery table.
+ *
+ * The table ships with schema.sql and migrations/owner-mailbox-recovery.sql.
+ * A deployment that has not applied the migration yet would answer 500 on
+ * every recovery — so the idempotent DDL (CREATE ... IF NOT EXISTS) is run
+ * once, the moment the table turns out to be missing. */
+async function withRecoveryTable<T>(db: Db, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (!isMissingTableError(err)) throw err;
+    await db.exec(RECOVERY_TABLE_DDL);
+    return await fn();
+  }
 }
 
 /** Fallback MCP limiter (per-isolate memory — degraded but serviceable) */
@@ -2677,6 +2739,293 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
       verified: Boolean(row.verified_at),
       notify: row.notify !== 0,
     });
+  });
+
+  // POST /api/v1/owners/email/recover {domain, email, challenge} — recover a
+  // lost management token.
+  //
+  // The three locks of the mailbox do not weaken: the recovery re-proves
+  //   1. domain control — a fresh challenge has to be published on the
+  //      domain and observed by the platform again,
+  //   2. mailbox control — the reset mail goes to the *confirmed* address; a
+  //      request for another address is refused with the same opaque code as
+  //      "this domain has no confirmed mailbox at all",
+  //   3. the management token — the recovery link hands out a new one and
+  //      rotates the stored hash, so the old token dies with the click.
+  //
+  // The answer never carries the link or the token: they exist only in the
+  // mail that was sent.
+  app.post('/api/v1/owners/email/recover', async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: 'invalid_json' }, 400);
+    }
+    const payload = (body ?? {}) as { domain?: unknown; email?: unknown; challenge?: unknown };
+    if (typeof payload.domain !== 'string') {
+      return c.json({ error: 'invalid_domain', message: 'domain must be a string' }, 400);
+    }
+    const domain = normalizeDomain(payload.domain);
+    if (!domain) {
+      return c.json({ error: 'invalid_domain', message: 'expected a bare domain like example.com' }, 400);
+    }
+    const email = normalizeEmail(payload.email);
+    if (!email) {
+      return c.json({ error: 'invalid_email', message: 'expected an email address like owner@example.com' }, 400);
+    }
+    if (typeof payload.challenge !== 'string' || !payload.challenge.trim()) {
+      return c.json({ error: 'invalid_challenge', message: 'challenge is required' }, 400);
+    }
+    const challenge = payload.challenge.trim();
+    // The challenge is issued for the directory key of the domain — the
+    // lookup below uses the very same value.
+    const canonical = directoryDomain(domain);
+
+    // Human check (Turnstile) — the same gate as the other owner-mail
+    // writes, the same API-key exemption for machine clients. It runs before
+    // the mailbox is read, so an unverified request never touches the token
+    // store and never reaches the rate limiter.
+    const turnstile = await requireTurnstile(c, {
+      action: TURNSTILE_ACTIONS.ownerEmail,
+      payload,
+      fetchImpl: overrides.turnstileFetch,
+      db: dbOf(c, overrides),
+    });
+    if (!turnstile.ok) {
+      return c.json({ error: 'turnstile_failed', reason: turnstile.reason }, 400);
+    }
+
+    const db = dbOf(c, overrides);
+    // Without the encryption secret the confirmed address cannot be read.
+    const secret = c.env?.EMAIL_ENC_KEY;
+    if (!secret) return c.json({ error: 'email_not_configured' }, 503);
+
+    const now = new Date();
+    const stamp = now.toISOString();
+
+    // The confirmed mailbox of that domain — and the only address the reset
+    // mail may go to. "no mailbox" and "the address does not match" answer
+    // with the same code, so a stranger learns nothing about the mailbox.
+    const mailbox = await db
+      .prepare(
+        `SELECT email_cipher, email_hash FROM owner_emails
+         WHERE domain = ? AND verified_at IS NOT NULL`,
+      )
+      .get<{ email_cipher: string; email_hash: string }>(canonical);
+    const requestHash = await emailHash(email, secret);
+    if (!mailbox || mailbox.email_hash !== requestHash) {
+      return c.json({ error: RECOVERY_REFUSED }, 403);
+    }
+
+    // The challenge must exist for this domain, be unused and still valid —
+    // and it must have been issued for the address of the mailbox.
+    const pending = await db
+      .prepare(
+        `SELECT id, email_hash FROM email_challenges
+         WHERE domain = ? AND challenge_hash = ? AND used_at IS NULL AND expires_at > ?
+         ORDER BY id DESC LIMIT 1`,
+      )
+      .get<{ id: number; email_hash: string }>(canonical, await hashToken(challenge), stamp);
+    if (!pending || pending.email_hash !== requestHash) {
+      return c.json({ error: 'challenge_not_found' }, 403);
+    }
+
+    // The proof of domain control, again: the platform has to observe the
+    // challenge on the domain itself. A network error counts as "not
+    // observed" — the owner publishes the challenge and tries again.
+    const checks = await probeMailChallengeAll(canonical, challenge, overrides.fetchImpl ?? fetch);
+    if (!checks.find((check) => check.ok)) {
+      return c.json(
+        {
+          error: 'domain_control_failed',
+          checks: checks.map((check) => ({ method: check.method, detail: check.detail })),
+        },
+        403,
+      );
+    }
+
+    // 3 recoveries per domain per day + 5 per IP per hour — the write bucket
+    // of the owner-mail subsystem. Both tiers are pre-checked before either
+    // is consumed, so a refused request never burns the other tier's budget.
+    const limits = emailLimitsOf(c, overrides);
+    const tiers: [string, RateLimiter][] = [
+      [canonical, limits.dailyDomain],
+      [clientIp(c), limits.hourlyIp],
+    ];
+    for (const [key, limiter] of tiers) {
+      const decision = await limiter.check(key);
+      if (!decision.allowed) {
+        const { retryAfter, nextAllowedAt } = retryPayload(limiter);
+        return c.json(
+          { error: 'rate_limited', retryAfter, nextAllowedAt },
+          429,
+          { 'Retry-After': String(retryAfter) },
+        );
+      }
+    }
+
+    // The reset mail goes to the confirmed address — decrypted from the
+    // stored ciphertext. A wrong key or a damaged row must not expose
+    // anything, so the answer stays opaque.
+    let to: string;
+    try {
+      to = await decryptEmail(mailbox.email_cipher, secret);
+    } catch (err) {
+      console.warn(
+        `owner recovery: cannot decrypt mailbox for ${canonical} (${err instanceof Error ? err.message : String(err)})`,
+      );
+      return c.json({ error: 'email_not_configured', retryable: true }, 503);
+    }
+    const resendKey = c.env?.RESEND_API_KEY;
+    if (!resendKey) return c.json({ error: 'email_not_configured', retryable: true }, 503);
+
+    // The quota is spent by a sent mail: a rejected request (or a failed
+    // delivery) never writes a recovery row the owner could not use.
+    for (const [key, limiter] of tiers) await limiter.consume(key);
+
+    const token = buildMagicToken();
+    const expiresAt = new Date(now.getTime() + EMAIL_RECOVERY_TTL_MS).toISOString();
+    const mail = renderRecoveryEmail({
+      domain: canonical,
+      url: recoveryLinkUrl(baseUrlOf(c), token),
+    });
+    const sent = await sendEmailViaResend({
+      apiKey: resendKey,
+      from: fromOf(c),
+      to,
+      subject: mail.subject,
+      text: mail.text,
+      html: mail.html,
+      idempotencyKey: `owner-recovery:${canonical}:${await hashToken(token)}`,
+    }, overrides.fetchImpl ?? fetch);
+    if (!sent.ok) return c.json({ error: 'email_delivery_failed', retryable: true }, 502);
+
+    // Only the hashes are stored — never the token, never the address.
+    try {
+      const recoveryHash = await mailboxRecoveryHash(token);
+      await withRecoveryTable(db, () =>
+        db
+          .prepare(
+            `INSERT INTO owner_mailbox_recoveries
+               (domain, email_hash, token_hash, expires_at, used_at, created_at)
+             VALUES (?, ?, ?, ?, NULL, ?)`,
+          )
+          .run(canonical, requestHash, recoveryHash, expiresAt, stamp),
+      );
+    } catch (err) {
+      console.warn(
+        `owner recovery: cannot store the recovery row (${err instanceof Error ? err.message : String(err)})`,
+      );
+      return c.json({ error: 'recovery_unavailable', retryable: true }, 503);
+    }
+
+    return c.json({ status: 'sent', emailed: true });
+  });
+
+  // GET /api/v1/owners/email/recover/verify?token= — the recovery link.
+  //
+  // The link is single-use: one atomic write marks the recovery as spent and
+  // rotates the management token of the mailbox, so the old token stops
+  // working the moment the new one is handed out.
+  app.get('/api/v1/owners/email/recover/verify', async (c) => {
+    // 20 verifications per IP per hour — the same bucket as the mailbox
+    // confirmation. The quota is spent on every attempt: a free
+    // token-guessing oracle is worth more than the missed quota.
+    const limits = emailLimitsOf(c, overrides);
+    const decision = await limits.verifyIp.check(clientIp(c));
+    if (!decision.allowed) {
+      const { retryAfter, nextAllowedAt } = retryPayload(limits.verifyIp);
+      return c.json(
+        { error: 'rate_limited', retryAfter, nextAllowedAt },
+        429,
+        { 'Retry-After': String(retryAfter) },
+      );
+    }
+    await limits.verifyIp.consume(clientIp(c));
+
+    const token = c.req.query('token') ?? '';
+    if (!token) return c.json({ error: 'invalid_or_expired_token' }, 400);
+
+    const db = dbOf(c, overrides);
+    const now = new Date();
+    const stamp = now.toISOString();
+    const manageToken = buildManageToken();
+    const manageHash = await hashToken(manageToken);
+    const recoveryHash = await mailboxRecoveryHash(token);
+
+    // Which domain the link belongs to — only used to report it back. The
+    // rotation below re-checks the row inside the atomic write.
+    let domain: string | null = null;
+    let rotated = 0;
+    try {
+      const claim = await withRecoveryTable(db, () =>
+        db
+          .prepare(
+            `SELECT domain FROM owner_mailbox_recoveries
+             WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?`,
+          )
+          .get<{ domain: string }>(recoveryHash, stamp),
+      );
+      domain = claim?.domain ?? null;
+      // Both writes in one transaction: the new management token is only
+      // written if the recovery row is still unused, and the recovery row is
+      // only spent if the rotation really happened.
+      const changes = await withRecoveryTable(db, () =>
+        db.batch([
+          {
+            sql: `UPDATE owner_emails
+                  SET manage_token_hash = ?, updated_at = ?
+                  WHERE domain = (SELECT domain FROM owner_mailbox_recoveries
+                                  WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?)
+                    AND verified_at IS NOT NULL`,
+            params: [manageHash, stamp, recoveryHash, stamp],
+          },
+          {
+            sql: `UPDATE owner_mailbox_recoveries SET used_at = ?
+                  WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?
+                    AND EXISTS (SELECT 1 FROM owner_emails
+                                WHERE domain = owner_mailbox_recoveries.domain
+                                  AND manage_token_hash = ?)`,
+            params: [stamp, recoveryHash, stamp, manageHash],
+          },
+        ]),
+      );
+      rotated = changes[0] ?? 0;
+    } catch (err) {
+      console.warn(
+        `owner recovery: cannot rotate the management token (${err instanceof Error ? err.message : String(err)})`,
+      );
+      return c.json({ error: 'recovery_unavailable', retryable: true }, 503);
+    }
+    if (!rotated || !domain) return c.json({ error: 'invalid_or_expired_token' }, 400);
+    return c.json({ verified: true, domain, manageToken });
+  });
+
+  // DELETE /api/v1/owners/email?domain= — the owner unregisters the mailbox.
+  //
+  // The lock is the management token of the confirmed mailbox: without it
+  // (or with a wrong token, or the token of another domain) nothing is
+  // deleted. The confirmation row is the only thing removed — the score
+  // history and the notification outbox are AFR's own records.
+  app.delete('/api/v1/owners/email', async (c) => {
+    const domain = normalizeDomain(c.req.query('domain') ?? '');
+    if (!domain) {
+      return c.json({ error: 'invalid_domain', message: 'expected a bare domain like example.com' }, 400);
+    }
+    const db = dbOf(c, overrides);
+    const token = bearerToken(c);
+    if (!token) return c.json({ error: 'unauthorized' }, 401);
+    // The mailbox is keyed by the registered domain.
+    const canonical = directoryDomain(domain);
+    const result = await db
+      .prepare(
+        `DELETE FROM owner_emails
+         WHERE domain = ? AND manage_token_hash = ? AND verified_at IS NOT NULL`,
+      )
+      .run(canonical, await hashToken(token));
+    if (result.changes !== 1) return c.json({ error: 'unauthorized' }, 401);
+    return c.json({ deleted: true });
   });
 
   // POST /api/v1/owners/notify {domain, notify} — owner toggles the

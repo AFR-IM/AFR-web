@@ -192,7 +192,7 @@ Authorization: Bearer manage-…
 - **A human check is part of the contract**: both write endpoints (`/api/v1/owners/email/start`, `/api/v1/owners/email`) need `"turnstile_token"` (action `afr_owner_email`), otherwise `400 { "error": "turnstile_failed", "reason": "missing_token" | "invalid_token" | "wrong_action" | "verify_failed" }`. The `X-AFR-Agent-Key` header skips the check for agents that cannot run a browser widget. The mailbox change of §2.11 is gated the same way.
 - Limits: 3 challenges and 3 registrations per domain per day, 5 per IP per hour.
 - The address is stored encrypted and is only ever reported masked (`o***@example.com`) — AFR never returns the plaintext address.
-- The AFR panel keeps the management token in the browser you used (localStorage). Moving to another machine means pasting the token back into the panel; a lost token means confirming the mailbox again.
+- The AFR panel keeps the management token in the browser you used (localStorage). Moving to another machine means pasting the token back into the panel; a lost token can be recovered with §2.12.
 
 ### 2.10 Submit an owner statement
 
@@ -235,6 +235,49 @@ What the change does:
 - The notification preference carries over to the new address.
 
 Limits: 3 mailbox writes per domain per day, 5 per IP per hour (the same bucket as a registration). The human check applies as well — `turnstile_token` (action `afr_owner_email`), or the `X-AFR-Agent-Key` header for agents.
+
+### 2.12 Recover a lost management token
+
+The management token is shown only once. If it is lost, the owner recovers it without weakening the three locks: the domain has to publish a **fresh** challenge again, the reset mail goes to the **confirmed** address only, and the recovery link hands out a **new** token and rotates the stored one — the old token stops working the moment the link is opened.
+
+```http
+POST https://afr.im/api/v1/owners/email/start
+{ "domain": "example.com", "email": "owner@example.com",
+  "turnstile_token": "<token>" }
+→ 200 { "challenge": "ch-…", … }   // publish it on the domain as in §2.9
+
+POST https://afr.im/api/v1/owners/email/recover
+{ "domain": "example.com", "email": "owner@example.com", "challenge": "ch-…",
+  "turnstile_token": "<token>" }
+→ 200 { "status": "sent", "emailed": true }
+→ 403 { "error": "recovery_not_available" }   // no confirmed mailbox, or the address does not match
+→ 403 { "error": "challenge_not_found" }      // no unused, unexpired challenge for this domain and address
+→ 403 { "error": "domain_control_failed", "checks": [ … ] }
+→ 429 { "error": "rate_limited", "retryAfter": … }
+```
+
+The answer carries neither the link nor the token — they exist once, in the mail that was sent to the confirmed address. The request for the challenge and the recovery request share the challenge tier and the write tier of §2.9; the recovery itself is limited to 3 per domain per day and 5 per IP per hour.
+
+`recovery_not_available` is deliberately opaque: "this domain has no confirmed mailbox" and "this address is not the confirmed mailbox" answer with the very same code, so the endpoint never leaks the mailbox of a domain.
+
+```http
+GET https://afr.im/api/v1/owners/email/recover/verify?token=…
+→ 200 { "verified": true, "domain": "example.com", "manageToken": "manage-…" }
+→ 400 { "error": "invalid_or_expired_token" }   // unknown, expired or already spent
+```
+
+The link works once. Keep the new management token — it replaces the old one, which stops working immediately.
+
+### 2.13 Unregister a mailbox
+
+The owner can remove the mailbox of a domain. The management token of that mailbox is the lock; the score history and the notification outbox are AFR's own records and stay untouched.
+
+```http
+DELETE https://afr.im/api/v1/owners/email?domain=example.com
+Authorization: Bearer manage-…
+→ 200 { "deleted": true }
+→ 401 { "error": "unauthorized" }   // no token, a wrong token, or the token of another domain
+```
 
 ## 3. Fetch budget and politeness
 

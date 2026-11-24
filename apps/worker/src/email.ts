@@ -45,6 +45,11 @@ export const EMAIL_VERIFY_TTL_MS = 24 * 60 * 60 * 1000;
  * cannot be replayed forever. */
 export const EMAIL_CHALLENGE_TTL_MS = 24 * 60 * 60 * 1000;
 
+/** A management-token recovery link stays valid for 24 hours — the same
+ * window as the mailbox confirmation: long enough to read the mail, short
+ * enough that a leaked link is not a lasting credential. */
+export const EMAIL_RECOVERY_TTL_MS = 24 * 60 * 60 * 1000;
+
 /** Prefix of the opaque domain-control challenge. The value is public by
  * design (it is published on the domain), so only its hash is stored. */
 const MAIL_CHALLENGE_PREFIX = 'ch-';
@@ -318,6 +323,15 @@ export function magicLinkUrl(baseUrl: string, token: string): string {
   return `${base}/api/v1/owners/email/verify?token=${encodeURIComponent(token)}`;
 }
 
+/** Absolute recovery link for a lost management token.
+ *
+ * The link lives on its own path: the recovery token is not a mailbox
+ * confirmation token and must never unlock that flow. */
+export function recoveryLinkUrl(baseUrl: string, token: string): string {
+  const base = baseUrl.replace(/\/+$/, '');
+  return `${base}/api/v1/owners/email/recover/verify?token=${encodeURIComponent(token)}`;
+}
+
 // ---------------------------------------------------------------------------
 // Domain-control challenge + management token
 // ---------------------------------------------------------------------------
@@ -581,6 +595,43 @@ export function renderVerificationEmail(args: {
     `<p style="margin:0 0 20px;font-size:15px;line-height:1.6;">Open the link below to finish the setup. It works once and expires in 24 hours.</p>`,
     `<p style="margin:0 0 20px;"><a href="${escapeHtml(args.verifyUrl)}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:6px;">Confirm this mailbox</a></p>`,
     `<p style="margin:0;color:#6b7280;font-size:13px;line-height:1.5;">If you did not request this, ignore this mail — nothing was changed.</p>`,
+    '</div></body></html>',
+  ].join('');
+
+  return { subject, text, html };
+}
+
+/** Subject + body of the management-token recovery mail.
+ *
+ * The mail is the second lock of the recovery: it only ever reaches the
+ * confirmed address of the domain, so the link proves mailbox control. The
+ * body therefore states what the click does (a new management token, the old
+ * one stops working) — an owner has to know that before clicking. */
+export function renderRecoveryEmail(args: {
+  domain: string;
+  url: string;
+}): { subject: string; text: string; html: string } {
+  const subject = `Recover the AFR owner token for ${args.domain}`;
+  const text = [
+    `Recover the AFR owner token for ${args.domain}.`,
+    '',
+    `Open this link to receive a new management token: ${args.url}`,
+    '',
+    'The link works once and expires in 24 hours. After the click the previous',
+    'management token stops working and a new one is handed out.',
+    '',
+    'If you did not request this, ignore this mail — nothing was changed and',
+    'the current management token stays valid.',
+  ].join('\n');
+
+  const html = [
+    '<!doctype html>',
+    '<html><body style="margin:0;padding:24px;background:#f6f7f9;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#111827;">',
+    '<div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:10px;padding:24px;border:1px solid #e5e7eb;">',
+    `<h1 style="margin:0 0 16px;font-size:20px;line-height:1.4;">Recover the AFR owner token for ${escapeHtml(args.domain)}</h1>`,
+    '<p style="margin:0 0 20px;font-size:15px;line-height:1.6;">Open the link below to receive a new management token. It works once and expires in 24 hours. After the click the previous management token stops working.</p>',
+    `<p style="margin:0 0 20px;"><a href="${escapeHtml(args.url)}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:6px;">Recover the management token</a></p>`,
+    '<p style="margin:0;color:#6b7280;font-size:13px;line-height:1.5;">If you did not request this, ignore this mail — nothing was changed and the current management token stays valid.</p>',
     '</div></body></html>',
   ].join('');
 
