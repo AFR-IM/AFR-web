@@ -9,7 +9,9 @@ const headers = {
   'Cloudflare-CDN-Cache-Control': 'no-store',
   'X-Robots-Tag': 'noindex, nofollow',
   'X-Content-Type-Options': 'nosniff',
-  'Referrer-Policy': 'no-referrer',
+  // A no-referrer navigation POST can send Origin: null. Keep same-origin
+  // referrers for the native forms without disclosing admin paths cross-site.
+  'Referrer-Policy': 'same-origin',
   'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
 };
 const retryPath = /^\/admin\/retry\/([1-9]\d{0,15})\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/;

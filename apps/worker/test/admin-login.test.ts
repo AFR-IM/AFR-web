@@ -23,12 +23,15 @@ test('local admin login protects the board and queue, and sets a secure cookie',
   const form = await get('/admin/');
   assert.match(await form.text(), /管理员登录/);
   assert.equal(form.headers.get('cache-control'), 'no-store');
+  // Native form POSTs need a same-origin Origin header, not Origin: null.
+  assert.equal(form.headers.get('referrer-policy'), 'same-origin');
   assert.equal((await get('/admin/queue')).status, 401);
   for (const response of [await post('/admin/login', 'cd'.repeat(32)), await post('/admin/login', 'x'.repeat(2100))]) {
     assert.equal(response.status, 401);
     assert.equal(response.headers.has('set-cookie'), false);
   }
   assert.equal((await post('/admin/login', env.ADMIN_LOGIN_SECRET, 'https://other.example')).status, 403);
+  assert.equal((await post('/admin/login', env.ADMIN_LOGIN_SECRET, 'null')).status, 403);
   const loggedIn = await post('/admin/login', env.ADMIN_LOGIN_SECRET);
   assert.equal(loggedIn.status, 303);
   const cookie = loggedIn.headers.get('set-cookie')!;
