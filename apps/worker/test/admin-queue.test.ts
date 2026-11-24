@@ -7,6 +7,7 @@ import { createSqliteDb } from '../src/db.ts';
 import { openSeededDb, SCHEMA_SQL } from './helpers.ts';
 
 const migration = readFileSync(new URL('../migrations/admin-queue.sql', import.meta.url), 'utf8');
+const domainsMigration = readFileSync(new URL('../migrations/admin-domains.sql', import.meta.url), 'utf8');
 const CREATED_AT = '2026-11-01T00:00:00.000Z';
 const DONE_AT = '2026-11-02T00:00:00.000Z';
 const request = { id: 1, requestId: 'c4bc1139-b1c5-4c78-83b9-5d41b75975ed', subject: 'access-operator' };
@@ -105,17 +106,23 @@ it('rolls back the queue insert when the audit fails and safely retries the same
   assert.equal(await retryAdminSubmission(db, request), 'replayed');
 });
 
-it('applies the additive migration twice and blocks audit updates, deletes and replaces', async () => {
-  assert.ok(SCHEMA_SQL.endsWith(migration), 'fresh schema must match the production migration');
+it('applies the additive migrations twice and blocks audit updates, deletes and replaces', async () => {
+  // The fresh schema is the union of the additive migrations: the queue store
+  // first, the domain B/D/F tables after it.
+  assert.ok(SCHEMA_SQL.includes(migration), 'fresh schema must contain the queue migration');
+  assert.ok(SCHEMA_SQL.includes(domainsMigration), 'fresh schema must contain the domain migration');
+  const legacy = SCHEMA_SQL.replace(migration, '').replace(domainsMigration, '');
   const raw = new DatabaseSync(':memory:');
   const db = createSqliteDb(raw);
-  raw.exec(SCHEMA_SQL.slice(0, -migration.length));
+  raw.exec(legacy);
   addSubmission(raw, 'rejected');
   addSubmission(raw, 'queued', 'legacy.test');
   addSubmission(raw, 'pending', 'legacy.test'); // Existing duplicate active rows are tolerated.
   raw.exec(migration);
+  raw.exec(domainsMigration);
   assert.equal(await retryAdminSubmission(db, request), 'queued');
   raw.exec(migration);
+  raw.exec(domainsMigration);
   assert.equal(await retryAdminSubmission(db, request), 'replayed');
   const { audit } = await readAdminQueue(db);
   for (const sql of [

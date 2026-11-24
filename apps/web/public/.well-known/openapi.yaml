@@ -170,6 +170,22 @@ paths:
                     name_zh: 开发者工具
                     count: 3
                     children: []
+  /api/v1/charity:
+    get:
+      summary: Charity settings (beneficiary list and the two receiving addresses)
+      description: >-
+        Public charity settings. The beneficiary list and the two receiving
+        addresses are edited in the administrator console (M9 domain F) and
+        published here; the charity page of M10 renders exactly this payload.
+        The fingerprint is the sha256 of the charity pool address, so a
+        published address can be verified against the audit trail.
+      responses:
+        '200':
+          description: Charity settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CharitySettings'
   /api/v1/leaderboard:
     get:
       summary: Top sites by pure AFR score descending
@@ -1143,6 +1159,41 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
           example: { error: invalid_domain }
+    CharitySettings:
+      type: object
+      properties:
+        beneficiaries:
+          type: array
+          items:
+            $ref: '#/components/schemas/Beneficiary'
+        promoWallet:
+          type: string
+          description: Receiving address of the promotion pool; empty while unset.
+        charityPool:
+          type: string
+          description: Receiving address of the charity pool; empty while unset.
+        fingerprint:
+          type: [string, 'null']
+          description: sha256 of the lower-cased charity pool address; null while the pool was never published.
+        publishedAt:
+          type: [string, 'null']
+          description: When the current charity pool address was published.
+        history:
+          type: array
+          items:
+            $ref: '#/components/schemas/CharityPublication'
+    Beneficiary:
+      type: object
+      properties:
+        name: { type: string }
+        website: { type: string }
+        direction: { type: string }
+    CharityPublication:
+      type: object
+      properties:
+        address: { type: string }
+        fingerprint: { type: string }
+        published_at: { type: string }
     NotFound:
       description: Unknown domain
       content:

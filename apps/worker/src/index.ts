@@ -13,6 +13,8 @@ import { LAYER_MAX } from '../../../packages/shared/src/index.ts';
 import { AFR_LAYERS, AFR_VERSION } from './method-checks.ts';
 import { badgeSvg } from './badge.ts';
 import { handleAdmin } from './admin.ts';
+import { recordBadgeReferrer, recordCronRun } from './admin-monitor.ts';
+import { readPublicCharity } from './admin-settings.ts';
 import { applyAipayWebhook, getAipayOrder, runAipayReconcileCron, type AipayEnv } from './aipay.ts';
 import type { AdminAccessEnv } from './admin-access.ts';
 import type { AdminLoginEnv } from './admin-login.ts';
@@ -748,6 +750,25 @@ function directoryDomain(domain: string): string {
   return registrableDomain(domain) ?? domain;
 }
 
+/** The jobs that may report their own outcome to the monitoring board. */
+const REPORTABLE_JOBS = new Set(['scan', 'sync-site', 'weekly-scan']);
+
+/** The host of a Referer header, for the badge referrer statistics.
+ * Returns null when the header is absent, unparsable or points at AFR
+ * itself — a self-reference says nothing about who embeds the badge. */
+function referrerHost(referer: string): string | null {
+  const value = referer.trim();
+  if (!value || value.length > 500) return null;
+  let host: string;
+  try {
+    host = new URL(value).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+  if (!host || host === 'afr.im' || host === 'www.afr.im') return null;
+  return host;
+}
+
 /** Bearer token from the Authorization header. The scheme name is
  * case-insensitive (RFC 7235); a missing or malformed header yields null and
  * the caller answers 401 without telling why. */
@@ -1445,6 +1466,17 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     return c.json({ categories: roots });
   });
 
+  // GET /api/v1/charity — the public charity settings (SSOT item 18, domain F).
+  // The operator-editable beneficiary list and the two receiving addresses are
+  // public by nature: the M10 charity page renders exactly this payload, and
+  // the address fingerprint published here is what a reader can verify against
+  // the audit trail.
+  app.get('/api/v1/charity', async (c) => {
+    const db = dbOf(c, overrides);
+    const charity = await readPublicCharity(db);
+    return c.json(charity);
+  });
+
   // GET /api/v1/leaderboard?category= — top N by pure AFR score DESC.
   // Natural ranking must never mix in ads (any commercial factor may
   // not change the ordering); paid placements live only in /api/v1/ads.
@@ -1580,6 +1612,24 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
         .prepare('SELECT grade, score_total FROM sites WHERE domain = ?')
         .get<{ grade: string | null; score_total: number | null }>(domain);
       svg = badgeSvg({ domain, grade: site?.grade ?? null, score: site?.score_total ?? null });
+      // Referrer statistics for the monitoring board (domain D). The counter
+      // write never delays the badge: it runs behind the response. Only a
+      // listed site counts — an unknown domain gets the neutral badge and
+      // must not be able to grow the counter table — and only an edge-cache
+      // miss is counted, so the number indicates the embedding sites rather
+      // than being an exact hit count.
+      const host = site
+        ? referrerHost(c.req.header('referer') ?? c.req.header('referrer') ?? '')
+        : null;
+      if (host) {
+        const counted = recordBadgeReferrer(db, host).catch(() => {});
+        try {
+          c.executionCtx.waitUntil(counted);
+        } catch {
+          // No ExecutionContext in this runtime: await so the write is not lost.
+          void counted;
+        }
+      }
     }
     return new Response(svg, {
       headers: {
@@ -1927,6 +1977,58 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
         500,
       );
     }
+  });
+
+  // POST /api/v1/ops/cron-report — a scheduled job reports its outcome here.
+  // The GitHub Actions pipelines (scan / sync-site / weekly-scan) and the
+  // Worker's own daily cron call it, so the monitoring board can tell a job
+  // that failed from a job that simply did not run (SSOT item 18, domain D).
+  // Auth: the shared queue token, the same secret the scan runner uses.
+  app.post('/api/v1/ops/cron-report', async (c) => {
+    const token = c.env?.QUEUE_TOKEN;
+    if (!token || c.req.header('x-queue-token') !== token) {
+      return c.json({ error: 'unauthorized' }, 401);
+    }
+    // A bounded body: the report is a handful of short fields.
+    const declared = Number(c.req.header('content-length') ?? '0');
+    if (Number.isFinite(declared) && declared > 4096) {
+      return c.json({ error: 'payload_too_large' }, 413);
+    }
+    const raw = await c.req.text();
+    if (raw.length > 4096) return c.json({ error: 'payload_too_large' }, 413);
+    let body: {
+      job?: unknown; status?: unknown; runId?: unknown;
+      detail?: unknown; startedAt?: unknown; finishedAt?: unknown;
+    };
+    try {
+      body = JSON.parse(raw);
+    } catch {
+      return c.json({ error: 'invalid_json' }, 400);
+    }
+    const job = typeof body?.job === 'string' ? body.job.trim() : '';
+    const status = body?.status === 'ok' || body?.status === 'failed' || body?.status === 'skipped'
+      ? body.status
+      : null;
+    // Only the pipelines may report their own job. The worker's own daily
+    // run is recorded by the scheduler itself and cannot be faked from here.
+    if (!REPORTABLE_JOBS.has(job) || !status) {
+      return c.json({ error: 'invalid_report' }, 400);
+    }
+    const detail = typeof body?.detail === 'string' ? body.detail.slice(0, 500) : null;
+    const runId = typeof body?.runId === 'string' ? body.runId.slice(0, 100) : null;
+    const startedAt = typeof body?.startedAt === 'string' && Number.isFinite(Date.parse(body.startedAt))
+      ? body.startedAt
+      : undefined;
+    const finishedAt = typeof body?.finishedAt === 'string' && Number.isFinite(Date.parse(body.finishedAt))
+      ? body.finishedAt
+      : undefined;
+    try {
+      await recordCronRun(dbOf(c, overrides), { job, status, detail, runId, startedAt, finishedAt });
+    } catch (err) {
+      console.error('cron report failed:', err);
+      return c.json({ error: 'report_failed' }, 500);
+    }
+    return c.json({ ok: true });
   });
 
   // GET /api/v1/ads?slot=&key= — currently active ads for a slot.
@@ -3200,25 +3302,53 @@ export default {
         throw error;
       }));
     }
+    const startedAt = new Date().toISOString();
     ctx.waitUntil(
       (async () => {
         const db = createD1Db(env.DB);
-        // Releases own scan ingestion. A mutable branch sync could race a pinned release.
-        // Score-change mails for the owners who asked for them (no-op when
-        // the mail subsystem is not configured).
-        await runOwnerNotifications(db, env, fetch);
-        // Housekeeping: expired challenges, read inbox mail, delivered
-        // notifications and stale cooldown rows would otherwise pile up and
-        // eat the daily row-write budget.
-        const pruned = await pruneMailArtifacts(db);
-        const removed =
-          pruned.challenges + pruned.inboundMail + pruned.inboundActions + pruned.outbox + pruned.cooldown;
-        if (removed > 0) {
-          console.log(
-            `mail gc: ${pruned.challenges} challenges, ${pruned.inboundMail} inbound, ` +
-              `${pruned.inboundActions} actions, ${pruned.outbox} notifications, ${pruned.cooldown} cooldowns`,
-          );
+        try {
+          // Releases own scan ingestion. A mutable branch sync could race a pinned release.
+          // Score-change mails for the owners who asked for them (no-op when
+          // the mail subsystem is not configured).
+          await runOwnerNotifications(db, env, fetch);
+          // Housekeeping: expired challenges, read inbox mail, delivered
+          // notifications and stale cooldown rows would otherwise pile up and
+          // eat the daily row-write budget.
+          const pruned = await pruneMailArtifacts(db);
+          const removed =
+            pruned.challenges + pruned.inboundMail + pruned.inboundActions + pruned.outbox + pruned.cooldown;
+          if (removed > 0) {
+            console.log(
+              `mail gc: ${pruned.challenges} challenges, ${pruned.inboundMail} inbound, ` +
+                `${pruned.inboundActions} actions, ${pruned.outbox} notifications, ${pruned.cooldown} cooldowns`,
+            );
+          }
+          // Two more growing tables: the expired mailbox recoveries (their
+          // tokens are spent or dead) and the badge referrer counters older
+          // than a month (the board only reads the last seven days).
+          const recoveries = await db
+            .prepare('DELETE FROM owner_mailbox_recoveries WHERE expires_at < ?')
+            .run(new Date().toISOString());
+          const referrers = await db
+            .prepare('DELETE FROM badge_referrers WHERE day < ?')
+            .run(new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().slice(0, 10));
+          if (recoveries.changes > 0 || referrers.changes > 0) {
+            console.log(
+              `housekeeping: ${recoveries.changes} expired recoveries, ` +
+                `${referrers.changes} old badge referrer rows`,
+            );
+          }
+        } catch (error) {
+          // The monitoring board must see a failed daily run, not silence.
+          await recordCronRun(db, {
+            job: 'worker.daily',
+            status: 'failed',
+            detail: error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500),
+            startedAt,
+          }).catch(() => {});
+          throw error;
         }
+        await recordCronRun(db, { job: 'worker.daily', status: 'ok', startedAt }).catch(() => {});
       })(),
     );
   },

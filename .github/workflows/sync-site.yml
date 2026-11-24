@@ -197,3 +197,26 @@ jobs:
           RELEASE_STATUS: ${{ job.status }}
         run: |
           echo "- Release job: $RELEASE_STATUS" >> "$GITHUB_STEP_SUMMARY"
+
+      # Report the run outcome to the AFR monitoring board (M9 domain D):
+      # the board tells a failed job from a job that never ran.
+      - name: Report the run outcome
+        if: always()
+        env:
+          QUEUE_TOKEN: ${{ secrets.QUEUE_TOKEN }}
+          REPORT_JOB: sync-site
+          REPORT_STATUS_VALUE: ${{ job.status == 'success' && 'ok' || (job.status == 'skipped' && 'skipped' || 'failed') }}
+          REPORT_DETAIL: ${{ job.status }}
+          REPORT_STARTED_AT: ${{ github.run_started_at }}
+        run: |
+          export REPORT_FINISHED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          PAYLOAD="$(python3 -c 'import json,os; print(json.dumps({"job":os.environ["REPORT_JOB"],"status":os.environ["REPORT_STATUS_VALUE"],"runId":os.environ.get("GITHUB_RUN_ID"),"detail":os.environ.get("REPORT_DETAIL","")[:500],"startedAt":os.environ.get("REPORT_STARTED_AT"),"finishedAt":os.environ.get("REPORT_FINISHED_AT")}))')"
+          if [ -z "${QUEUE_TOKEN}" ]; then
+            echo "::warning::QUEUE_TOKEN is not set; the run outcome is not reported"
+            exit 0
+          fi
+          curl -fsS -X POST https://afr.im/api/v1/ops/cron-report \
+            -H "X-Queue-Token: ${QUEUE_TOKEN}" \
+            -H 'Content-Type: application/json' \
+            --data "$PAYLOAD" \
+            || echo "::warning::the run outcome could not be reported"
