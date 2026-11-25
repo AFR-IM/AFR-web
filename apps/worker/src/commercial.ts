@@ -14,8 +14,9 @@
 //  4. The plaintext of a key exists exactly once — in the response that
 //     created it. The database only ever holds its SHA-256.
 
-import { createBillingOrder, type AipayEnv } from './aipay.ts';
-import { hashApiKey } from './api-key.ts';import { computeProEntitlement, DEFAULT_PRO_TERM_DAYS, syncEntitlementFromBilling } from './entitlements.ts';
+import { cancelAipayOrder, createBillingOrder, type AipayEnv } from './aipay.ts';
+import { hashApiKey } from './api-key.ts';
+import { computeProEntitlement, DEFAULT_PRO_TERM_DAYS, syncEntitlementFromBilling } from './entitlements.ts';
 import { hashToken } from './email.ts';
 import type { Db } from './db.ts';
 import { normalizeDomain, registrableDomain } from './domain.ts';
@@ -279,7 +280,8 @@ export async function readProOrder(db: Db, reference: string,
 
 /** Cancel one open order. A paid order cannot be cancelled. */
 export async function cancelProOrder(db: Db, reference: string,
-  manageToken: string | null): Promise<{ ok: true; cancelled: boolean } | ProFailure> {
+  manageToken: string | null, env?: AipayEnv, fetchImpl: typeof fetch = fetch):
+  Promise<{ ok: true; cancelled: boolean } | ProFailure> {
   if (!manageToken?.trim()) return { ok: false, error: 'unauthorized', status: 401 };
   const row = await findLedgerOrder(db, reference);
   if (!row) return { ok: false, error: 'not_found', status: 404 };
@@ -305,6 +307,17 @@ export async function cancelProOrder(db: Db, reference: string,
       params: [stamp, row.merchant_order_id],
     },
   ]);
+
+  // The buyer must not be able to pay a cancelled order: the checkout link
+  // dies at the provider too. A late payment would otherwise land as a
+  // 'review' order — paid, but with no Pro behind it and no refund channel.
+  if (Number(changed) > 0 && row.aipay_reference && env?.AIPAY_API_KEY) {
+    try {
+      await cancelAipayOrder(env, String(row.aipay_reference), fetchImpl);
+    } catch {
+      // The local cancel stands; the provider expires the order by itself.
+    }
+  }
   return { ok: true, cancelled: Number(changed) > 0 };
 }
 

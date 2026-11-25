@@ -278,6 +278,16 @@ export async function verifyAipayWebhook(raw: Uint8Array, headers: Headers, secr
   } catch { return null; }
 }
 
+export async function cancelAipayOrder(env: AipayEnv, reference: string,
+  fetchImpl: typeof fetch = fetch): Promise<boolean> {
+  if (!/^ap_[A-Za-z0-9_-]{8,64}$/.test(reference)) return false;
+  const response = await fetchImpl(`${safeBase(env.AIPAY_BASE_URL)}/v1/orders/${encodeURIComponent(reference)}/cancel`, {
+    method: 'POST', redirect: AIPAY_REDIRECT, signal: AbortSignal.timeout(8000),
+    headers: { Authorization: `Bearer ${env.AIPAY_API_KEY}`, Accept: 'application/json', 'User-Agent': AIPAY_USER_AGENT },
+  });
+  return response.ok;
+}
+
 /** Apply a signed event only after binding it to the stored merchant order and verifying with AIPAY again. */
 export async function applyAipayWebhook(db: Db, raw: Uint8Array, headers: Headers, secret: string,
   verifyOrder: (reference: string) => Promise<AipayOrderResponse>, now = Date.now()): Promise<'applied' | 'duplicate' | 'ignored' | 'invalid'> {

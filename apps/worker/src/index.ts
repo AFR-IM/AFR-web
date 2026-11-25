@@ -3258,7 +3258,8 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
 
   // POST /api/v1/billing/pro/orders/:reference/cancel — drop an open order.
   app.post('/api/v1/billing/pro/orders/:reference/cancel', async (c) => {
-    const result = await cancelProOrder(dbOf(c, overrides), c.req.param('reference'), bearerToken(c));
+    const result = await cancelProOrder(dbOf(c, overrides), c.req.param('reference'), bearerToken(c),
+      c.env as AipayEnv | undefined, overrides.fetchImpl ?? fetch);
     if (!result.ok) return c.json({ error: result.error }, result.status);
     return c.json({ cancelled: result.cancelled });
   });

@@ -417,7 +417,7 @@ test('the order page answers with the state of the order and of the Pro term', a
 
 test('an open order can be cancelled, a paid one cannot', async (t) => {
   const { app, raw } = await fixture(t);
-  mockAipay(t, request => createdOrder(String(request.body.merchantOrderId)));
+  const seen = mockAipay(t, request => createdOrder(String(request.body.merchantOrderId)));
   const created = await (await order(app, { domain: 'example.com' })).json() as { reference: string };
 
   const cancel = await app.request(`/api/v1/billing/pro/orders/${created.reference}/cancel`, {
@@ -432,6 +432,12 @@ test('an open order can be cancelled, a paid one cannot', async (t) => {
   };
   assert.equal(event.source, 'local');
   assert.equal(event.event_type, 'order.cancelled');
+
+  // The checkout link must die at the provider too: a buyer who pays a
+  // cancelled order would land as a 'review' order — paid, no Pro, no refund.
+  const providerCancel = seen.find(call => call.url.endsWith(`/v1/orders/${created.reference}/cancel`));
+  assert.ok(providerCancel, 'the provider must be told to cancel the order');
+  assert.equal(providerCancel.method, 'POST');
 
   // Cancelling again is idempotent.
   const again = await app.request(`/api/v1/billing/pro/orders/${created.reference}/cancel`, {
