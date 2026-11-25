@@ -20,9 +20,9 @@ import { hashToken } from './email.ts';
 import type { Db } from './db.ts';
 import { normalizeDomain, registrableDomain } from './domain.ts';
 
-/** The price of one Pro term: 12 USDT on the Base chain. */
+/** The price of one Pro term: 12 USDC on the Base chain. */
 export const PRO_PRICE_AMOUNT = '12';
-export const PRO_PRICE_ASSET = 'USDT';
+export const PRO_PRICE_ASSET = 'USDC';
 export const PRO_PRICE_CHAIN = 'base';
 /** How long the checkout session lives (seconds). */
 export const PRO_ORDER_TTL_SECONDS = 900;

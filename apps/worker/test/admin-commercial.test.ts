@@ -49,7 +49,7 @@ async function fixture(t: TestContext): Promise<Fixture> {
   raw.prepare(
     `INSERT INTO billing_orders
        (merchant_order_id, purpose, subject_id, amount, asset, chain_key, term_days, status, created_at, updated_at)
-     VALUES ('pro-example.com-paid', 'pro', 'example.com', '12', 'USDT', 'base', 30, 'confirmed', '2026-11-11', '2026-11-11')`,
+     VALUES ('pro-example.com-paid', 'pro', 'example.com', '12', 'USDC', 'base', 30, 'confirmed', '2026-11-11', '2026-11-11')`,
   ).run();
   assert.equal(await syncEntitlementFromBilling(db, 'pro-example.com-paid'), true);
   // A machine key of the same site.

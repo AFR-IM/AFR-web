@@ -10,7 +10,7 @@ const maxBytes = 16_384;
 const delivery = 101;
 const confirmed = {
   reference: 'ap_synthetic_order', merchantOrderId: 'synthetic-order',
-  status: 'confirmed', amount: '12.00', asset: 'USDT', chainKey: 'base',
+  status: 'confirmed', amount: '12.00', asset: 'USDC', chainKey: 'base',
   confirmedAt: Date.now(), txHash: '0x' + 'a'.repeat(64),
 };
 const encode = (body: string) => new TextEncoder().encode(body);
@@ -56,7 +56,7 @@ function fixture(t: TestContext) {
   t.after(() => raw.close());
   raw.prepare(`INSERT INTO billing_orders
     (merchant_order_id, purpose, subject_id, amount, asset, chain_key, status, aipay_reference, created_at, updated_at)
-    VALUES (?, 'pro', 'example.com', '12', 'USDT', 'base', 'pending', ?, ?, ?)`)
+    VALUES (?, 'pro', 'example.com', '12', 'USDC', 'base', 'pending', ?, ?, ?)`)
     .run(confirmed.merchantOrderId, confirmed.reference, '2026-01-01', '2026-01-01');
   return {
     app: createApp({ db }),

@@ -2,7 +2,7 @@
 // OwnerPro — the paid tier panel of the site owner workspace.
 //
 // Pro is a subscription for the site owner: $12 for one 30-day term, paid
-// on-chain (USDT on Base) through AIPAY. The panel walks the owner through
+// on-chain (USDC on Base) through AIPAY. The panel walks the owner through
 // it without ever pretending the payment is a card checkout:
 //
 //   1. the owner presses "Activate Pro" → AFR creates an order
@@ -71,7 +71,7 @@ const daysText = t('ownerProDays', '{n} days', '{n} 天');
 /* the price — one term, no auto-renewal (the ledger is explicit about it) */
 const priceAmount = '12';
 const priceTerm = t('ownerProPriceTerm', '/ 30 days', '/ 30 天');
-const priceAsset = t('ownerProPriceAsset', 'USDT · Base chain', 'USDT · Base 链');
+const priceAsset = t('ownerProPriceAsset', 'USDC · Base chain', 'USDC · Base 链');
 const priceNote = t(
   'ownerProPriceNote',
   'One term, paid on-chain. There is no auto-renewal: the panel asks again before the next term.',

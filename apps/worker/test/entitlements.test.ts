@@ -28,7 +28,7 @@ const ADMIN_REF = 'admin:11111111-2222-4333-8444-555555555555';
 async function insertOrder(db: Db, orderId: string, subjectId: string, status: string, purpose = 'pro') {
   await db.prepare(`INSERT INTO billing_orders
     (merchant_order_id, subject_id, status, purpose, amount, asset, chain_key, checkout_url, created_at, updated_at)
-    VALUES (?, ?, ?, ?, '12', 'USDT', 'base', ?, ?, ?)`)
+    VALUES (?, ?, ?, ?, '12', 'USDC', 'base', ?, ?, ?)`)
     .run(orderId, subjectId, status, purpose, CHECKOUT, CREATED, CREATED);
 }
 
@@ -293,7 +293,7 @@ test('a verified AIPAY webhook can confirm a ledger order but does not write a g
   await insertOrder(db, merchantOrderId, 'example.com', 'pending');
   await db.prepare('UPDATE billing_orders SET aipay_reference = ? WHERE merchant_order_id = ?').run(REFERENCE, merchantOrderId);
   const order: AipayOrderResponse = {
-    reference: REFERENCE, merchantOrderId, status: 'confirmed', amount: '12', asset: 'USDT', chainKey: 'base',
+    reference: REFERENCE, merchantOrderId, status: 'confirmed', amount: '12', asset: 'USDC', chainKey: 'base',
     checkoutUrl: CHECKOUT, confirmedAt: now, txHash: '0x' + 'a'.repeat(64),
   };
   const event = 'order.confirmed';

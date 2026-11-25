@@ -81,7 +81,7 @@ function createdOrder(merchantOrderId: string): Response {
       status: 'pending',
       merchantOrderId,
       amount: '12',
-      asset: 'USDT',
+      asset: 'USDC',
       chainKey: 'base',
       checkoutUrl: CHECKOUT,
       expiresAt: Date.now() + 900_000,
@@ -97,7 +97,7 @@ function confirmedOrder(merchantOrderId: string): Response {
       status: 'confirmed',
       merchantOrderId,
       amount: '12',
-      asset: 'USDT',
+      asset: 'USDC',
       chainKey: 'base',
       checkoutUrl: CHECKOUT,
       expiresAt: Date.now() + 900_000,
@@ -142,7 +142,7 @@ function signedWebhook(merchantOrderId: string, now = Date.now()): { body: strin
       status: 'confirmed',
       merchantOrderId,
       amount: '12',
-      asset: 'USDT',
+      asset: 'USDC',
       chainKey: 'base',
       checkoutUrl: CHECKOUT,
       confirmedAt: now,
@@ -185,7 +185,7 @@ function fakeKv(): KvLike & { store: Map<string, string> } {
 // POST /api/v1/billing/pro/orders
 // ---------------------------------------------------------------------------
 
-test('the product sells 30 days of Pro for 12 USDT', async (t) => {
+test('the product sells 30 days of Pro for 12 USDC', async (t) => {
   const { app, raw } = await fixture(t);
   mockAipay(t, request => createdOrder(String(request.body.merchantOrderId)));
   assert.equal(DEFAULT_PRO_TERM_DAYS, 30);
@@ -194,7 +194,7 @@ test('the product sells 30 days of Pro for 12 USDT', async (t) => {
     amount: string; asset: string; chain_key: string; term_days: number;
   };
   assert.equal(row.amount, '12');
-  assert.equal(row.asset, 'USDT');
+  assert.equal(row.asset, 'USDC');
   assert.equal(row.chain_key, 'base');
   assert.equal(row.term_days, 30);
 });
@@ -207,7 +207,7 @@ test('a Pro order is written to the ledger first and answers with the checkout',
   assert.equal(res.status, 201);
   const body = await res.json() as Record<string, unknown>;
   assert.equal(body.amount, '12');
-  assert.equal(body.asset, 'USDT');
+  assert.equal(body.asset, 'USDC');
   assert.equal(body.chainKey, 'base');
   assert.equal(body.reference, REFERENCE);
   assert.equal(body.checkoutUrl, CHECKOUT);
@@ -218,7 +218,7 @@ test('a Pro order is written to the ledger first and answers with the checkout',
   assert.equal(seen.length, 1);
   assert.equal(seen[0]!.method, 'POST');
   assert.equal(seen[0]!.body.amount, '12');
-  assert.equal(seen[0]!.body.asset, 'USDT');
+  assert.equal(seen[0]!.body.asset, 'USDC');
   assert.equal(seen[0]!.body.chainKey, 'base');
   assert.equal(seen[0]!.body.ttlSeconds, 900);
   assert.equal(seen[0]!.body.description, 'AFR Pro · example.com');
@@ -231,7 +231,7 @@ test('a Pro order is written to the ledger first and answers with the checkout',
   assert.equal(row.purpose, 'pro');
   assert.equal(row.subject_id, 'example.com');
   assert.equal(row.amount, '12');
-  assert.equal(row.asset, 'USDT');
+  assert.equal(row.asset, 'USDC');
   assert.equal(row.chain_key, 'base');
   assert.equal(row.term_days, 30);
   assert.equal(row.status, 'pending');
@@ -370,7 +370,7 @@ test('the order page answers with the state of the order and of the Pro term', a
   assert.equal(body.status, 'pending');
   assert.equal(body.paid, false);
   assert.equal(body.amount, '12');
-  assert.equal(body.asset, 'USDT');
+  assert.equal(body.asset, 'USDC');
   assert.equal(body.chainKey, 'base');
   assert.equal(body.checkoutUrl, created.checkoutUrl);
   assert.deepEqual(body.pro, { active: false, expiresAt: null });

@@ -6,7 +6,7 @@ import { openSeededDb } from './helpers.ts';
 
 const env: AipayEnv = { AIPAY_API_KEY: 'test_secret_not_real', AIPAY_WEBHOOK_SECRET: 'test-hook-secret' };
 const order = { reference: 'ap_12345678901234567890', status: 'pending', merchantOrderId: 'afr-pro-example-20261124',
-  amount: '12', asset: 'USDT', chainKey: 'base', checkoutUrl: 'https://aipay.im/en/pay?intent=abc', expiresAt: Date.now()+600000 };
+  amount: '12', asset: 'USDC', chainKey: 'base', checkoutUrl: 'https://aipay.im/en/pay?intent=abc', expiresAt: Date.now()+600000 };
 function signed(body: string, timestamp = String(Math.floor(Date.now()/1000)), delivery = '42') {
   const signature = 'sha256=' + createHmac('sha256', env.AIPAY_WEBHOOK_SECRET!).update(`${timestamp}.${body}`).digest('hex');
   return new Headers({ 'x-aipay-timestamp': timestamp, 'x-aipay-signature': signature, 'x-aipay-event': 'order.confirmed', 'x-aipay-delivery': delivery });
@@ -14,7 +14,7 @@ function signed(body: string, timestamp = String(Math.floor(Date.now()/1000)), d
 
 test('persists business ID before order creation and reuses AIPAY idempotency after uncertain errors', async () => {
   const { db } = openSeededDb(); let calls = 0;
-  const input = { merchantOrderId: order.merchantOrderId!, purpose: 'pro' as const, subjectId: 'example.com', amount: '12', asset: 'USDT', chainKey: 'base' };
+  const input = { merchantOrderId: order.merchantOrderId!, purpose: 'pro' as const, subjectId: 'example.com', amount: '12', asset: 'USDC', chainKey: 'base' };
   const fetchImpl: typeof fetch = async (_url, init) => {
     calls++;
     const body = JSON.parse(String(init?.body)); assert.equal(body.merchantOrderId, input.merchantOrderId);
@@ -109,7 +109,7 @@ test('verifies raw bytes, event ID and freshness before JSON parsing', async () 
 test('applies only canonical AIPAY-re-read confirmation and deduplicates signed delivery', async () => {
   const { db } = openSeededDb();
   await db.prepare(`INSERT INTO billing_orders (merchant_order_id,purpose,subject_id,amount,asset,chain_key,status,aipay_reference,checkout_url,created_at,updated_at)
-    VALUES (?,?,?,?,?,?,'pending',?,?,?,?)`).run(order.merchantOrderId!,'pro','example.com','12.00','USDT','base',order.reference,order.checkoutUrl,new Date().toISOString(),new Date().toISOString());
+    VALUES (?,?,?,?,?,?,'pending',?,?,?,?)`).run(order.merchantOrderId!,'pro','example.com','12.00','USDC','base',order.reference,order.checkoutUrl,new Date().toISOString(),new Date().toISOString());
   const confirmed = { ...order, status:'confirmed', confirmedAt:Date.now(), txHash:'0x'+'a'.repeat(64) };
   const body=JSON.stringify({event:'order.confirmed',delivery:{id:44},order:confirmed}); const headers=signed(body,undefined,'44');
   let rereads=0; const reread=async (reference:string) => { rereads++; assert.equal(reference,order.reference); return confirmed; };
@@ -131,7 +131,7 @@ test('applies only canonical AIPAY-re-read confirmation and deduplicates signed 
 test('concurrent distinct confirmation deliveries produce one transition and one ignored result', async () => {
   const { db, raw } = openSeededDb();
   await db.prepare(`INSERT INTO billing_orders (merchant_order_id,purpose,subject_id,amount,asset,chain_key,status,aipay_reference,checkout_url,created_at,updated_at)
-    VALUES (?,?,?,?,?,?,'pending',?,?,?,?)`).run(order.merchantOrderId!,'pro','example.com','12.00','USDT','base',order.reference,order.checkoutUrl,new Date().toISOString(),new Date().toISOString());
+    VALUES (?,?,?,?,?,?,'pending',?,?,?,?)`).run(order.merchantOrderId!,'pro','example.com','12.00','USDC','base',order.reference,order.checkoutUrl,new Date().toISOString(),new Date().toISOString());
   const confirmed = { ...order, status:'confirmed', confirmedAt:Date.now(), txHash:'0x'+'d'.repeat(64) };
   const makeDelivery = (id: number) => {
     const body = JSON.stringify({event:'order.confirmed',delivery:{id},order:confirmed});
@@ -160,7 +160,7 @@ test('concurrent distinct confirmation deliveries produce one transition and one
 test('ignores unrelated refs, refuses unsigned or mismatched merchant orders', async () => {
   const { db } = openSeededDb();
   await db.prepare(`INSERT INTO billing_orders (merchant_order_id,purpose,subject_id,amount,asset,chain_key,status,aipay_reference,created_at,updated_at)
-    VALUES (?,?,?,?,?,?,'pending',?,?,?)`).run(order.merchantOrderId!,'pro','example.com','12.00','USDT','base',order.reference,new Date().toISOString(),new Date().toISOString());
+    VALUES (?,?,?,?,?,?,'pending',?,?,?)`).run(order.merchantOrderId!,'pro','example.com','12.00','USDC','base',order.reference,new Date().toISOString(),new Date().toISOString());
   const body=JSON.stringify({event:'order.confirmed',delivery:{id:42},order:{...order,status:'confirmed'}});
   const noSecret={ ...env, AIPAY_WEBHOOK_SECRET: '' };
   assert.equal(await applyAipayWebhook(db,new TextEncoder().encode(body),signed(body),noSecret.AIPAY_WEBHOOK_SECRET!,async()=>order),'invalid');

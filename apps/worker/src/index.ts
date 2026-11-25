@@ -3224,7 +3224,7 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
 
   // POST /api/v1/billing/pro/orders {domain} — start a Pro subscription.
   //
-  // One order buys one term: 12 USDT on the Base chain for 30 days. The
+  // One order buys one term: 12 USDC on the Base chain for 30 days. The
   // ledger row is written first, then AIPAY is asked for a checkout.
   app.post('/api/v1/billing/pro/orders', async (c) => {
     let body: unknown;

@@ -36,7 +36,7 @@ const PROSE = {
       'The score itself is not part of the product. It is computed by the same open engine from the same public signals, before and after you pay.',
     ],
     priceTitle: 'Price',
-    priceLead: '$12 for one 30-day term, paid in USDT on the Base chain.',
+    priceLead: '$12 for one 30-day term, paid in USDC on the Base chain.',
     priceNote: 'One term at a time — there is no auto-renewal. When the term ends, Pro ends with it and the account returns to the free tier. Nothing of yours is deleted.',
     benefitsTitle: 'What you get',
     benefits: [
@@ -58,7 +58,7 @@ const PROSE = {
       ],
       [
         'Can I get a refund?',
-        'Honestly: no automatic one. AIPAY is a non-custodial on-chain payment — the money goes straight on-chain, AFR never holds it, and a confirmed mainnet transfer cannot be reversed by anyone. Once the payment is confirmed, the term is granted and there is no refund channel. Please check the amount (12 USDT on Base) and the domain before you pay. If you paid by mistake, write to us with the payment reference: we will look at it, but we cannot reverse a confirmed chain transfer.',
+        'Honestly: no automatic one. AIPAY is a non-custodial on-chain payment — the money goes straight on-chain, AFR never holds it, and a confirmed mainnet transfer cannot be reversed by anyone. Once the payment is confirmed, the term is granted and there is no refund channel. Please check the amount (12 USDC on Base) and the domain before you pay. If you paid by mistake, write to us with the payment reference: we will look at it, but we cannot reverse a confirmed chain transfer.',
       ],
       [
         'Does paying change my score?',
@@ -95,7 +95,7 @@ const PROSE = {
       '分数本身不在商品里。付款前后，它都由同一个开放引擎、基于同一批公开信号算出。',
     ],
     priceTitle: '价格',
-    priceLead: '$12 一个 30 天周期，用 USDT 在 Base 链上支付。',
+    priceLead: '$12 一个 30 天周期，用 USDC 在 Base 链上支付。',
     priceNote: '一次只买一个周期——没有自动续费。周期结束后 Pro 一同结束，账号回到免费档；你的数据不会被删除。',
     benefitsTitle: '你得到什么',
     benefits: [
@@ -117,7 +117,7 @@ const PROSE = {
       ],
       [
         '能退款吗？',
-        '说实话：没有自动退款。AIPAY 是非托管的链上支付——钱直接上链，AFR 从不托管，而已确认的主网转账任何人都无法逆转。付款确认后，权益即发放，没有退款通道。付款前请核对金额（Base 链上 12 USDT）与域名。如果付错了，请带上付款参考号联系我们：我们会查，但无法逆转已确认的链上转账。',
+        '说实话：没有自动退款。AIPAY 是非托管的链上支付——钱直接上链，AFR 从不托管，而已确认的主网转账任何人都无法逆转。付款确认后，权益即发放，没有退款通道。付款前请核对金额（Base 链上 12 USDC）与域名。如果付错了，请带上付款参考号联系我们：我们会查，但无法逆转已确认的链上转账。',
       ],
       [
         '付款会改分吗？',
@@ -157,7 +157,7 @@ const pledge = L.ui.footerPledge as string;
       <p class="price">
         <span class="amount mono">$12</span>
         <span class="per">/ 30 {isZh ? '天' : 'days'}</span>
-        <span class="asset mono">USDT · Base</span>
+        <span class="asset mono">USDC · Base</span>
       </p>
       <p class="lead">{P.priceLead}</p>
     </header>
