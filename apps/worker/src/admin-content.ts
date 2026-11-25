@@ -183,13 +183,13 @@ export async function readContentBoard(db: Db): Promise<ContentBoard> {
     db
       .prepare(
         `SELECT COUNT(*) AS n FROM sites s
-         JOIN categories c ON c.id = s.category_id WHERE c.slug = 'other'`,
+         JOIN categories c ON c.id = COALESCE(s.category_override, s.category_id) WHERE c.slug = 'other'`,
       )
       .get<{ n: number }>(),
     db
       .prepare(
         `SELECT s.domain, s.title, s.rank, s.grade FROM sites s
-         JOIN categories c ON c.id = s.category_id
+         JOIN categories c ON c.id = COALESCE(s.category_override, s.category_id)
          WHERE c.slug = 'other' AND s.title IS NOT NULL AND trim(s.title) <> ''
          ORDER BY (s.rank IS NULL), s.rank ASC, s.domain ASC
          LIMIT ?`,
@@ -405,9 +405,12 @@ export async function moderateClaims(
 // ---------------------------------------------------------------------------
 
 /**
- * Move a batch of sites into another category. Only `category_id` and
- * `updated_at` are touched — title, verified, rank, status and grade stay
- * exactly as the scanner left them.
+ * Move a batch of sites into another category. The decision is written to
+ * `category_override` (the manual column) and `updated_at` is touched —
+ * `category_id` stays the rule-derived value, title, verified, rank, status
+ * and grade stay exactly as the scanner left them. The effective category is
+ * COALESCE(category_override, category_id), so a manual label survives the
+ * rule-driven backfill.
  */
 export async function reclassifySites(
   db: Db,

@@ -133,6 +133,13 @@ describe('catalog parity', () => {
       'ownerMailErrMailboxVerified', 'ownerMailErrRateLimited', 'ownerMailErrUnauthorized',
       'ownerMailErrTurnstile', 'ownerMailErrTurnstileRequired',
       'ownerMailErrTurnstileUnavailable', 'ownerMailErrNotConfigured',
+      // owner mailbox self-service — recovery of a lost token and unregistering
+      'ownerMailLostToken', 'ownerMailRecoverDesc', 'ownerMailRecoverStart',
+      'ownerMailRecoverSentTitle', 'ownerMailRecoverSentBody', 'ownerMailRecoverTokenLabel',
+      'ownerMailRecoverTokenUse', 'ownerMailRecoverTokenSaved',
+      'ownerMailErrRecoveryUnavailable', 'ownerMailErrRecoveryToken',
+      'ownerMailDeleteTitle', 'ownerMailDeleteDesc', 'ownerMailDeleteConfirm',
+      'ownerMailDeleteBusy', 'ownerMailDeleteDone',
     ];
     for (const locale of LOCALES) {
       for (const key of required) {

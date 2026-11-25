@@ -1283,7 +1283,7 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
       where.push("(s.domain LIKE ? ESCAPE '\\' OR s.title LIKE ? ESCAPE '\\')");
       params.push(like, like);
     }
-    const joinSql = 'LEFT JOIN categories c ON c.id = s.category_id';
+    const joinSql = 'LEFT JOIN categories c ON c.id = COALESCE(s.category_override, s.category_id)';
     const whereSql = `WHERE ${where.join(' AND ')}`;
     const orderSql =
       sort === 'rank'
@@ -1319,7 +1319,7 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     const site = await db
       .prepare(
         `SELECT s.*, c.slug AS category_slug FROM sites s
-         LEFT JOIN categories c ON c.id = s.category_id WHERE s.domain = ?`,
+         LEFT JOIN categories c ON c.id = COALESCE(s.category_override, s.category_id) WHERE s.domain = ?`,
       )
       .get<SiteRow>(domain);
     if (!site) return c.json({ error: 'not_found', domain }, 404);
@@ -1433,7 +1433,7 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
       .prepare(
         `SELECT c.id, c.slug, c.name_en, c.name_zh, c.parent,
                 (SELECT COUNT(*) FROM sites s
-                  WHERE s.category_id = c.id AND s.status = 'active'
+                  WHERE COALESCE(s.category_override, s.category_id) = c.id AND s.status = 'active'
                     AND s.grade != 'Pending') AS count
          FROM categories c ORDER BY c.id`,
       )
@@ -1497,7 +1497,7 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     const rows = await db
       .prepare(
         `SELECT s.*, c.slug AS category_slug FROM sites s
-         LEFT JOIN categories c ON c.id = s.category_id
+         LEFT JOIN categories c ON c.id = COALESCE(s.category_override, s.category_id)
          WHERE ${where.join(' AND ')}
          ORDER BY s.score_total DESC, s.domain ASC LIMIT ?`,
       )

@@ -97,8 +97,8 @@ test('a cross-origin or unauthenticated write is refused', async t => {
   }, env);
   assert.equal(anonymous.status, 401);
   // Nothing was written.
-  const row = await db.prepare('SELECT category_id FROM sites WHERE domain = ?').get<{ category_id: number }>('example.com');
-  assert.notEqual(row?.category_id, 3);
+  const row = await db.prepare('SELECT category_override FROM sites WHERE domain = ?').get<{ category_override: number | null }>('example.com');
+  assert.equal(row?.category_override, null);
 });
 
 test('a batch reclassification moves the sites and leaves an audit trail', async t => {
@@ -120,8 +120,8 @@ test('a batch reclassification moves the sites and leaves an audit trail', async
   assert.equal(response.status, 303);
   assert.match(response.headers.get('location') ?? '', /^\/admin\/content\?notice=reclassified$/);
 
-  const moved = await db.prepare('SELECT category_id FROM sites WHERE domain = ?').get<{ category_id: number }>('example.com');
-  assert.equal(moved?.category_id, 3);
+  const moved = await db.prepare('SELECT category_override FROM sites WHERE domain = ?').get<{ category_override: number | null }>('example.com');
+  assert.equal(moved?.category_override, 3);
   const audit = await db
     .prepare('SELECT action, subject, target, before_json, after_json FROM admin_audit WHERE request_id = ?')
     .all<{ action: string; subject: string; target: string; before_json: string; after_json: string }>(requestId);

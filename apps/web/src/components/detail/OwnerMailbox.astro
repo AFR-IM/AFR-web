@@ -110,6 +110,41 @@ const notifySavedText = t('ownerMailNotifySaved', 'Notification preference saved
 const signOutText = t('ownerMailSignOut', 'Sign out / register again', '退出 / 重新登记');
 const signedOutText = t('ownerMailSignedOut', 'Signed out — the token was removed from this browser.', '已退出——令牌已从本机浏览器移除。');
 const restoreTitle = t('ownerMailRestoreTitle', 'I saved my management token', '我保存的管理令牌');
+// ── recovery of a lost management token (POST /owners/email/recover) ───────
+const lostText = t('ownerMailLostToken', 'I lost my management token', '我弄丢了管理令牌');
+const recoverDesc = t(
+  'ownerMailRecoverDesc',
+  'Recover a lost management token: publish the challenge on your domain again and AFR mails a recovery link to the confirmed address. The old token stops working as soon as the link is used.',
+  '找回管理令牌：重新在你的域名上发布挑战码，AFR 会把找回链接寄到已确认的邮箱。链接一旦被使用，旧令牌立即失效。',
+);
+const recoverStartText = t('ownerMailRecoverStart', 'Start recovery', '开始找回');
+const recoverSentTitle = t('ownerMailRecoverSentTitle', 'Recovery mail sent', '找回信已寄出');
+const recoverSentBody = t(
+  'ownerMailRecoverSentBody',
+  'Open the link in the mail. It hands out a new management token and the old token stops working immediately. Paste that token below to keep it in this browser.',
+  '打开邮件里的链接。它会给出新的管理令牌，旧令牌立即失效。把新令牌粘贴到下方即可保存在本机浏览器。',
+);
+const recoverTokenLabel = t('ownerMailRecoverTokenLabel', 'Token from the recovery mail', '找回信里的令牌');
+const recoverTokenUseText = t('ownerMailRecoverTokenUse', 'Redeem this token', '兑换该令牌');
+const recoverTokenSavedText = t(
+  'ownerMailRecoverTokenSaved',
+  'The new management token is saved in this browser.',
+  '新的管理令牌已保存在本机浏览器。',
+);
+// ── unregistering the mailbox (DELETE /owners/email?domain=) ──────────────
+const deleteTitle = t('ownerMailDeleteTitle', 'Unregister the mailbox', '注销本站邮箱');
+const deleteDesc = t(
+  'ownerMailDeleteDesc',
+  'Removes the registered mailbox and stops the score-change mails. The score history stays — it is AFR’s own record.',
+  '删除已登记的邮箱并停止评分变化通知。评分记录会保留——那是 AFR 自己的记录。',
+);
+const deleteConfirmText = t('ownerMailDeleteConfirm', 'Delete the mailbox', '确认注销邮箱');
+const deleteBusyText = t('ownerMailDeleteBusy', 'Deleting…', '正在删除…');
+const deleteDoneText = t(
+  'ownerMailDeleteDone',
+  'The mailbox was deleted — this browser no longer holds a management token.',
+  '邮箱已注销——本机浏览器不再持有管理令牌。',
+);
 const rateText = t('ownerMailRate', 'Too many attempts — try again in {t}.', '尝试次数过多——请在 {t} 后重试。');
 const errorText = t('ownerMailError', 'Could not reach the server — try again.', '无法连接服务器——请重试。');
 const copyLabel = L.ui.copy ?? 'Copy';
@@ -135,6 +170,16 @@ const errTurnstileRequired = t('ownerMailErrTurnstileRequired', 'Please complete
 const errTurnstileUnavailable = t('ownerMailErrTurnstileUnavailable', 'The human check could not be loaded — check your connection and try again.', '人机验证组件加载失败——请检查网络后重试。');
 const errNotConfigured = t('ownerMailErrNotConfigured', 'The owner-mail feature is not configured on this deployment.', '当前部署未配置站主邮箱功能。');
 const errDelivery = t('ownerMailErrDelivery', 'The confirmation email could not be sent. Try again later.', '确认信未能发送，请稍后重试。');
+const errRecoveryUnavailable = t(
+  'ownerMailErrRecoveryUnavailable',
+  'This domain has no confirmed mailbox, or the address does not match the registered one.',
+  '该域名没有已确认的邮箱，或你输入的邮箱与登记的不一致。',
+);
+const errRecoveryToken = t(
+  'ownerMailErrRecoveryToken',
+  'This recovery token is invalid or already used — request a new one.',
+  '该找回令牌无效或已被使用——请重新申请。',
+);
 ---
 
 <section
@@ -144,6 +189,15 @@ const errDelivery = t('ownerMailErrDelivery', 'The confirmation email could not 
   data-action={ACTION}
   data-label-idle={startText}
   data-label-busy={busyText}
+  data-label-recover-start={recoverStartText}
+  data-desc-register={desc}
+  data-desc-recover={recoverDesc}
+  data-sent-title={sentTitle}
+  data-sent-body={sentBody}
+  data-sent-title-recover={recoverSentTitle}
+  data-sent-body-recover={recoverSentBody}
+  data-label-delete-busy={deleteBusyText}
+  data-label-delete={deleteConfirmText}
   data-label-change-submit={changeSubmitText}
   data-label-change-busy={changeBusyText}
   data-label-check={checkText}
@@ -176,6 +230,10 @@ const errDelivery = t('ownerMailErrDelivery', 'The confirmation email could not 
   data-err-turnstile-required={errTurnstileRequired}
   data-err-turnstile-unavailable={errTurnstileUnavailable}
   data-err-not-configured={errNotConfigured}
+  data-err-recovery-unavailable={errRecoveryUnavailable}
+  data-err-recovery-token={errRecoveryToken}
+  data-msg-recover-token-saved={recoverTokenSavedText}
+  data-msg-deleted={deleteDoneText}
   aria-labelledby="owner-mailbox-title"
 >
   <header class="om-head">
@@ -184,7 +242,7 @@ const errDelivery = t('ownerMailErrDelivery', 'The confirmation email could not 
 
   {/* ── state: nothing started yet ─────────────────────────────── */}
   <div class="om-state" data-om-state="idle">
-    <p class="om-desc">{desc}</p>
+    <p class="om-desc" data-om-desc>{desc}</p>
     <form class="om-form" data-om-form novalidate>
       <label class="om-label" for="om-email">{emailLabel}</label>
       <input
@@ -199,6 +257,10 @@ const errDelivery = t('ownerMailErrDelivery', 'The confirmation email could not 
         data-om-email
       />
       <button class="btn om-btn" type="submit" data-om-start>{startText}</button>
+      {/* the owner lost the management token — the same challenge flow, a
+          different endpoint: the recovery mail goes to the confirmed
+          address and hands out a new token */}
+      <button class="btn btn-ghost om-btn" type="button" data-om-lost>{lostText}</button>
     </form>
   </div>
 
@@ -304,8 +366,8 @@ const errDelivery = t('ownerMailErrDelivery', 'The confirmation email could not 
 
   {/* ── state: the mailbox is registered, waiting for the mail ─── */}
   <div class="om-state" data-om-state="sent" hidden>
-    <p class="om-title-sm">{sentTitle}</p>
-    <p class="om-note">{sentBody}</p>
+    <p class="om-title-sm" data-om-sent-title>{sentTitle}</p>
+    <p class="om-note" data-om-sent-body>{sentBody}</p>
     <p class="om-note">{tokenHelp}</p>
   </div>
 
@@ -341,6 +403,12 @@ const errDelivery = t('ownerMailErrDelivery', 'The confirmation email could not 
       </form>
     </details>
     <button class="btn btn-ghost om-btn" type="button" data-om-signout>{signOutText}</button>
+    {/* ── unregistering the mailbox (DELETE /api/v1/owners/email) ── */}
+    <details class="om-delete" data-om-delete-box>
+      <summary class="om-summary">{deleteTitle}</summary>
+      <p class="om-note">{deleteDesc}</p>
+      <button class="btn btn-ghost om-btn" type="button" data-om-delete>{deleteConfirmText}</button>
+    </details>
   </div>
 
   {/* ── the human check (Cloudflare Turnstile) ─────────────────── */}
@@ -364,6 +432,20 @@ const errDelivery = t('ownerMailErrDelivery', 'The confirmation email could not 
       data-om-token
     />
     <button class="btn btn-ghost om-btn" type="button" data-om-token-use>{tokenUseText}</button>
+    {/* ── the token of a recovery mail: it is redeemed for a new
+        management token, which is then saved in this browser ───── */}
+    <label class="om-label" for="om-recover-token">{recoverTokenLabel}</label>
+    <input
+      class="om-input mono"
+      id="om-recover-token"
+      name="recover_token"
+      type="text"
+      autocomplete="off"
+      spellcheck="false"
+      placeholder="…"
+      data-om-recover-token
+    />
+    <button class="btn btn-ghost om-btn" type="button" data-om-recover-token-use>{recoverTokenUseText}</button>
   </details>
 
   <p class="om-status mono" data-om-status role="status" aria-live="polite"></p>
@@ -608,6 +690,18 @@ const errDelivery = t('ownerMailErrDelivery', 'The confirmation email could not 
     margin-top: 8px;
   }
 
+  /* unregistering the mailbox */
+  .om-delete {
+    border-top: 1px solid var(--line);
+    padding-top: 8px;
+  }
+  .om-delete[open] .om-summary {
+    margin-bottom: 8px;
+  }
+  .om-delete .om-btn {
+    margin-top: 8px;
+  }
+
   /* replacing the mailbox of a confirmed domain */
   .om-change {
     border-top: 1px solid var(--line);
@@ -716,6 +810,13 @@ const errDelivery = t('ownerMailErrDelivery', 'The confirmation email could not 
     const signOutBtn = root.querySelector<HTMLButtonElement>('[data-om-signout]');
     const tokenUseBtn = root.querySelector<HTMLButtonElement>('[data-om-token-use]');
     const tokenInput = root.querySelector<HTMLInputElement>('[data-om-token]');
+    const lostBtn = root.querySelector<HTMLButtonElement>('[data-om-lost]');
+    const descEl = root.querySelector<HTMLElement>('[data-om-desc]');
+    const sentTitleEl = root.querySelector<HTMLElement>('[data-om-sent-title]');
+    const sentBodyEl = root.querySelector<HTMLElement>('[data-om-sent-body]');
+    const deleteBtn = root.querySelector<HTMLButtonElement>('[data-om-delete]');
+    const recoverTokenUseBtn = root.querySelector<HTMLButtonElement>('[data-om-recover-token-use]');
+    const recoverTokenInput = root.querySelector<HTMLInputElement>('[data-om-recover-token]');
     const notifyBox = root.querySelector<HTMLInputElement>('[data-om-notify]');
     const changeBox = root.querySelector<HTMLDetailsElement>('[data-om-change-box]');
     const changeForm = root.querySelector<HTMLFormElement>('[data-om-change-form]');
@@ -740,6 +841,11 @@ const errDelivery = t('ownerMailErrDelivery', 'The confirmation email could not 
      * (the human check has to be visible while a write is possible) */
     let state = 'idle';
     let changeOpen = false;
+    /* 'register' asks for a new mailbox, 'recover' asks for a new
+     * management token for the mailbox that is already confirmed. The two
+     * share the challenge flow; only the last call differs
+     * (POST /owners/email vs POST /owners/email/recover). */
+    let mode = 'register';
 
     function loadToken(): string {
       try {
@@ -783,6 +889,22 @@ const errDelivery = t('ownerMailErrDelivery', 'The confirmation email could not 
       }
     }
 
+    /* The panel speaks two modes. The wording follows the mode, so the
+     * owner never reads about a new mailbox while asking for a new token. */
+    function applyMode() {
+      const recover = mode === 'recover';
+      if (descEl) descEl.textContent = recover ? attr('data-desc-recover') : attr('data-desc-register');
+      if (sentTitleEl) {
+        sentTitleEl.textContent = recover ? attr('data-sent-title-recover') : attr('data-sent-title');
+      }
+      if (sentBodyEl) {
+        sentBodyEl.textContent = recover ? attr('data-sent-body-recover') : attr('data-sent-body');
+      }
+      if (startBtn && !startBtn.disabled) {
+        startBtn.textContent = recover ? attr('data-label-recover-start') : attr('data-label-idle');
+      }
+    }
+
     function errorFor(code: string): string {
       switch (code) {
         case 'invalid_email':
@@ -813,6 +935,10 @@ const errDelivery = t('ownerMailErrDelivery', 'The confirmation email could not 
           return attr('data-err-not-configured');
         case 'email_delivery_failed':
           return attr('data-err-delivery');
+        case 'recovery_not_available':
+          return attr('data-err-recovery-unavailable');
+        case 'invalid_or_expired_token':
+          return attr('data-err-recovery-token');
         default:
           return attr('data-msg-error');
       }
@@ -1022,7 +1148,8 @@ const errDelivery = t('ownerMailErrDelivery', 'The confirmation email could not 
         .then(() => turnstileReset(action)); /* a token may only be used once */
     });
 
-    /* ── check: POST /api/v1/owners/email ── */
+    /* ── check: POST /api/v1/owners/email (register) or
+     *    POST /api/v1/owners/email/recover (a lost token) ── */
     checkBtn?.addEventListener('click', () => {
       if (checkBtn.disabled) return;
       if (!challenge) {
@@ -1041,7 +1168,8 @@ const errDelivery = t('ownerMailErrDelivery', 'The confirmation email could not 
       checkBtn.textContent = attr('data-label-checking');
       say('');
 
-      fetch('/api/v1/owners/email', {
+      const endpoint = mode === 'recover' ? '/api/v1/owners/email/recover' : '/api/v1/owners/email';
+      fetch(endpoint, {
         method: 'POST',
         headers: { 'content-type': 'application/json', accept: 'application/json' },
         body: JSON.stringify({ domain, email, challenge, turnstile_token: token }),
@@ -1169,11 +1297,34 @@ const errDelivery = t('ownerMailErrDelivery', 'The confirmation email could not 
     resetBtn?.addEventListener('click', () => {
       challenge = '';
       email = '';
+      mode = 'register';
       if (checksBox) checksBox.hidden = true;
       if (startBtn) {
         startBtn.disabled = false;
         startBtn.textContent = attr('data-label-idle');
       }
+      applyMode();
+      setState('idle');
+      say('');
+      emailInput?.focus();
+    });
+
+    /* ── the owner lost the management token ──
+     *
+     * The challenge flow is the same (the domain has to prove control
+     * again), but the last call asks for a recovery instead of a new
+     * mailbox: the mail goes to the confirmed address and hands out a new
+     * management token. */
+    lostBtn?.addEventListener('click', () => {
+      mode = 'recover';
+      challenge = '';
+      email = '';
+      if (checksBox) checksBox.hidden = true;
+      if (startBtn) {
+        startBtn.disabled = false;
+        startBtn.textContent = attr('data-label-recover-start');
+      }
+      applyMode();
       setState('idle');
       say('');
       emailInput?.focus();
@@ -1233,7 +1384,94 @@ const errDelivery = t('ownerMailErrDelivery', 'The confirmation email could not 
       });
     });
 
+    /* ── unregister the mailbox: DELETE /api/v1/owners/email ──
+     *
+     * The management token is the lock (the endpoint deletes the row only
+     * when the token matches). The score history is AFR's own record and
+     * stays untouched. */
+    deleteBtn?.addEventListener('click', () => {
+      const token = loadToken();
+      if (!token) {
+        say(attr('data-err-unauthorized'), 'error');
+        setState('idle');
+        return;
+      }
+      if (deleteBtn) {
+        deleteBtn.disabled = true;
+        deleteBtn.textContent = attr('data-label-delete-busy');
+      }
+      say('');
+      fetch('/api/v1/owners/email?domain=' + encodeURIComponent(domain), {
+        method: 'DELETE',
+        headers: { accept: 'application/json', authorization: 'Bearer ' + token },
+      })
+        .then((r) => readJson(r).then((body) => ({ r, body })))
+        .then(({ r, body }) => {
+          if (deleteBtn) {
+            deleteBtn.disabled = false;
+            deleteBtn.textContent = attr('data-label-delete');
+          }
+          if (r.ok && body?.deleted === true) {
+            dropToken();
+            challenge = '';
+            email = '';
+            if (notifyBox) notifyBox.checked = false;
+            if (maskedOut) maskedOut.textContent = '';
+            setState('idle');
+            say(attr('data-msg-deleted'), 'ok');
+            return;
+          }
+          if (r.status === 401) {
+            dropToken();
+            setState('idle');
+            say(attr('data-msg-token-invalid'), 'error');
+            return;
+          }
+          say(errorFor(String((body && body.error) || '')), 'error');
+        })
+        .catch(() => {
+          if (deleteBtn) {
+            deleteBtn.disabled = false;
+            deleteBtn.textContent = attr('data-label-delete');
+          }
+          say(attr('data-msg-error'), 'error');
+        });
+    });
+
+    /* ── redeem the token of a recovery mail ──
+     *
+     * The recovery link hands out a *new* management token; the old one
+     * dies with the click. This field takes that token (or the recovery
+     * token itself) and stores the result in this browser. */
+    recoverTokenUseBtn?.addEventListener('click', () => {
+      const value = (recoverTokenInput?.value ?? '').trim();
+      if (!value) {
+        say(attr('data-err-recovery-token'), 'error');
+        return;
+      }
+      fetch('/api/v1/owners/email/recover/verify?token=' + encodeURIComponent(value), {
+        headers: { accept: 'application/json' },
+      })
+        .then((r) => readJson(r).then((body) => ({ r, body })))
+        .then(({ r, body }) => {
+          const manage = body && body.manageToken ? String(body.manageToken) : '';
+          if (!r.ok || !manage) {
+            say(attr('data-err-recovery-token'), 'error');
+            return;
+          }
+          saveToken(manage);
+          if (recoverTokenInput) recoverTokenInput.value = '';
+          showMailbox(manage).then((ok) => {
+            if (ok) say(attr('data-msg-recover-token-saved'), 'ok');
+          });
+        })
+        .catch(() => {
+          say(attr('data-msg-error'), 'error');
+        });
+    });
+
     /* ── restore on load: the token in this browser decides ── */
+    applyMode();
     const saved = loadToken();
     if (saved) {
       /* "loading" hides every state block until the answer arrives */

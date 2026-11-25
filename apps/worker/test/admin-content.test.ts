@@ -51,7 +51,7 @@ function auditRows(raw: DatabaseSync, action: string) {
 function siteRow(raw: DatabaseSync, domain: string) {
   const row = raw
     .prepare(
-      `SELECT domain, title, category_id, grade, rank, verified, status, updated_at
+      `SELECT domain, title, category_id, category_override, grade, rank, verified, status, updated_at
        FROM sites WHERE domain = ?`,
     )
     .get(domain) as Record<string, unknown> | undefined;
@@ -196,7 +196,10 @@ it('reclassifies a batch of sites and audits every change', async () => {
   assert.deepEqual(result, { result: 'applied', changed: 2, skipped: [] });
 
   const moved = siteRow(raw, 'coolsite.io');
-  assert.equal(moved.category_id, 5);
+  // The manual decision lands in category_override; the rule-derived
+  // category_id stays what the keyword rules produced.
+  assert.equal(moved.category_override, 5);
+  assert.equal(moved.category_id, 4);
   // Nothing but the category (and the update timestamp) may change.
   assert.equal(moved.title, before.title);
   assert.equal(moved.verified, before.verified);
@@ -204,7 +207,7 @@ it('reclassifies a batch of sites and audits every change', async () => {
   assert.equal(moved.grade, before.grade);
   assert.equal(moved.status, before.status);
   assert.notEqual(moved.updated_at, before.updated_at);
-  assert.equal(siteRow(raw, 'example.com').category_id, 5);
+  assert.equal(siteRow(raw, 'example.com').category_override, 5);
 
   // The audit rows follow the order of the requested domains.
   const rows = auditRows(raw, 'reclassify');
@@ -237,7 +240,7 @@ it('skips unknown sites and rejects an unusable reclassification input', async (
     categorySlug: 'ecommerce',
   });
   assert.deepEqual(result, { result: 'applied', changed: 1, skipped: ['missing.example'] });
-  assert.equal(siteRow(raw, 'example.com').category_id, 5);
+  assert.equal(siteRow(raw, 'example.com').category_override, 5);
 
   const conflict = { result: 'conflict', changed: 0, skipped: [] };
   assert.deepEqual(
@@ -277,7 +280,8 @@ it('skips unknown sites and rejects an unusable reclassification input', async (
     conflict,
   );
   // The rejected batch left the site alone.
-  assert.equal(siteRow(raw, 'example.com').category_id, 5);
+  assert.equal(siteRow(raw, 'example.com').category_override, 5);
+  assert.equal(siteRow(raw, 'example.com').category_id, 2);
   assert.equal(auditRows(raw, 'reclassify').length, 1);
 });
 
@@ -304,18 +308,22 @@ it('replays a reclassification request id instead of writing twice', async () =>
   assert.deepEqual(replay, { result: 'replayed', changed: 0, skipped: [] });
   // The replay wrote nothing: the site keeps the value it had.
   assert.equal(siteRow(raw, 'example.com').category_id, 4);
+  assert.equal(siteRow(raw, 'example.com').category_override, 5);
   assert.equal(auditRows(raw, 'reclassify').length, 1);
 
   // A different request id is a new decision and writes another audit row.
+  // It has to be a decision that changes something: the site is already in
+  // ecommerce (the manual label wins over the rule value), so the new
+  // decision moves it to another category.
   const again = await reclassifySites(db, {
     requestId: 'b1c2d3e4-f5a6-4b7c-8d9e-0f1a2b3c4d5e',
     subject: OPERATOR,
     domains: ['example.com'],
-    categorySlug: 'ecommerce',
+    categorySlug: 'news',
   });
   assert.deepEqual(again, { result: 'applied', changed: 1, skipped: [] });
   assert.equal(auditRows(raw, 'reclassify').length, 2);
-  assert.equal(siteRow(raw, 'example.com').category_id, 5);
+  assert.equal(siteRow(raw, 'example.com').category_override, 3);
 });
 
 it('opens, lists and closes a correction ticket', async () => {
@@ -543,7 +551,9 @@ it('writes the site change and its audit row in one transaction', async () => {
     /audit insert required/,
   );
   assert.equal(siteRow(raw, 'example.com').category_id, 2);
+  assert.equal(siteRow(raw, 'example.com').category_override, null);
   assert.equal(siteRow(raw, 'coolsite.io').category_id, 2);
+  assert.equal(siteRow(raw, 'coolsite.io').category_override, null);
   assert.equal(auditRows(raw, 'reclassify').length, 0);
 
   raw.exec('DROP TRIGGER fail_audit');
@@ -556,10 +566,43 @@ it('writes the site change and its audit row in one transaction', async () => {
   assert.deepEqual(applied, { result: 'applied', changed: 2, skipped: [] });
   // Two sites moved, two audit rows — the site change and its trail agree.
   const moved = raw
-    .prepare(`SELECT COUNT(*) AS n FROM sites WHERE category_id = 5`)
+    .prepare(`SELECT COUNT(*) AS n FROM sites WHERE COALESCE(category_override, category_id) = 5`)
     .get()?.n;
   assert.equal(moved, 2);
   assert.equal(auditRows(raw, 'reclassify').length, 2);
+});
+
+it('keeps a manual category when the rule-driven backfill rewrites the rules value', async () => {
+  const { db, raw } = openSeededDb();
+  addCategory(raw, 4, 'other');
+  addCategory(raw, 5, 'ecommerce');
+
+  const result = await reclassifySites(db, {
+    requestId: REQUEST,
+    subject: OPERATOR,
+    domains: ['example.com'],
+    categorySlug: 'ecommerce',
+  });
+  assert.deepEqual(result, { result: 'applied', changed: 1, skipped: [] });
+
+  // This is what scripts/categorize-backfill.mjs does: it rewrites
+  // category_id from the keyword rules. The manual label must survive it.
+  raw.prepare('UPDATE sites SET category_id = 4 WHERE domain = ?').run('example.com');
+  assert.equal(siteRow(raw, 'example.com').category_id, 4);
+  assert.equal(siteRow(raw, 'example.com').category_override, 5);
+
+  const effective = raw
+    .prepare(
+      `SELECT c.slug AS slug FROM sites s
+       LEFT JOIN categories c ON c.id = COALESCE(s.category_override, s.category_id)
+       WHERE s.domain = ?`,
+    )
+    .get('example.com') as { slug: string };
+  assert.equal(effective.slug, 'ecommerce');
+
+  // The board counts the effective category: the site is not in 'other' any more.
+  const board = await readContentBoard(db);
+  assert.equal(board.otherCount, 0);
 });
 
 it('renders the board with the shared console components', async () => {

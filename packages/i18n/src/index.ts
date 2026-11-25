@@ -305,6 +305,27 @@ const en: Catalog = {
     ownerMailErrTurnstileUnavailable:
       'The human check could not be loaded — check your connection and try again.',
     ownerMailErrNotConfigured: 'The owner-mail feature is not configured on this deployment.',
+    ownerMailLostToken: 'I lost my management token',
+    ownerMailRecoverDesc:
+      'Recover a lost management token: publish the challenge on your domain again and AFR mails a recovery link to the confirmed address. The old token stops working as soon as the link is used.',
+    ownerMailRecoverStart: 'Start recovery',
+    ownerMailRecoverSentTitle: 'Recovery mail sent',
+    ownerMailRecoverSentBody:
+      'Open the link in the mail. It hands out a new management token and the old token stops working immediately. Paste that token below to keep it in this browser.',
+    ownerMailRecoverTokenLabel: 'Token from the recovery mail',
+    ownerMailRecoverTokenUse: 'Redeem this token',
+    ownerMailRecoverTokenSaved: 'The new management token is saved in this browser.',
+    ownerMailErrRecoveryUnavailable:
+      'This domain has no confirmed mailbox, or the address does not match the registered one.',
+    ownerMailErrRecoveryToken:
+      'This recovery token is invalid or already used — request a new one.',
+    ownerMailDeleteTitle: 'Unregister the mailbox',
+    ownerMailDeleteDesc:
+      'Removes the registered mailbox and stops the score-change mails. The score history stays — it is AFR’s own record.',
+    ownerMailDeleteConfirm: 'Delete the mailbox',
+    ownerMailDeleteBusy: 'Deleting…',
+    ownerMailDeleteDone:
+      'The mailbox was deleted — this browser no longer holds a management token.',
 
     // P5 method page
     methodTitle: 'The AFR standard',
@@ -716,6 +737,23 @@ const zhCN: Catalog = {
     ownerMailErrTurnstileRequired: '请先完成人机验证，然后重试。',
     ownerMailErrTurnstileUnavailable: '人机验证组件加载失败——请检查网络后重试。',
     ownerMailErrNotConfigured: '当前部署未配置站主邮箱功能。',
+    ownerMailLostToken: '我弄丢了管理令牌',
+    ownerMailRecoverDesc:
+      '找回管理令牌：重新在你的域名上发布挑战码，AFR 会把找回链接寄到已确认的邮箱。链接一旦被使用，旧令牌立即失效。',
+    ownerMailRecoverStart: '开始找回',
+    ownerMailRecoverSentTitle: '找回信已寄出',
+    ownerMailRecoverSentBody:
+      '打开邮件里的链接。它会给出新的管理令牌，旧令牌立即失效。把新令牌粘贴到下方即可保存在本机浏览器。',
+    ownerMailRecoverTokenLabel: '找回信里的令牌',
+    ownerMailRecoverTokenUse: '兑换该令牌',
+    ownerMailRecoverTokenSaved: '新的管理令牌已保存在本机浏览器。',
+    ownerMailErrRecoveryUnavailable: '该域名没有已确认的邮箱，或你输入的邮箱与登记的不一致。',
+    ownerMailErrRecoveryToken: '该找回令牌无效或已被使用——请重新申请。',
+    ownerMailDeleteTitle: '注销本站邮箱',
+    ownerMailDeleteDesc: '删除已登记的邮箱并停止评分变化通知。评分记录会保留——那是 AFR 自己的记录。',
+    ownerMailDeleteConfirm: '确认注销邮箱',
+    ownerMailDeleteBusy: '正在删除…',
+    ownerMailDeleteDone: '邮箱已注销——本机浏览器不再持有管理令牌。',
 
     // P5 method page
     methodTitle: 'AFR 标准全文',

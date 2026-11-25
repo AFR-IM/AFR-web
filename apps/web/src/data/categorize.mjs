@@ -992,7 +992,7 @@ const RULES = [
 ['tomshardware.com', 'news'],
 ['torproject.org', 'dev-tools'],
 ['toyota', 'ecommerce', true],
-['tp-link.com', 'dev-tools'],
+['tp-link.com', 'ecommerce'], // batch 12 — a direct-to-consumer hardware shop (anker-in/eufylife/wyzecam precedent); aylanetworks stays dev-tools (an IoT platform, not a shop)
 ['tplinkcloud.com', 'dev-tools'],
 ['tradingeconomics.com', 'finance'],
 ['trafficjunky.net', 'entertainment'],
@@ -1442,7 +1442,7 @@ const RULES = [
 ['estadao', 'news'],
 ['eufylife', 'ecommerce'],
 ['eurekalert', 'news'],
-['eventbrite', 'travel'],
+['eventbrite', 'entertainment'], // batch 12 — ticketing belongs with eventim/entertainment, not travel
 ['expressvpn', 'dev-tools'],
 ['eyeota', 'dev-tools'],
 ['ezoic', 'dev-tools'],
@@ -2578,7 +2578,7 @@ const RULES = [
   ['aircall.io', 'dev-tools'],
   ['akakce.com', 'ecommerce'],
   ['allafrica.com', 'news'],
-  ['allevents.in', 'travel'],
+  ['allevents.in', 'entertainment'], // batch 12 — ticketing, with the eventbrite/eventim precedent
   ['alltel24.ru', 'dev-tools'],
   ['alo.bg', 'ecommerce'],
   ['amung.us', 'dev-tools'],
@@ -2608,7 +2608,7 @@ const RULES = [
   ['avaaz.org', 'social'],
   ['badoocdn.com', 'social'],
   ['balena-cloud.com', 'dev-tools'],
-  ['bandlab.com', 'entertainment'],
+  ['bandlab.com', 'dev-tools'], // batch 12 — a music creation/collaboration tool, not a music service (spotify/bandcamp stay entertainment)
   ['baqend.com', 'dev-tools'],
   ['barcelona.cat', 'government'],
   ['autoscout24', 'ecommerce'],
@@ -2616,6 +2616,55 @@ const RULES = [
   ['babycenter', 'health'],
   ['bambuser', 'ecommerce'],
   ['bancsabadell', 'finance'],
+
+  // ── manual review batch 2026-11-25 #12 (the 37 borderline sites of
+  //    batches #9-#11, decided by the taxonomy policy). The evidence is
+  //    the site's own self-description as before; what changed is the
+  //    ruling on the six ambiguous verticals:
+  //      * telecom carriers -> dev-tools (telefonica/telekom/telenet/
+  //        telstra/swisscom/vodafone.de precedent),
+  //      * professional societies -> education (ams.org precedent),
+  //      * advocacy bodies and think tanks -> government (amnesty.org
+  //        and aclu.org precedent),
+  //      * consultancies and corporate sites -> dev-tools (siemens.de
+  //        precedent; research portals stay reference),
+  //      * ticketing and event registration -> entertainment (the
+  //        'concert tickets'/'movie tickets' markers),
+  //      * software distribution -> dev-tools, game content -> entertainment.
+  //    A brand-only title with no vertical wording of its own was left
+  //    unclassified instead of guessed (1go.plus, adcam.org,
+  //    anthropologie.com). ───────────────────────────────────────────────
+  ['16personalities.com', 'health'],
+  ['1digitech.com', 'dev-tools'],
+  ['1wtz.com', 'dev-tools'],
+  ['7tv.app', 'dev-tools'],
+  ['aabdw.com', 'dev-tools'],
+  ['aarp.org', 'government'],
+  ['active.com', 'entertainment'],
+  ['adac.de', 'travel'],
+  ['adg.de', 'dev-tools'],
+  ['aip.org', 'education'],
+  ['airbrake.io', 'dev-tools'],
+  ['ala.org', 'education'],
+  ['alerts.in.ua', 'government'],
+  ['altmetric.com', 'dev-tools'],
+  ['anonyig.com', 'dev-tools'],
+  ['anwb.nl', 'travel'],
+  ['aon.com', 'dev-tools'],
+  ['aramco.com', 'dev-tools'],
+  ['arzdigital.com', 'news'],
+  ['asm.org', 'education'],
+  ['asme.org', 'education'],
+  ['aspca.org', 'government'],
+  ['atlanticcouncil.org', 'government'],
+  ['au.com', 'dev-tools'],
+  ['autel.com', 'dev-tools'],
+  ['avant.si', 'reference'],
+  ['avclub.com', 'entertainment'],
+  ['axs.com', 'entertainment'],
+  ['azbyka.ru', 'reference'],
+  ['bain.com', 'dev-tools'],
+  ['bark.us', 'dev-tools'],
 
   // ── carried over from the pre-rule-table D1 load (2026-11-25): these sites
   //    were classified in D1 by the old loader, but the rule table never had
@@ -3699,7 +3748,7 @@ export const META_MARKERS = [
   ['dev-tools', 3, 'site search'],
   ['dev-tools', 3, 'secure workspace'],
   ['dev-tools', 2, 'dns'],
-  ['dev-tools', 3, 'task marketplace'],
+  ['ecommerce', 3, 'task marketplace'], // batch 12 — a task marketplace is a market (fiverr precedent), not a developer tool
   ['dev-tools', 3, 'website hosting'],
   ['dev-tools', 3, 'hosting services'],
 
@@ -3818,6 +3867,10 @@ export const META_MARKERS = [
   ['reference', 3, 'электронная библиотека'], // batch 11 — Russian e-library; litres/avidreaders precedent
   ['reference', 3, 'читать книги онлайн'], // batch 11 — Russian "read books online"
   ['ecommerce', 3, 'video commerce'], // batch 11 — live/video shopping; distinct from "video hosting"
+
+  // ── manual review batch 2026-11-25 #12 (the borderline sites decided by
+  //    the taxonomy policy) ──────────────────────────────────────────────
+  ['dev-tools', 3, 'management consulting'], // batch 12 — consultancy titles (bain.com, bcg.com); corporate-site precedent
 ];
 
 /**

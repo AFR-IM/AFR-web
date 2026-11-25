@@ -82,8 +82,23 @@ function d1(cmd) {
 const q = (v) => `'${String(v).replace(/'/g, "''")}'`;
 
 // 1) current D1 state
-const rows = d1(`SELECT s.domain, s.title, c.slug AS slug FROM sites s LEFT JOIN categories c ON c.id = s.category_id`);
+// The manual column (category_override) is read along with the rule value:
+// the effective category is COALESCE(category_override, category_id), and
+// this script only ever rewrites the rule value — a manual decision stays.
+const rows = d1(
+  `SELECT s.domain, s.title, c.slug AS slug, s.category_override, co.slug AS override_slug
+     FROM sites s
+     LEFT JOIN categories c ON c.id = s.category_id
+     LEFT JOIN categories co ON co.id = s.category_override`,
+);
 console.log(`d1 rows: ${rows.length}`);
+const overridden = rows.filter((r) => r.override_slug);
+if (overridden.length) {
+  console.log(
+    `manual overrides kept: ${overridden.length} — ` +
+      overridden.map((r) => `${r.domain} (${r.override_slug})`).join(', '),
+  );
+}
 
 // 2) desired state from current rules
 const dataDir = parseDataDir(process.argv.slice(2));

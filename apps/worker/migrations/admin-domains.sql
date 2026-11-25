@@ -106,14 +106,17 @@ CREATE TRIGGER IF NOT EXISTS admin_site_reclassify_insert
 INSTEAD OF INSERT ON admin_site_reclassify BEGIN
   INSERT INTO admin_audit (request_id, action, subject, target, before_json, after_json, created_at)
   SELECT NEW.request_id, 'reclassify', NEW.subject, 'site:' || s.domain,
-         json_object('category_id', s.category_id, 'category_slug', c.slug),
+         json_object('category_id', COALESCE(s.category_override, s.category_id), 'category_slug', c.slug),
          json_object('category_id', NEW.category_id, 'category_slug', NEW.category_slug),
          strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-  FROM sites s LEFT JOIN categories c ON c.id = s.category_id
-  WHERE s.domain = NEW.domain AND s.category_id IS NOT NEW.category_id;
+  FROM sites s LEFT JOIN categories c ON c.id = COALESCE(s.category_override, s.category_id)
+  WHERE s.domain = NEW.domain AND COALESCE(s.category_override, s.category_id) IS NOT NEW.category_id;
   SELECT RAISE(IGNORE) WHERE changes() = 0;
 
-  UPDATE sites SET category_id = NEW.category_id,
+  -- The manual decision goes into category_override, not into category_id:
+  -- category_id is the rule-derived value (categorize-backfill.mjs rewrites
+  -- it from the keyword rules), and a manual label must survive that.
+  UPDATE sites SET category_override = NEW.category_id,
                    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
   WHERE domain = NEW.domain;
 END;
