@@ -40,6 +40,16 @@ export interface AipayOrderResponse {
 }
 
 const BASE = 'https://api.aipay.im';
+/**
+ * The User-Agent every AIPAY call carries.
+ *
+ * A Cloudflare Worker sends **no** User-Agent by default, and the AIPAY
+ * service's edge rejects such a request outright (403, Cloudflare error
+ * 1010) — the order then dies before the ledger ever sees a reference.
+ * The header is the difference between "billing_unavailable" and a real
+ * order, so it is set explicitly on every call.
+ */
+export const AIPAY_USER_AGENT = 'AFR-Billing/1.0 (+https://afr.im)';
 /** The id charset of the ledger. A dot is allowed so that a merchant order id
  * can carry the domain it was bought for (`pro-example.com-<uuid>`); the id
  * is always compared literally, never interpolated into SQL. */
@@ -76,7 +86,7 @@ async function aipayFetch<T>(env: AipayEnv, path: string, query: Record<string, 
   const url = new URL(`${authBase(env)}${path}`);
   for (const [key, value] of Object.entries(query)) if (value !== undefined) url.searchParams.set(key, value);
   const response = await fetchImpl(url, { method: 'GET', redirect: 'error', signal: AbortSignal.timeout(8000),
-    headers: { Authorization: `Bearer ${env.AIPAY_API_KEY}`, Accept: 'application/json' } });
+    headers: { Authorization: `Bearer ${env.AIPAY_API_KEY}`, Accept: 'application/json', 'User-Agent': AIPAY_USER_AGENT } });
   const payload = await response.json() as T & { error?: { code?: string } };
   if (!response.ok) throw new Error(`aipay_reconcile_failed:${response.status}:${payload.error?.code ?? 'http_error'}`);
   return payload;
@@ -191,7 +201,7 @@ export async function createBillingOrder(db: Db, env: AipayEnv, input: CreateBil
     ...(input.returnUrl ? { returnUrl: input.returnUrl } : {}) });
   const response = await fetchImpl(`${safeBase(env.AIPAY_BASE_URL)}/v1/orders`, {
     method: 'POST', redirect: 'error', signal: AbortSignal.timeout(8000),
-    headers: { Authorization: `Bearer ${env.AIPAY_API_KEY}`, 'Content-Type': 'application/json', Accept: 'application/json' }, body,
+    headers: { Authorization: `Bearer ${env.AIPAY_API_KEY}`, 'Content-Type': 'application/json', Accept: 'application/json', 'User-Agent': AIPAY_USER_AGENT }, body,
   });
   const payload = await response.json() as { order?: AipayOrderResponse; idempotent?: boolean; error?: { code?: string } };
   const returned = payload.order;

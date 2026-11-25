@@ -58,6 +58,7 @@ interface SeenRequest {
   url: string;
   method: string;
   body: Record<string, unknown>;
+  headers: Record<string, string>;
 }
 
 /** Mock the payment provider. `handler` answers every call. */
@@ -66,7 +67,14 @@ function mockAipay(t: TestContext, handler: (seen: SeenRequest) => Response): Se
   t.mock.method(globalThis, 'fetch', async (input: unknown, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : String(input);
     const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
-    const record: SeenRequest = { url, method: init?.method ?? 'GET', body };
+    const record: SeenRequest = {
+      url,
+      method: init?.method ?? 'GET',
+      body,
+      headers: Object.fromEntries(
+        Object.entries((init?.headers ?? {}) as Record<string, string>).map(([k, v]) => [k.toLowerCase(), String(v)]),
+      ),
+    };
     seen.push(record);
     return handler(record);
   });
@@ -223,6 +231,10 @@ test('a Pro order is written to the ledger first and answers with the checkout',
   assert.equal(seen[0]!.body.ttlSeconds, 900);
   assert.equal(seen[0]!.body.description, 'AFR Pro · example.com');
   assert.equal(seen[0]!.body.returnUrl, 'https://afr.im/owner/example.com/');
+  // A Worker sends no User-Agent by default and the provider's edge
+  // rejects such a request (403 / Cloudflare 1010) — the order would die
+  // before the ledger ever saw a reference.
+  assert.ok(seen[0]!.headers['user-agent'], 'the provider call must carry a User-Agent');
   assert.equal(seen[0]!.body.merchantOrderId, body.orderId);
 
   // The ledger row: pending, with the term of the product (30 days).

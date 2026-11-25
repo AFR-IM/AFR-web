@@ -218,8 +218,12 @@ export async function createProOrder(db: Db, input: {
         expiresAt,
       },
     };
-  } catch {
+  } catch (error) {
     // Nobody can pay for this order: it leaves the ledger as cancelled.
+    // The reason is logged — a silent 502 is the worst kind of failure.
+    console.warn(
+      `pro order failed for ${subject}: ${error instanceof Error ? error.message : String(error)}`,
+    );
     try {
       await db
         .prepare(
