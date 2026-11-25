@@ -94,7 +94,10 @@ test('authenticates signed browser sessions and uses only exact subject allowlis
   const env = envFor('roles');
   const fetch = t.mock.method(globalThis, 'fetch', async (url: string, init: RequestInit) => {
     assert.equal(url, `${env.ADMIN_ACCESS_ISSUER}/cdn-cgi/access/certs`);
-    assert.equal(init.redirect, 'error');
+    // 'error' is a Node option and not implemented at the edge: a Worker
+    // throws before the request is sent. 'manual' is the Workers
+    // equivalent of "do not follow".
+    assert.equal(init.redirect, 'manual');
     assert.equal(init.cache, 'no-store');
     assert.ok(init.signal);
     return Response.json({ keys: [key.jwk] });

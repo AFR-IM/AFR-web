@@ -92,7 +92,7 @@ async function fetchKeys(issuer: string): Promise<Map<string, CryptoKey>> {
   // Workers supports no-store at this compatibility date. The pinned
   // workers-types RequestInit does not yet expose the cache option.
   const init: RequestInit & { cache: 'no-store' } = {
-    redirect: 'error',
+    redirect: 'manual',
     cache: 'no-store',
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   };

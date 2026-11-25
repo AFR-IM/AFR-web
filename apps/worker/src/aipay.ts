@@ -50,6 +50,17 @@ const BASE = 'https://api.aipay.im';
  * order, so it is set explicitly on every call.
  */
 export const AIPAY_USER_AGENT = 'AFR-Billing/1.0 (+https://afr.im)';
+
+/**
+ * The redirect mode every AIPAY call uses.
+ *
+ * `'error'` is a Node/undici option and **not implemented at the edge**:
+ * a Worker throws "Invalid redirect value" before the request is even sent,
+ * so the order never reaches the provider. `'manual'` is the Workers
+ * equivalent of "do not follow" — a redirect comes back as a 3xx, which
+ * the caller rejects like any other non-2xx answer.
+ */
+export const AIPAY_REDIRECT = 'manual' as const;
 /** The id charset of the ledger. A dot is allowed so that a merchant order id
  * can carry the domain it was bought for (`pro-example.com-<uuid>`); the id
  * is always compared literally, never interpolated into SQL. */
@@ -85,7 +96,7 @@ function authBase(env: AipayEnv): string {
 async function aipayFetch<T>(env: AipayEnv, path: string, query: Record<string, string | undefined>, fetchImpl: typeof fetch): Promise<T> {
   const url = new URL(`${authBase(env)}${path}`);
   for (const [key, value] of Object.entries(query)) if (value !== undefined) url.searchParams.set(key, value);
-  const response = await fetchImpl(url, { method: 'GET', redirect: 'error', signal: AbortSignal.timeout(8000),
+  const response = await fetchImpl(url, { method: 'GET', redirect: AIPAY_REDIRECT, signal: AbortSignal.timeout(8000),
     headers: { Authorization: `Bearer ${env.AIPAY_API_KEY}`, Accept: 'application/json', 'User-Agent': AIPAY_USER_AGENT } });
   const payload = await response.json() as T & { error?: { code?: string } };
   if (!response.ok) throw new Error(`aipay_reconcile_failed:${response.status}:${payload.error?.code ?? 'http_error'}`);
@@ -200,7 +211,7 @@ export async function createBillingOrder(db: Db, env: AipayEnv, input: CreateBil
     ...(input.ttlSeconds !== undefined ? { ttlSeconds: input.ttlSeconds } : {}),
     ...(input.returnUrl ? { returnUrl: input.returnUrl } : {}) });
   const response = await fetchImpl(`${safeBase(env.AIPAY_BASE_URL)}/v1/orders`, {
-    method: 'POST', redirect: 'error', signal: AbortSignal.timeout(8000),
+    method: 'POST', redirect: AIPAY_REDIRECT, signal: AbortSignal.timeout(8000),
     headers: { Authorization: `Bearer ${env.AIPAY_API_KEY}`, 'Content-Type': 'application/json', Accept: 'application/json', 'User-Agent': AIPAY_USER_AGENT }, body,
   });
   const payload = await response.json() as { order?: AipayOrderResponse; idempotent?: boolean; error?: { code?: string } };

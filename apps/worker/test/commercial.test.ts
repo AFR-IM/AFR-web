@@ -59,6 +59,7 @@ interface SeenRequest {
   method: string;
   body: Record<string, unknown>;
   headers: Record<string, string>;
+  redirect?: string;
 }
 
 /** Mock the payment provider. `handler` answers every call. */
@@ -74,6 +75,7 @@ function mockAipay(t: TestContext, handler: (seen: SeenRequest) => Response): Se
       headers: Object.fromEntries(
         Object.entries((init?.headers ?? {}) as Record<string, string>).map(([k, v]) => [k.toLowerCase(), String(v)]),
       ),
+      redirect: init?.redirect,
     };
     seen.push(record);
     return handler(record);
@@ -235,6 +237,11 @@ test('a Pro order is written to the ledger first and answers with the checkout',
   // rejects such a request (403 / Cloudflare 1010) — the order would die
   // before the ledger ever saw a reference.
   assert.ok(seen[0]!.headers['user-agent'], 'the provider call must carry a User-Agent');
+  // `'error'` is a Node option and not implemented at the edge: a Worker
+  // throws before the request is sent, so the order never reaches the
+  // provider. `'manual'` is the Workers equivalent of "do not follow".
+  assert.notEqual(seen[0]!.redirect, 'error');
+  assert.equal(seen[0]!.redirect, 'manual');
   assert.equal(seen[0]!.body.merchantOrderId, body.orderId);
 
   // The ledger row: pending, with the term of the product (30 days).
