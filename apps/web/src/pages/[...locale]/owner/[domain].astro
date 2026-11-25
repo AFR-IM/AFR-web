@@ -2,6 +2,7 @@
 import Base from '../../../layouts/Base.astro';
 import VerifyPanel from '../../../components/detail/VerifyPanel.astro';
 import OwnerMailbox from '../../../components/detail/OwnerMailbox.astro';
+import OwnerPro from '../../../components/detail/OwnerPro.astro';
 import ClaimForm from '../../../components/detail/ClaimForm.astro';
 import { loadRuntimeDetail } from '../../../data/runtime-detail.ts';
 import { pathFor, toLocale } from '../../../i18n/loader.ts';
@@ -34,6 +35,7 @@ if (!available) Astro.response.status = 404;
         <a href={pathFor(locale, `/site/${site.domain}/`)}>{zh ? '查看公开报告' : 'View public report'}</a>
         <VerifyPanel domain={site.domain} locale={locale} verified={!!site.verified} />
         <OwnerMailbox domain={site.domain} locale={locale} />
+        <OwnerPro domain={site.domain} locale={locale} />
         <ClaimForm domain={site.domain} locale={locale} visible={!!site.verified || !!site.claim} />
       </>
     ) : (

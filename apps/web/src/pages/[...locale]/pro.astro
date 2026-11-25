@@ -1,0 +1,413 @@
+---
+// Prerendered: this page is a static asset. Only the detail pages and the
+// owner workspace are rendered on demand (SSOT item 20 — the catalog must
+// not cost assets).
+export const prerender = true;
+// AFR Pro — the price, the benefits and the honest terms.
+// The page answers three questions before anybody pays: what it is, how
+// much it is, and what happens if something goes wrong. The neutrality
+// pledge is on the page in the same words the footer uses — paying never
+// moves a score.
+
+import Base from '../../layouts/Base.astro';
+import { getCatalog, pathFor, toLocale, type Locale } from '../../i18n/loader.ts';
+
+export function getStaticPaths() {
+  return [{ params: { locale: undefined } }, { params: { locale: 'zh-CN' } }];
+}
+
+const locale: Locale = toLocale(Astro.params.locale);
+const L = getCatalog(locale);
+const isZh = locale === 'zh-CN';
+const T = (en: string, zh: string) => (isZh ? zh : en);
+const href = (p: string) => pathFor(locale, p);
+const base = isZh ? '/zh-CN' : '';
+
+const PROSE = {
+  en: {
+    title: 'AFR Pro',
+    description:
+      'AFR Pro is the paid tier for site owners: $12 for a 30-day term, paid on-chain. Paying never changes a score, a grade or a ranking position.',
+    lede: 'Pro is the owner-side tier of AFR: the same ratings, the same evidence, plus the tools a site owner needs to keep up with them.',
+    whatTitle: 'What Pro is',
+    whatBody: [
+      'Everything in the free tier stays free: the rating, the full evidence chain, the badge, the owner statement and the score-change mails.',
+      'Pro adds the working tools around that rating — more domains in one panel, alerts, comparisons, a checklist for what is missing, and a rescan that does not wait for the daily queue.',
+      'The score itself is not part of the product. It is computed by the same open engine from the same public signals, before and after you pay.',
+    ],
+    priceTitle: 'Price',
+    priceLead: '$12 for one 30-day term, paid in USDT on the Base chain.',
+    priceNote: 'One term at a time — there is no auto-renewal. When the term ends, Pro ends with it and the account returns to the free tier. Nothing of yours is deleted.',
+    benefitsTitle: 'What you get',
+    benefits: [
+      ['Multi-domain panel', 'Many sites in one account, one management token per site.'],
+      ['Live alerts', 'Score changes, additions and removals reach you while they happen — not the next morning.'],
+      ['Competitor comparison', 'The sites of your category next to each other, so you can see the gap you are chasing.'],
+      ['Improvement Playbook', 'A reproducible checklist per missing signal: what to add, where, and what it is worth in points.'],
+      ['Priority rescan', 'Your rescan goes into the same-day queue instead of waiting for the daily run.'],
+      ['Statement extension', 'Longer owner statements and more evidence references next to your score.'],
+    ],
+    pledgeTitle: 'The one rule',
+    pledgeBody:
+      'Payment never changes a score, a grade or a ranking position. Every rating signal stays public and free — that is what makes the rating worth reading. If a payment ever moved a number, the number would stop meaning anything.',
+    faqTitle: 'Questions before you pay',
+    faq: [
+      [
+        'How do I pay?',
+        'Open the owner workspace of your site (the “site owner” link on your report page), confirm your owner mailbox, then press “Activate Pro”. AFR creates an order and hands you a payment link: pay it with the AIPAY wallet or with an on-chain transfer on Base. The page watches the order and confirms your Pro within seconds of the payment landing. The link is valid for 15 minutes.',
+      ],
+      [
+        'Can I get a refund?',
+        'Honestly: no automatic one. AIPAY is a non-custodial on-chain payment — the money goes straight on-chain, AFR never holds it, and a confirmed mainnet transfer cannot be reversed by anyone. Once the payment is confirmed, the term is granted and there is no refund channel. Please check the amount (12 USDT on Base) and the domain before you pay. If you paid by mistake, write to us with the payment reference: we will look at it, but we cannot reverse a confirmed chain transfer.',
+      ],
+      [
+        'Does paying change my score?',
+        'No. Not by one point, not by one position, not by one grade. The score comes from the public signals of your site, read by the same engine before and after the payment.',
+      ],
+      [
+        'Do I have to verify my domain first?',
+        'Yes. Pro is opened from the owner workspace, which needs a confirmed owner mailbox: your domain publishes a challenge, AFR reads it back from the domain, and AFR mails the confirmation to the address. The mailbox is the lock on everything that follows.',
+      ],
+      [
+        'What happens when the term ends?',
+        'Pro expires, the panel shows the free tier again, and your score, evidence and statement stay exactly where they were. Renewing is one button.',
+      ],
+      [
+        'What about the API key?',
+        'The owner workspace can issue a machine key for the AFR data API. The plaintext is shown exactly once — copy it then, because AFR stores only its hash and cannot show it again.',
+      ],
+    ],
+    backTitle: 'Open your owner workspace',
+    backBody: 'The Pro panel lives in the owner workspace of your own site.',
+    backLink: 'Owner workspace',
+    backSearch: 'Find my site',
+    noDomain: 'Open your site’s report page and follow the “site owner” link — the Pro panel is there.',
+  },
+  'zh-CN': {
+    title: 'AFR Pro',
+    description:
+      'AFR Pro 是站主的付费档位：$12 / 30 天，链上支付。付费永远不改变评分、等级或排名位置。',
+    lede: 'Pro 是 AFR 面向站主的一档：评分与证据完全相同，多出来的是站主用来跟进评分的工具。',
+    whatTitle: 'Pro 是什么',
+    whatBody: [
+      '免费档的一切仍然免费：评分、完整证据链、徽章、站方声明与评分变化通知。',
+      'Pro 补的是评分周围的工作台——一个面板管多个域名、实时告警、横向对比、缺项整改清单，以及不用等每日队列的重扫。',
+      '分数本身不在商品里。付款前后，它都由同一个开放引擎、基于同一批公开信号算出。',
+    ],
+    priceTitle: '价格',
+    priceLead: '$12 一个 30 天周期，用 USDT 在 Base 链上支付。',
+    priceNote: '一次只买一个周期——没有自动续费。周期结束后 Pro 一同结束，账号回到免费档；你的数据不会被删除。',
+    benefitsTitle: '你得到什么',
+    benefits: [
+      ['多域名面板', '一个账号管多个站点，每站一把管理令牌。'],
+      ['实时告警', '评分变化、新收录与下架即时通知，不用等到第二天早上。'],
+      ['竞品对比', '同类站点并排对照，看清你要追的差距在哪里。'],
+      ['提分 Playbook', '按缺失信号给出可复现的整改清单：补什么、放哪里、值多少分。'],
+      ['优先重扫', '你的重扫直接进当日队列，不用等每日轮跑。'],
+      ['声明扩展', '更长的站方声明，以及评分旁更多的证据引用。'],
+    ],
+    pledgeTitle: '唯一的一条规矩',
+    pledgeBody:
+      '付费永远不改变评分、等级或排名位置。所有评级信号都保持公开免费——这正是评级值得被相信的原因。如果付款能改变数字，这个数字就不再有意义。',
+    faqTitle: '付款前的问题',
+    faq: [
+      [
+        '怎么付款？',
+        '打开你站点的站主工作区（报告页上的「站主管理」入口），确认站主邮箱，然后点「开通 Pro」。AFR 会创建订单并给出付款链接：用 AIPAY 钱包或在 Base 链上转账支付。页面会盯住这笔订单，付款到账后几秒内确认开通。链接 15 分钟内有效。',
+      ],
+      [
+        '能退款吗？',
+        '说实话：没有自动退款。AIPAY 是非托管的链上支付——钱直接上链，AFR 从不托管，而已确认的主网转账任何人都无法逆转。付款确认后，权益即发放，没有退款通道。付款前请核对金额（Base 链上 12 USDT）与域名。如果付错了，请带上付款参考号联系我们：我们会查，但无法逆转已确认的链上转账。',
+      ],
+      [
+        '付款会改分吗？',
+        '不会。一分、一个名次、一个等级都不会。分数来自你站点的公开信号，付款前后由同一个引擎读、同一套规则算。',
+      ],
+      [
+        '必须先验证域名吗？',
+        '是。Pro 在站主工作区里开通，而站主工作区需要一个已确认的站主邮箱：你的域名发布挑战码，AFR 亲自回域名读取，再把确认信寄到那个邮箱。邮箱是后面所有操作的锁。',
+      ],
+      [
+        '周期结束后会怎样？',
+        'Pro 到期，面板回到免费档，你的评分、证据与声明原地不动。要续期按一下按钮。',
+      ],
+      [
+        'API 密钥呢？',
+        '站主工作区可以为 AFR 数据 API 签发机器密钥。明文只显示一次——请立刻复制，AFR 只存它的哈希，之后无法再显示。',
+      ],
+    ],
+    backTitle: '打开你的站主工作区',
+    backBody: 'Pro 面板在你自己站点的站主工作区里。',
+    backLink: '站主工作区',
+    backSearch: '查找我的站点',
+    noDomain: '打开你的站点报告页，点「站主管理」——Pro 面板就在那里。',
+  },
+} as const;
+
+const P = PROSE[locale === 'zh-CN' ? 'zh-CN' : 'en'];
+const pledge = L.ui.footerPledge as string;
+---
+
+<Base title={P.title} description={P.description}>
+  <div class="container pro" data-pro-page data-pro-base={base} data-pro-owner-label={`${P.backLink} →`}>
+    <header class="hero">
+      <p class="eyebrow mono">AFR.IM</p>
+      <h1>{P.title}</h1>
+      <p class="lede">{P.lede}</p>
+      <p class="price">
+        <span class="amount mono">$12</span>
+        <span class="per">/ 30 {isZh ? '天' : 'days'}</span>
+        <span class="asset mono">USDT · Base</span>
+      </p>
+      <p class="lead">{P.priceLead}</p>
+    </header>
+
+    <section class="sec">
+      <h2>{P.whatTitle}</h2>
+      <ul class="list">
+        {P.whatBody.map((item) => <li>{item}</li>)}
+      </ul>
+    </section>
+
+    <section class="sec">
+      <h2>{P.benefitsTitle}</h2>
+      <ul class="benefits">
+        {
+          P.benefits.map(([name, desc]) => (
+            <li>
+              <strong>{name}</strong>
+              <span>{desc}</span>
+            </li>
+          ))
+        }
+      </ul>
+      <p class="note">{P.priceNote}</p>
+    </section>
+
+    <section class="sec pledge-sec">
+      <h2>{P.pledgeTitle}</h2>
+      <p class="pledge">{pledge}</p>
+      <p class="lead">{P.pledgeBody}</p>
+    </section>
+
+    <section class="sec">
+      <h2>{P.faqTitle}</h2>
+      <div class="faq">
+        {
+          P.faq.map(([q, a]) => (
+            <details class="qa">
+              <summary>{q}</summary>
+              <p>{a}</p>
+            </details>
+          ))
+        }
+      </div>
+    </section>
+
+    <section class="sec back">
+      <h2>{P.backTitle}</h2>
+      <p class="lead">{P.backBody}</p>
+      <p class="back-links">
+        <a class="btn" data-pro-owner-link href={href('/search')}>{P.backSearch}</a>
+        <span class="fallback">{P.noDomain}</span>
+      </p>
+    </section>
+  </div>
+</Base>
+
+<style>
+  .pro {
+    padding-top: 32px;
+    padding-bottom: 24px;
+    max-width: 780px;
+  }
+  .hero {
+    margin-bottom: 22px;
+  }
+  .eyebrow {
+    margin: 0 0 8px;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--brand);
+  }
+  .hero h1 {
+    font-size: clamp(28px, 4.4vw, 40px);
+    margin-bottom: 12px;
+  }
+  .lede {
+    margin: 0 0 16px;
+    font-size: 16px;
+    line-height: 1.75;
+    color: var(--text-2);
+  }
+  .price {
+    margin: 0 0 10px;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .amount {
+    font-size: 30px;
+    font-weight: 600;
+    color: var(--text-1);
+  }
+  .per {
+    font-size: 15px;
+    color: var(--text-2);
+  }
+  .asset {
+    font-size: 12px;
+    color: var(--text-3);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 2px 10px;
+  }
+
+  .sec {
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 24px 26px;
+    margin-bottom: 20px;
+  }
+  .sec h2 {
+    font-size: 20px;
+    margin-bottom: 12px;
+  }
+  .lead {
+    margin: 0 0 12px;
+    color: var(--text-2);
+    max-width: 82ch;
+    line-height: 1.7;
+  }
+  .note {
+    margin: 14px 0 0;
+    color: var(--text-3);
+    font-size: 13px;
+    line-height: 1.7;
+  }
+
+  .list {
+    margin: 0;
+    padding-left: 18px;
+    display: grid;
+    gap: 10px;
+    color: var(--text-2);
+    max-width: 84ch;
+    line-height: 1.7;
+  }
+
+  .benefits {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 12px;
+  }
+  .benefits li {
+    display: grid;
+    gap: 3px;
+    padding: 12px 14px;
+    background: var(--bg-ink);
+    border: 1px solid var(--line);
+    border-radius: var(--r-2);
+  }
+  .benefits strong {
+    font-size: 14px;
+    color: var(--text-1);
+    font-weight: 600;
+  }
+  .benefits span {
+    font-size: 13px;
+    line-height: 1.65;
+    color: var(--text-2);
+  }
+
+  /* the neutrality pledge — the same sentence the footer carries */
+  .pledge-sec {
+    border-left: 2px solid var(--brand);
+  }
+  .pledge {
+    margin: 0 0 12px;
+    padding: 12px 14px;
+    background: var(--bg-ink);
+    border: 1px solid var(--line);
+    border-radius: var(--r-2);
+    font-size: 15px;
+    line-height: 1.7;
+    color: var(--text-1);
+  }
+
+  .faq {
+    display: grid;
+    gap: 8px;
+  }
+  .qa {
+    border: 1px solid var(--line);
+    border-radius: var(--r-2);
+    padding: 12px 14px;
+    background: var(--bg-ink);
+  }
+  .qa summary {
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-1);
+  }
+  .qa summary:hover {
+    color: var(--brand);
+  }
+  .qa p {
+    margin: 10px 0 0;
+    font-size: 13.5px;
+    line-height: 1.75;
+    color: var(--text-2);
+    max-width: 80ch;
+  }
+
+  .back-links {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .fallback {
+    font-size: 12.5px;
+    color: var(--text-3);
+  }
+
+  @media (max-width: 767px) {
+    .sec {
+      padding: 20px 16px;
+    }
+  }
+</style>
+
+<script>
+  // The owner workspace links here with ?domain=<the site>. The page is a
+  // static asset, so the domain arrives as a query parameter and the link
+  // back is filled in here — a static page cannot know the visitor's site.
+  const page = document.querySelector<HTMLElement>('[data-pro-page]');
+  if (page) {
+    const base = page.dataset.proBase ?? '';
+    let domain = '';
+    try {
+      domain = (new URLSearchParams(location.search).get('domain') ?? '').trim().toLowerCase();
+    } catch {
+      domain = '';
+    }
+    /* only a plain host name may become a path segment */
+    if (/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/.test(domain) && domain.length <= 120) {
+      const owner = document.querySelector<HTMLAnchorElement>('[data-pro-owner-link]');
+      if (owner) {
+        owner.setAttribute('href', `${base}/owner/${domain}/`);
+        owner.textContent = page.dataset.proOwnerLabel ?? owner.textContent;
+      }
+      const fallback = page.querySelector<HTMLElement>('.fallback');
+      if (fallback) fallback.textContent = '';
+    }
+  }
+</script>

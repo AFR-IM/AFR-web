@@ -18,10 +18,11 @@ export interface AdminNavItem {
   label: string;
 }
 
-/** The console sections, in the order of the SSOT domains A → B → D → F. */
+/** The console sections, in the order of the SSOT domains A → B → C → D → F. */
 export const ADMIN_NAV: AdminNavItem[] = [
   { href: '/admin/', label: 'A 扫描队列' },
   { href: '/admin/content', label: 'B 内容与社区' },
+  { href: '/admin/commercial', label: 'C 商业化' },
   { href: '/admin/monitor', label: 'D 监控看板' },
   { href: '/admin/settings', label: 'F 设置' },
 ];

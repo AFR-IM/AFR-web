@@ -3,11 +3,18 @@
 # segment_start = floor(collected / 1000) * 1000 from the data repo snapshots
 # (or uses the manual `segment` input) and scans the next 1000 domains.
 # Runs on GitHub-hosted runners (public repo = free unlimited).
-# Schedule: daily 02:00 UTC; while expansion is paused, scheduled runs drain
-# only the on-demand queue. Tranco segment advancement requires an explicit
-# workflow_dispatch with mode=daily.
-# Manual runs pick mode=daily (Tranco segment + queue drain) or mode=queue
-# (on-demand queue only — exits quickly when the queue is empty).
+# Schedule: daily 02:00 UTC; the scheduled run advances the Tranco segment
+# while the coverage gate is open, and drains the on-demand queue in every
+# case. Manual runs pick mode=daily (Tranco segment + queue drain) or
+# mode=queue (on-demand queue only — exits quickly when the queue is empty).
+#
+# The coverage gate (scripts/measure-corpus-coverage.mjs, SSOT §7 「分类门槛」)
+# is checked BEFORE any domain is scanned, on every segment scan — scheduled
+# or manual: the segment may only enter the catalog while the judgable-pool
+# coverage stays at or above the threshold and the next segment would not
+# dilute it. When the gate is closed the run drains the queue only, and the
+# run summary carries the numbers and what is missing. A measurement that
+# cannot be made never opens the gate (fail closed).
 #
 # Required repository secrets (Settings -> Secrets and variables -> Actions):
 #   DATA_REPO_TOKEN  PAT that can check out / push AFR-IM/AFR-data and can
@@ -24,7 +31,7 @@ on:
         required: false
         default: "1000"
       mode:
-        description: "queue = on-demand queue only; daily = advance Tranco segment (requires explicit approval)"
+        description: "queue = on-demand queue only; daily = advance the Tranco segment (only while the coverage gate is open)"
         required: false
         default: "queue"
         type: choice
@@ -80,8 +87,9 @@ jobs:
         with:
           node-version: 22
 
-      # Daily schedule is queue-only while Tranco expansion is paused.
-      # Advancing a Tranco segment requires an explicit manual mode=daily run.
+      # The schedule advances the Tranco segment on its own — the coverage
+      # gate below decides whether the segment may actually enter the
+      # catalog. A manual dispatch keeps its explicit mode.
       - name: Resolve run mode
         id: mode
         env:
@@ -89,7 +97,7 @@ jobs:
           INPUT_MODE: ${{ inputs.mode }}
         run: |
           if [ "$EVENT_NAME" = "schedule" ]; then
-            MODE=queue
+            MODE=daily
           else
             MODE="${INPUT_MODE:-queue}"
           fi
@@ -106,6 +114,48 @@ jobs:
         id: date
         run: echo "date=$(date -u +%F)" >> "$GITHUB_OUTPUT"
 
+      # ── the expansion gate (SSOT §7 「分类门槛」) ──────────────────────────
+      # The Tranco segment may only enter the catalog while the judgable-pool
+      # coverage stays at or above the threshold and the next segment would
+      # not dilute it. The measurement runs on the snapshot corpus of the data
+      # repo — the same rule table and the same denominator the site build
+      # uses — BEFORE a single domain is scanned, so a closed gate keeps the
+      # segment where it is.
+      #
+      # Exit codes of the measurement:
+      #   0  the gate is open      -> the segment may advance
+      #   1  the gate is closed    -> measured, below the threshold
+      #   2  the measurement failed -> fail closed, the segment stays
+      - name: Gate the Tranco expansion
+        id: gate
+        if: steps.mode.outputs.mode == 'daily'
+        env:
+          DATA_DIR: data/scans
+          CURSOR: data/scan-cursor.json
+        run: |
+          set +e
+          node scripts/measure-corpus-coverage.mjs \
+            --data-dir "$DATA_DIR" --cursor "$CURSOR" --json-out gate.json --fail > gate.txt 2>&1
+          CODE=$?
+          set -e
+          cat gate.txt
+          if [ "$CODE" -eq 0 ]; then
+            echo "allow=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "allow=false" >> "$GITHUB_OUTPUT"
+            if [ "$CODE" -eq 1 ]; then
+              echo "::warning::the coverage gate is closed — the Tranco segment does not advance in this run"
+            else
+              echo "::error::the coverage measurement failed (exit $CODE) — the segment does not advance (fail-closed)"
+            fi
+          fi
+          {
+            echo "## Coverage gate (Tranco expansion)"
+            echo '```'
+            cat gate.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       # ── mode=daily: Tranco top-1M segment flow (1000 domains per run) ──────
       # Each daily run advances one 1000-domain segment down the Tranco top 1M.
       # collected counts every snapshot JSON already stored in the data repo
@@ -115,7 +165,7 @@ jobs:
 
       - name: Resolve scan segment
         id: segment
-        if: steps.mode.outputs.mode == 'daily'
+        if: steps.mode.outputs.mode == 'daily' && steps.gate.outputs.allow == 'true'
         env:
           INPUT_SEGMENT: ${{ inputs.segment }}
           SCAN_DATE: ${{ steps.date.outputs.date }}
@@ -153,7 +203,7 @@ jobs:
           echo "start=$SEGMENT_START" >> "$GITHUB_OUTPUT"
 
       - name: Fetch Tranco top list
-        if: steps.mode.outputs.mode == 'daily'
+        if: steps.mode.outputs.mode == 'daily' && steps.gate.outputs.allow == 'true'
         id: tranco
         env:
           SEGMENT_START: ${{ steps.segment.outputs.start }}
@@ -191,7 +241,7 @@ jobs:
           echo "count=$COUNT" >> "$GITHUB_OUTPUT"
 
       - name: Scan Tranco top list
-        if: steps.mode.outputs.mode == 'daily' && fromJSON(steps.tranco.outputs.count || '0') > 0
+        if: steps.mode.outputs.mode == 'daily' && steps.gate.outputs.allow == 'true' && fromJSON(steps.tranco.outputs.count || '0') > 0
         shell: bash # adds pipefail: a scanner crash must fail the step
         env:
           SCAN_DATE: ${{ steps.date.outputs.date }}
@@ -202,7 +252,7 @@ jobs:
 
       - name: Commit top list snapshots to data repo
         id: commit-topn
-        if: steps.mode.outputs.mode == 'daily'
+        if: steps.mode.outputs.mode == 'daily' && steps.gate.outputs.allow == 'true'
         env:
           SEGMENT: ${{ steps.segment.outputs.start }}
           TRANCO_COUNT: ${{ steps.tranco.outputs.count || '0' }}
@@ -357,12 +407,23 @@ jobs:
         env:
           MODE: ${{ steps.mode.outputs.mode }}
           SEGMENT: ${{ steps.segment.outputs.start }}
+          GATE: ${{ steps.gate.outputs.allow }}
         run: |
           {
             echo "## AFR scan $(date -u +%F) - mode=${MODE:-?} (segment ${SEGMENT:-n/a})"
+            if [ -n "${GATE:-}" ]; then
+              echo "coverage gate: ${GATE} (the segment advances only when the gate is open)"
+            else
+              echo "coverage gate: not run (queue-only run)"
+            fi
             echo '```'
             tail -n 8 scan-summary.txt 2>/dev/null || echo "scan output not available"
             echo '```'
+            if [ -f gate.txt ]; then
+              echo '```'
+              cat gate.txt
+              echo '```'
+            fi
             if [ -f queue.txt ]; then
               echo "Queue domains this run: $(grep -c . queue.txt || true)"
             fi

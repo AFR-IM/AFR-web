@@ -12,6 +12,12 @@ import {
   reclassifySites,
   renderContentBoard,
 } from './admin-content.ts';
+import {
+  readCommercialBoard,
+  renderCommercialBoard,
+  revokeApiKeyForDomain,
+  revokeProForDomain,
+} from './admin-commercial.ts';
 import { readMonitorBoard, renderMonitorBoard } from './admin-monitor.ts';
 import {
   parseBeneficiaryForm,
@@ -54,6 +60,8 @@ const NOTICES: Record<string, string> = {
   reclassified: '批量重分类已应用。',
   ticket_created: '纠错工单已创建。',
   ticket_closed: '纠错工单已关闭。',
+  pro_revoked: 'Pro 期限已撤销。',
+  apikey_revoked: '机器密钥已吊销。',
   settings_updated: '设置已保存。',
   replayed: '这个请求已经执行过了，重复提交被忽略。',
 };
@@ -226,6 +234,11 @@ export async function handleAdmin(request: Request, env: AdminAccessEnv & AdminL
         const notice = NOTICES[(url.searchParams.get('notice') ?? '').trim()];
         return page('内容与社区', h`${notice ? adminAlert('ok', notice) : ''}${renderContentBoard(board)}`);
       }
+      if (url.pathname === '/admin/commercial') {
+        const board = await readCommercialBoard(db);
+        const notice = NOTICES[(url.searchParams.get('notice') ?? '').trim()];
+        return page('商业化', h`${notice ? adminAlert('ok', notice) : ''}${renderCommercialBoard(board)}`);
+      }
       if (url.pathname === '/admin/monitor') {
         const board = await readMonitorBoard(db);
         return page('监控看板', renderMonitorBoard(board));
@@ -334,6 +347,31 @@ export async function handleAdmin(request: Request, env: AdminAccessEnv & AdminL
       const result = await closeCorrectionTicket(db, { requestId, subject: actor.subject, ticketId, status });
       if (result.result === 'conflict') return errorPage('工单未关闭', '工单不存在或已经关闭。', '/admin/content');
       return back('/admin/content', result.result === 'replayed' ? 'replayed' : 'ticket_closed');
+    }
+
+    if (url.pathname === '/admin/commercial/pro/revoke') {
+      const result = await revokeProForDomain(db, {
+        requestId,
+        subject: actor.subject,
+        domain: (form.get('domain') ?? '').trim(),
+      });
+      if (result.result === 'conflict') {
+        return errorPage('撤销未执行', '域名不合法，或该站点没有 Pro 期限。', '/admin/commercial');
+      }
+      return back('/admin/commercial', result.result === 'replayed' ? 'replayed' : 'pro_revoked');
+    }
+
+    if (url.pathname === '/admin/commercial/api-key/revoke') {
+      const result = await revokeApiKeyForDomain(db, {
+        requestId,
+        subject: actor.subject,
+        domain: (form.get('domain') ?? '').trim(),
+        keyHash: (form.get('key_hash') ?? '').trim(),
+      });
+      if (result.result === 'conflict') {
+        return errorPage('吊销未执行', '密钥不存在，或它属于另一个站点。', '/admin/commercial');
+      }
+      return back('/admin/commercial', result.result === 'replayed' ? 'replayed' : 'apikey_revoked');
     }
 
     if (url.pathname === '/admin/settings') {

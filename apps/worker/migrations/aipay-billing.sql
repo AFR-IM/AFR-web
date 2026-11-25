@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS billing_orders (
   amount TEXT NOT NULL,
   asset TEXT NOT NULL,
   chain_key TEXT NOT NULL,
+  term_days INTEGER,                    -- the length of the paid term this order buys (30 days = $12)
   status TEXT NOT NULL CHECK (status IN ('creating', 'pending', 'confirmed', 'expired', 'cancelled', 'review')),
   aipay_reference TEXT UNIQUE,
   checkout_url TEXT,

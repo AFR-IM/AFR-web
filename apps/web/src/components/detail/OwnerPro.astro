@@ -1,0 +1,1082 @@
+---
+// OwnerPro — the paid tier panel of the site owner workspace.
+//
+// Pro is a subscription for the site owner: $12 for one 30-day term, paid
+// on-chain (USDT on Base) through AIPAY. The panel walks the owner through
+// it without ever pretending the payment is a card checkout:
+//
+//   1. the owner presses "Activate Pro" → AFR creates an order
+//      (POST /api/v1/billing/pro/orders) and answers with a checkout link,
+//   2. the owner pays that link (AIPAY wallet or an on-chain transfer),
+//   3. the panel polls the order (GET …/orders/:reference) every 5 s for
+//      at most 10 minutes — polling pauses while the tab is hidden — and
+//      switches to "Pro is active" as soon as the order is paid,
+//   4. the machine key (API key) is issued separately
+//      (POST /api/v1/pro/api-key); its plaintext exists exactly once.
+//
+// The credential is the management token of the confirmed owner mailbox —
+// the same token the owner-mail panel keeps in localStorage under
+// `afr-owner-mail-<domain>`. Without it the panel says so and shows no
+// buttons at all.
+//
+// The neutrality pledge travels with the panel: paying never changes a
+// score, a grade or a position in the ranking.
+
+import { getCatalog, pathFor, toLocale, type Locale } from '../../i18n/loader.ts';
+
+interface Props {
+  domain: string;
+  locale: string;
+}
+
+const { domain, locale } = Astro.props;
+const loc: Locale = toLocale(locale);
+const L = getCatalog(loc);
+const isZh = loc === 'zh-CN';
+
+/**
+ * Catalog first, inline bilingual fallback second — the Pro copy is not
+ * part of the legacy COPY map, and packages/i18n is owned by another
+ * stream, so every new key falls back inline.
+ */
+const t = (key: string, en: string, zh: string): string => L.ui[key] ?? (isZh ? zh : en);
+
+const title = t('ownerProTitle', 'AFR Pro', 'AFR Pro');
+const desc = t(
+  'ownerProDesc',
+  'Pro is the paid tier for site owners: more domains in one panel, alerts while you sleep, comparisons and a priority rescan. It never touches your score.',
+  'Pro 是站主的付费档位：一个面板管多个域名、实时告警、竞品对比与优先重扫。它永远不影响你的评分。',
+);
+const lockedDesc = t(
+  'ownerProLockedDesc',
+  'Confirm your owner mailbox above first — only a confirmed owner can activate Pro.',
+  '请先在上方确认站主邮箱——只有确认过的站主才能开通 Pro。',
+);
+const manageCta = t('ownerProManageCta', 'Manage owner mailbox', '管理站主邮箱');
+const loadingText = t('ownerProLoading', 'Reading your Pro status…', '正在读取你的 Pro 状态…');
+const inactiveDesc = t(
+  'ownerProInactiveDesc',
+  'Pro is not active for this site yet.',
+  '本站还没有开通 Pro。',
+);
+const activeDesc = t(
+  'ownerProActiveDesc',
+  'Pro is active for this site. Everything below is included until the term ends.',
+  '本站的 Pro 已开通。下面的权益在到期前全部有效。',
+);
+const activeTitle = t('ownerProActiveTitle', 'Pro is active', 'Pro 已开通');
+const expiresLabel = t('ownerProExpiresLabel', 'Valid until', '有效期至');
+const termLabel = t('ownerProTermLabel', 'Term', '期限');
+const daysText = t('ownerProDays', '{n} days', '{n} 天');
+/* the price — one term, no auto-renewal (the ledger is explicit about it) */
+const priceAmount = '12';
+const priceTerm = t('ownerProPriceTerm', '/ 30 days', '/ 30 天');
+const priceAsset = t('ownerProPriceAsset', 'USDT · Base chain', 'USDT · Base 链');
+const priceNote = t(
+  'ownerProPriceNote',
+  'One term, paid on-chain. There is no auto-renewal: the panel asks again before the next term.',
+  '一次订阅，链上支付。没有自动续费：下一期之前面板会再问一次。',
+);
+
+/* the benefit list — the product plan §11.3 */
+const benefits = isZh
+  ? [
+      '多域名面板：一个账号管理多个站点',
+      '实时告警：评分变化、站点被收录或下架即刻通知',
+      '竞品对比：同类站点的横向对照',
+      '提分 Playbook：按缺失项给出可复现的整改清单',
+      '优先重扫：付费站长点「重新检测」直接进当日增量队列',
+      '声明扩展：更长的站方声明与更多证据引用',
+    ]
+  : [
+      'Multi-domain panel: many sites in one account',
+      'Live alerts: score changes, additions and removals reach you at once',
+      'Competitor comparison: a side-by-side view of the sites in your category',
+      'Improvement Playbook: a reproducible checklist for every missing signal',
+      'Priority rescan: "rescan" as an owner goes into the same-day queue',
+      'Statement extension: longer owner statements and more evidence references',
+    ];
+
+/* the pledge — paying never moves a score */
+const pledge = t(
+  'ownerProPledge',
+  'Payment never changes a score, a grade or a ranking position. The free tier keeps every rating signal.',
+  '付费永远不改变评分、等级或排名位置。所有评级信号在免费档就全部公开。',
+);
+
+const buyText = t('ownerProBuy', 'Activate Pro', '开通 Pro');
+const renewText = t('ownerProRenew', 'Renew Pro', '续期 Pro');
+const buyingText = t('ownerProBuying', 'Creating the order…', '正在创建订单…');
+const orderTitle = t('ownerProOrderTitle', 'Payment link', '付款链接');
+const orderHint = t(
+  'ownerProOrderHint',
+  'Pay with the AIPAY wallet or an on-chain transfer on Base. The link is valid for 15 minutes.',
+  '用 AIPAY 钱包或在 Base 链上转账支付。链接 15 分钟内有效。',
+);
+const checkoutLabel = t('ownerProCheckoutLabel', 'Checkout link', '付款链接');
+const cancelText = t('ownerProCancel', 'Cancel this order', '取消这笔订单');
+const cancellingText = t('ownerProCancelling', 'Cancelling…', '正在取消…');
+const cancelledText = t('ownerProCancelled', 'The order was cancelled.', '订单已取消。');
+const cancelFailedText = t(
+  'ownerProCancelFailed',
+  'This order is already paid — it cannot be cancelled.',
+  '该订单已付款，无法取消。',
+);
+const pollingText = t('ownerProPolling', 'Waiting for the payment…', '等待付款中…');
+const paidText = t('ownerProPaid', 'Pro is active — the payment landed.', 'Pro 已开通——付款已到账。');
+const timeoutText = t(
+  'ownerProTimeout',
+  'The payment window closed before the order was paid. Create a new order if you still want Pro.',
+  '付款窗口已结束，订单仍未支付。如果仍要开通，请重新下单。',
+);
+
+const keyTitle = t('ownerProKeyTitle', 'API key', 'API 密钥');
+const keyNoneText = t(
+  'ownerProKeyNone',
+  'No key has been issued for this site yet.',
+  '本站还没有发放 API 密钥。',
+);
+const keyIssuedText = t('ownerProKeyIssued', 'A key is live.', '密钥已启用。');
+const keyTierLabel = t('ownerProKeyTier', 'tier', '档位');
+const keyCreatedLabel = t('ownerProKeyCreated', 'issued', '发放于');
+const keyUsedLabel = t('ownerProKeyUsed', 'last used', '最后使用');
+const keyNeverText = t('ownerProKeyNever', 'never', '从未');const issueText = t('ownerProKeyIssue', 'Issue / rotate the key', '发放 / 轮换密钥');
+const issuingText = t('ownerProKeyIssuing', 'Working…', '处理中…');
+const revokeText = t('ownerProKeyRevoke', 'Revoke the key', '吊销密钥');
+const revokingText = t('ownerProKeyRevoking', 'Revoking…', '正在吊销…');
+const revokedText = t('ownerProKeyRevoked', 'The key was revoked.', '密钥已吊销。');
+const keyPlainLabel = t('ownerProKeyPlainLabel', 'Your API key', '你的 API 密钥');
+const keyPlainNote = t(
+  'ownerProKeyPlainNote',
+  'This is the only time the key is shown. Copy it now — once this panel re-reads its status, the plaintext is gone for good.',
+  '密钥只显示这一次。请立即复制——面板一旦重新读取状态，明文就再也看不到了。',
+);
+const refreshText = t('ownerProRefresh', 'Refresh', '刷新');
+const proPageText = t('ownerProPageLink', 'What is Pro? The full terms.', 'Pro 是什么？看完整条款。');
+/** the price page carries the terms (payment, refunds) — the panel links it */
+const proPageHref = `${pathFor(loc, '/pro')}/?domain=${encodeURIComponent(domain)}`;
+
+const copyLabel = L.ui.copy ?? 'Copy';
+const copiedLabel = `${L.ui.copied ?? 'Copied'} ✓`;
+
+/* error codes of the billing endpoints → human words */
+const errUnauthorized = t(
+  'ownerProErrUnauthorized',
+  'The management token is not valid — confirm your owner mailbox again.',
+  '管理令牌无效——请重新确认站主邮箱。',
+);
+const lockedMsg = t(
+  'ownerProMsgLocked',
+  'Confirm your owner mailbox above — then Pro can be activated here.',
+  '请先在上方确认站主邮箱——之后就能在这里开通 Pro。',
+);
+const errUnknownDomain = t(
+  'ownerProErrUnknownDomain',
+  'This domain is not listed in AFR yet.',
+  '该域名尚未被 AFR 收录。',
+);
+const errOrderPending = t(
+  'ownerProErrOrderPending',
+  'There is already an open Pro order for this site — finish or cancel it first.',
+  '该站点已有一笔未完成的 Pro 订单——请先完成或取消它。',
+);
+const errNotConfigured = t(
+  'ownerProErrNotConfigured',
+  'Pro payments are not configured on this deployment yet.',
+  '当前部署尚未开通 Pro 收款。',
+);
+const errUnavailable = t(
+  'ownerProErrUnavailable',
+  'The payment provider did not answer — try again in a moment.',
+  '支付服务没有响应——请稍后重试。',
+);
+const errQuota = t(
+  'ownerProErrQuota',
+  'The quota is exhausted — try again later.',
+  '配额已用尽——请稍后再试。',
+);
+const errNotFound = t('ownerProErrNotFound', 'That order no longer exists.', '该订单不存在。');
+const errInvalidDomain = t('ownerProErrInvalidDomain', 'This domain is not valid.', '该域名无效。');
+const errInvalidJson = t('ownerProErrInvalidJson', 'The request was malformed.', '请求格式有误。');
+const errKeysUnavailable = t(
+  'ownerProErrKeysUnavailable',
+  'API keys are not available on this deployment.',
+  '当前部署暂不可用 API 密钥。',
+);
+const errGeneric = t('ownerProError', 'Could not reach the server — try again.', '无法连接服务器——请重试。');
+---
+
+<section
+  class="op"
+  data-owner-pro
+  data-domain={domain}
+  data-desc-locked={lockedDesc}
+  data-desc-loading={loadingText}
+  data-desc-inactive={inactiveDesc}
+  data-desc-active={activeDesc}
+  data-tpl-days={daysText}
+  data-label-tier={keyTierLabel}
+  data-label-created={keyCreatedLabel}
+  data-label-used={keyUsedLabel}
+  data-msg-never={keyNeverText}
+  data-label-buy={buyText}
+  data-label-renew={renewText}
+  data-label-buying={buyingText}
+  data-label-cancel={cancelText}
+  data-label-cancelling={cancellingText}
+  data-label-issue={issueText}
+  data-label-issuing={issuingText}
+  data-label-revoke={revokeText}
+  data-label-revoking={revokingText}
+  data-msg-error={errGeneric}
+  data-msg-paid={paidText}
+  data-msg-cancelled={cancelledText}
+  data-msg-cancel-failed={cancelFailedText}
+  data-msg-revoked={revokedText}
+  data-msg-polling={pollingText}
+  data-msg-timeout={timeoutText}
+  data-msg-key-issued={keyIssuedText}
+  data-msg-key-none={keyNoneText}
+  data-msg-locked={lockedMsg}
+  data-msg-unauthorized={errUnauthorized}
+  data-err-unauthorized={errUnauthorized}
+  data-err-unknown-domain={errUnknownDomain}
+  data-err-order-pending={errOrderPending}
+  data-err-billing-not-configured={errNotConfigured}
+  data-err-billing-unavailable={errUnavailable}
+  data-err-quota-exceeded={errQuota}
+  data-err-not-found={errNotFound}
+  data-err-invalid-domain={errInvalidDomain}
+  data-err-invalid-json={errInvalidJson}
+  data-err-api-keys-unavailable={errKeysUnavailable}
+  aria-labelledby="owner-pro-title"
+>
+  <header class="op-head">
+    <h2 id="owner-pro-title">{title}</h2>
+    <button class="op-refresh" type="button" data-op-refresh hidden>{refreshText}</button>
+  </header>
+
+  <p class="op-desc" data-op-desc>{desc}</p>
+
+  <p class="op-price">
+    <span class="op-amount mono">${priceAmount}</span>
+    <span class="op-term">{priceTerm}</span>
+    <span class="op-asset mono">{priceAsset}</span>
+  </p>
+  <p class="op-note">{priceNote}</p>
+  <p class="op-more">
+    <a class="op-link" href={proPageHref}>{proPageText} →</a>
+  </p>
+
+  <ul class="op-benefits">
+    {benefits.map((b) => <li>{b}</li>)}
+  </ul>
+
+  <p class="op-pledge">{pledge}</p>
+
+  {/* ── state: the status is on its way ─────────────────────── */}
+  <div class="op-state" data-op-state="loading" hidden>
+    <p class="op-note">{loadingText}</p>
+  </div>
+
+  {/* ── state: no confirmed owner mailbox in this browser ───── */}
+  <div class="op-state" data-op-state="locked" hidden>
+    <p class="op-note">{lockedDesc}</p>
+    <a class="op-link" href="#owner-mailbox-title">{manageCta} →</a>
+  </div>
+
+  {/* ── state: no Pro yet ───────────────────────────────────── */}
+  <div class="op-state" data-op-state="inactive" hidden>
+    <button class="btn op-btn" type="button" data-op-buy>{buyText}</button>
+  </div>
+
+  {/* ── state: Pro runs until the term ends ─────────────────── */}
+  <div class="op-state" data-op-state="active" hidden>
+    <p class="op-title-sm">{activeTitle}</p>
+    <p class="op-meta">
+      {expiresLabel} <span class="mono" data-op-expires></span>
+      <span class="op-sep" aria-hidden="true">·</span>
+      {termLabel} <span data-op-term></span>
+    </p>
+    <button class="btn btn-ghost op-btn" type="button" data-op-renew>{renewText}</button>
+  </div>
+
+  {/* ── the open order: link, copy, cancel ──────────────────── */}
+  <div class="op-order" data-op-order hidden>
+    <p class="op-title-sm">{orderTitle}</p>
+    <p class="op-note">{orderHint}</p>
+    <div class="snippet">
+      <div class="snippet-top">
+        <span class="kind mono">{checkoutLabel}</span>
+        <button class="copy mono" type="button" data-op-copy-link data-label={copyLabel} data-done={copiedLabel}>
+          {copyLabel}
+        </button>
+      </div>
+      <a class="op-checkout mono" data-op-checkout href="#" target="_blank" rel="noopener noreferrer">
+        {checkoutLabel}
+      </a>
+    </div>
+    <div class="op-actions">
+      <button class="btn btn-ghost op-btn" type="button" data-op-cancel>{cancelText}</button>
+    </div>
+  </div>
+
+  {/* ── the machine key (its plaintext exists exactly once) ──── */}
+  <div class="op-keys" data-op-keys hidden>
+    <p class="op-title-sm">{keyTitle}</p>
+    <p class="op-note" data-op-key-state></p>
+    <div class="op-plain" data-op-key-plain hidden>
+      <div class="snippet-top">
+        <span class="kind mono">{keyPlainLabel}</span>
+        <button class="copy mono" type="button" data-op-copy-key data-label={copyLabel} data-done={copiedLabel}>
+          {copyLabel}
+        </button>
+      </div>
+      <p class="op-plain-value mono" data-op-key-value></p>
+      <p class="op-note">{keyPlainNote}</p>
+    </div>
+    <div class="op-actions">
+      <button class="btn op-btn" type="button" data-op-key-issue>{issueText}</button>
+      <button class="btn btn-ghost op-btn" type="button" data-op-key-revoke>{revokeText}</button>
+    </div>
+  </div>
+
+  <p class="op-status mono" data-op-status role="status" aria-live="polite"></p>
+</section>
+
+<style>
+  .op {
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 14px;
+    display: grid;
+    gap: 10px;
+    scroll-margin-top: calc(var(--nav-h) + 20px);
+  }
+  .op-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .op-head h2 {
+    font-size: 15px;
+    margin: 0;
+  }
+  .op-refresh {
+    font-size: 11.5px;
+    color: var(--text-3);
+    border: 1px solid var(--line);
+    border-radius: var(--r-1);
+    padding: 2px 8px;
+    transition:
+      border-color var(--t-micro) var(--ease),
+      color var(--t-micro) var(--ease);
+  }
+  .op-refresh:hover {
+    border-color: var(--brand);
+    color: var(--brand);
+  }
+  .op-refresh[hidden] {
+    display: none;
+  }
+  .op-desc,
+  .op-note {
+    margin: 0;
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: var(--text-2);
+  }
+  .op-note {
+    color: var(--text-3);
+  }
+  .op-title-sm {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-1);
+  }
+
+  /* the price line — the number first, the terms next to it */
+  .op-price {
+    margin: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .op-amount {
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--text-1);
+  }
+  .op-term {
+    font-size: 13px;
+    color: var(--text-2);
+  }
+  .op-asset {
+    font-size: 11.5px;
+    color: var(--text-3);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 1px 8px;
+  }
+
+  .op-benefits {
+    margin: 0;
+    padding-left: 18px;
+    display: grid;
+    gap: 4px;
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: var(--text-2);
+  }
+
+  /* the neutrality pledge — the one line that must never be dropped */
+  .op-pledge {
+    margin: 0;
+    padding: 8px 10px;
+    background: var(--bg-ink);
+    border: 1px solid var(--line);
+    border-left: 2px solid var(--brand);
+    border-radius: var(--r-1);
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--text-2);
+  }
+
+  .op-meta {
+    margin: 0;
+    font-size: 12.5px;
+    color: var(--text-2);
+  }
+  .op-sep {
+    margin: 0 6px;
+    color: var(--text-3);
+  }
+
+  .op-btn {
+    justify-self: start;
+  }
+  .op-btn[disabled] {
+    cursor: not-allowed;
+    opacity: 0.85;
+  }
+
+  .op-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  /* the order box */
+  .op-order {
+    border-top: 1px solid var(--line);
+    padding-top: 10px;
+    display: grid;
+    gap: 8px;
+  }
+  .op-order[hidden] {
+    display: none;
+  }
+  .snippet {
+    border: 1px solid var(--line);
+    border-radius: var(--r-1);
+    overflow: hidden;
+  }
+  .snippet-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 5px 8px;
+    background: var(--bg-elevated);
+    border-bottom: 1px solid var(--line);
+  }
+  .kind {
+    font-size: 11px;
+    color: var(--text-3);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .copy {
+    padding: 3px 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-1);
+    font-size: 11.5px;
+    color: var(--text-1);
+    transition:
+      border-color var(--t-micro) var(--ease),
+      color var(--t-micro) var(--ease);
+  }
+  .copy:hover {
+    border-color: var(--brand);
+    color: var(--brand);
+  }
+  .copy[data-state='done'] {
+    border-color: var(--grade-a);
+    color: var(--grade-a);
+  }
+  .op-checkout {
+    display: block;
+    padding: 8px 10px;
+    background: var(--bg-ink);
+    color: var(--brand-link);
+    font-size: 11.5px;
+    line-height: 1.6;
+    word-break: break-all;
+  }
+  .op-checkout:hover {
+    text-decoration: underline;
+  }
+
+  /* the machine key */
+  .op-keys {
+    border-top: 1px solid var(--line);
+    padding-top: 10px;
+    display: grid;
+    gap: 8px;
+  }
+  .op-keys[hidden] {
+    display: none;
+  }
+  .op-plain {
+    border: 1px solid var(--line);
+    border-radius: var(--r-1);
+    overflow: hidden;
+  }
+  .op-plain[hidden] {
+    display: none;
+  }
+  .op-plain-value {
+    margin: 0;
+    padding: 8px 10px;
+    background: var(--bg-ink);
+    color: var(--text-1);
+    font-size: 12px;
+    line-height: 1.6;
+    word-break: break-all;
+  }
+  .op-plain .op-note {
+    padding: 8px 10px;
+    background: var(--bg-ink);
+  }
+
+  .op-link {
+    font-size: 12.5px;
+    color: var(--brand-link);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    justify-self: start;
+  }
+  .op-more {
+    margin: 0;
+  }
+
+  .op-status {
+    margin: 0;
+    min-height: 1.2em;
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: var(--text-3);
+  }
+  .op-status:empty {
+    display: none;
+  }
+  .op-status[data-tone='error'] {
+    color: var(--grade-f);
+  }
+  .op-status[data-tone='ok'] {
+    color: var(--grade-a);
+  }
+</style>
+
+<script>
+  // OwnerPro — the Pro subscription panel.
+  //
+  // The credential is the management token of the confirmed owner mailbox
+  // (localStorage: `afr-owner-mail-<domain>`). Without it the panel shows
+  // a hint and no buttons; with it the panel may order a term, watch the
+  // order and manage the machine key.
+  //
+  // The payment itself is on-chain, so the panel never waits for a
+  // redirect back: it polls the order (5 s, at most 10 min) and pauses
+  // while the tab is hidden — a background tab has no reason to spend the
+  // owner's battery or the API budget.
+
+  /** The poll cadence and the hard stop of the payment window. */
+  const POLL_MS = 5000;
+  const POLL_MAX_MS = 10 * 60 * 1000;
+
+  function readJson(r: Response): Promise<any> {
+    return r.json().catch(() => null);
+  }
+
+  for (const root of document.querySelectorAll<HTMLElement>('[data-owner-pro]')) {
+    const domain = root.dataset.domain ?? '';
+    const attr = (name: string) => root.getAttribute(name) ?? '';
+
+    const desc = root.querySelector<HTMLElement>('[data-op-desc]');
+    const expires = root.querySelector<HTMLElement>('[data-op-expires]');
+    const term = root.querySelector<HTMLElement>('[data-op-term]');
+    const status = root.querySelector<HTMLElement>('[data-op-status]');
+    const refreshBtn = root.querySelector<HTMLButtonElement>('[data-op-refresh]');
+    const buyBtn = root.querySelector<HTMLButtonElement>('[data-op-buy]');
+    const renewBtn = root.querySelector<HTMLButtonElement>('[data-op-renew]');
+    const cancelBtn = root.querySelector<HTMLButtonElement>('[data-op-cancel]');
+    const orderBox = root.querySelector<HTMLElement>('[data-op-order]');
+    const checkout = root.querySelector<HTMLAnchorElement>('[data-op-checkout]');
+    const keysBox = root.querySelector<HTMLElement>('[data-op-keys]');
+    const keyState = root.querySelector<HTMLElement>('[data-op-key-state]');
+    const keyPlain = root.querySelector<HTMLElement>('[data-op-key-plain]');
+    const keyValue = root.querySelector<HTMLElement>('[data-op-key-value]');
+    const issueBtn = root.querySelector<HTMLButtonElement>('[data-op-key-issue]');
+    const revokeBtn = root.querySelector<HTMLButtonElement>('[data-op-key-revoke]');
+
+    const tokenKey = `afr-owner-mail-${domain}`;
+
+    let state = 'loading';
+    let order: { reference: string; checkoutUrl: string } | null = null;
+    let pollTimer = 0;
+    let pollDeadline = 0;
+
+    function loadToken(): string {
+      try {
+        return localStorage.getItem(tokenKey) ?? '';
+      } catch {
+        return '';
+      }
+    }
+
+    function say(msg: string, tone?: string) {
+      if (!status) return;
+      status.textContent = msg;
+      if (tone) status.dataset.tone = tone;
+      else delete status.dataset.tone;
+    }
+
+    function setState(next: string) {
+      state = next;
+      for (const el of root.querySelectorAll<HTMLElement>('[data-op-state]')) {
+        el.hidden = el.dataset.opState !== next;
+      }
+      if (desc) {
+        if (next === 'locked') desc.textContent = attr('data-desc-locked');
+        else if (next === 'loading') desc.textContent = attr('data-desc-loading');
+        else if (next === 'active') desc.textContent = attr('data-desc-active');
+        else desc.textContent = attr('data-desc-inactive');
+      }
+      if (refreshBtn) refreshBtn.hidden = next === 'locked';
+      if (keysBox) keysBox.hidden = next === 'locked' || next === 'loading';
+    }
+
+    /** The backend speaks error codes; the owner reads sentences. */
+    function errorFor(code: string): string {
+      switch (code) {
+        case 'unauthorized':
+          return attr('data-err-unauthorized');
+        case 'unknown_domain':
+          return attr('data-err-unknown-domain');
+        case 'order_pending':
+          return attr('data-err-order-pending');
+        case 'billing_not_configured':
+          return attr('data-err-billing-not-configured');
+        case 'billing_unavailable':
+          return attr('data-err-billing-unavailable');
+        case 'quota_exceeded':
+          return attr('data-err-quota-exceeded');
+        case 'not_found':
+          return attr('data-err-not-found');
+        case 'invalid_domain':
+          return attr('data-err-invalid-domain');
+        case 'invalid_json':
+          return attr('data-err-invalid-json');
+        case 'api_keys_unavailable':
+          return attr('data-err-api-keys-unavailable');
+        default:
+          return attr('data-msg-error');
+      }
+    }
+
+    function authHeaders(): Record<string, string> {
+      return { accept: 'application/json', authorization: 'Bearer ' + loadToken() };
+    }
+
+    function fmtDate(value: unknown): string {
+      const raw = String(value ?? '');
+      if (!raw) return '—';
+      const d = new Date(raw);
+      if (isNaN(d.getTime())) return raw;
+      return d.toISOString().slice(0, 10);
+    }
+
+    /* ── the Pro state + the key metadata ───────────────────────── */
+    function applyStatus(body: any) {
+      const pro = (body && body.pro) || {};
+      const active = pro.active === true;
+      if (active) {
+        if (expires) expires.textContent = fmtDate(pro.expiresAt);
+        if (term) {
+          const days = Number(pro.termDays);
+          const n = Number.isFinite(days) && days > 0 ? Math.floor(days) : 30;
+          term.textContent = attr('data-tpl-days').replace('{n}', String(n));
+        }
+        setState('active');
+      } else {
+        setState('inactive');
+      }
+      const key = body && body.apiKey;
+      if (keyState) {
+        if (!key || key.issued !== true) {
+          keyState.textContent = attr('data-msg-key-none');
+        } else {
+          const parts = [attr('data-msg-key-issued')];
+          if (key.tier) parts.push(`${attr('data-label-tier')}: ${key.tier}`);
+          if (key.createdAt) parts.push(`${attr('data-label-created')}: ${fmtDate(key.createdAt)}`);
+          parts.push(`${attr('data-label-used')}: ${key.lastUsedAt ? fmtDate(key.lastUsedAt) : attr('data-msg-never')}`);
+          keyState.textContent = parts.join(' · ');
+        }
+      }
+      /* the plaintext is shown once: a fresh status read drops it */
+      if (keyPlain) keyPlain.hidden = true;
+      if (keyValue) keyValue.textContent = '';
+    }
+
+    async function loadStatus(): Promise<void> {
+      const token = loadToken();
+      if (!token) {
+        setState('locked');
+        say(attr('data-msg-locked'));
+        return;
+      }
+      setState('loading');
+      try {
+        const r = await fetch('/api/v1/pro/status?domain=' + encodeURIComponent(domain), {
+          headers: authHeaders(),
+        });
+        const body = await readJson(r);
+        if (r.status === 401) {
+          setState('locked');
+          say(attr('data-msg-unauthorized'), 'error');
+          return;
+        }
+        if (!r.ok || !body) {
+          say(errorFor(String((body && body.error) || '')), 'error');
+          setState('inactive');
+          return;
+        }
+        applyStatus(body);
+        say('');
+      } catch {
+        say(attr('data-msg-error'), 'error');
+        setState('inactive');
+      }
+    }
+
+    /* ── the payment window ─────────────────────────────────────── */
+    function stopPolling() {
+      if (pollTimer) {
+        window.clearTimeout(pollTimer);
+        pollTimer = 0;
+      }
+    }
+
+    function schedulePoll() {
+      stopPolling();
+      if (!order) return;
+      pollTimer = window.setTimeout(() => {
+        pollTimer = 0;
+        void poll();
+      }, POLL_MS);
+    }
+
+    async function poll(): Promise<void> {
+      if (!order) return;
+      /* a hidden tab does not poll — the owner comes back to a fresh read */
+      if (document.hidden) return;
+      if (Date.now() > pollDeadline) {
+        stopPolling();
+        say(attr('data-msg-timeout'), 'error');
+        return;
+      }
+      let r: Response;
+      try {
+        r = await fetch('/api/v1/billing/pro/orders/' + encodeURIComponent(order.reference), {
+          headers: authHeaders(),
+        });
+      } catch {
+        schedulePoll();
+        return;
+      }
+      const body = await readJson(r);
+      if (r.status === 401) {
+        stopPolling();
+        setState('locked');
+        say(attr('data-msg-unauthorized'), 'error');
+        return;
+      }
+      if (!r.ok || !body) {
+        schedulePoll();
+        return;
+      }
+      if (body.paid === true) {
+        stopPolling();
+        order = null;
+        if (orderBox) orderBox.hidden = true;
+        /* the status is read first — its own message must not overwrite the
+           one that tells the owner the payment landed */
+        await loadStatus();
+        say(attr('data-msg-paid'), 'ok');
+        return;
+      }
+      schedulePoll();
+    }
+
+    /* ── create the order ─────────────────────────────────────────
+     *
+     * One endpoint, two entries: the first term ("Activate Pro") and the
+     * renewal of a running one ("Renew Pro"). The ledger knows the
+     * difference — a renewal extends the current term. */
+    function startOrder(btn: HTMLButtonElement | null, idleAttr: string) {
+      if (!btn || btn.disabled) return;
+      const token = loadToken();
+      if (!token) {
+        setState('locked');
+        say(attr('data-msg-locked'), 'error');
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = attr('data-label-buying');
+      say('');
+
+      fetch('/api/v1/billing/pro/orders', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json', authorization: 'Bearer ' + token },
+        body: JSON.stringify({ domain }),
+      })
+        .then((r) => readJson(r).then((body) => ({ r, body })))
+        .then(({ r, body }) => {
+          btn.disabled = false;
+          btn.textContent = attr(idleAttr);
+          if (r.status >= 200 && r.status < 300 && body && body.reference) {
+            order = { reference: String(body.reference), checkoutUrl: String(body.checkoutUrl ?? '') };
+            pollDeadline = Date.now() + POLL_MAX_MS;
+            if (checkout) {
+              checkout.setAttribute('href', order.checkoutUrl || '#');
+              checkout.textContent = order.checkoutUrl || attr('data-msg-error');
+            }
+            if (orderBox) orderBox.hidden = false;
+            say(attr('data-msg-polling'));
+            schedulePoll();
+            return;
+          }
+          say(errorFor(String((body && body.error) || '')), 'error');
+        })
+        .catch(() => {
+          btn.disabled = false;
+          btn.textContent = attr(idleAttr);
+          say(attr('data-msg-error'), 'error');
+        });
+    }
+
+    buyBtn?.addEventListener('click', () => startOrder(buyBtn, 'data-label-buy'));
+    renewBtn?.addEventListener('click', () => startOrder(renewBtn, 'data-label-renew'));
+
+    /* ── cancel the open order ──────────────────────────────────── */
+    cancelBtn?.addEventListener('click', () => {
+      if (cancelBtn.disabled) return;
+      if (!order) return;
+      cancelBtn.disabled = true;
+      cancelBtn.textContent = attr('data-label-cancelling');
+      say('');
+
+      fetch('/api/v1/billing/pro/orders/' + encodeURIComponent(order.reference) + '/cancel', {
+        method: 'POST',
+        headers: authHeaders(),
+      })
+        .then((r) => readJson(r).then((body) => ({ r, body })))
+        .then(({ r, body }) => {
+          if (cancelBtn) {
+            cancelBtn.disabled = false;
+            cancelBtn.textContent = attr('data-label-cancel');
+          }
+          if (r.status === 401) {
+            setState('locked');
+            say(attr('data-msg-unauthorized'), 'error');
+            return;
+          }
+          if (r.ok && body && body.cancelled === true) {
+            stopPolling();
+            order = null;
+            if (orderBox) orderBox.hidden = true;
+            say(attr('data-msg-cancelled'), 'ok');
+            return;
+          }
+          if (r.ok && body && body.cancelled === false) {
+            say(attr('data-msg-cancel-failed'), 'error');
+            return;
+          }
+          say(errorFor(String((body && body.error) || '')), 'error');
+        })
+        .catch(() => {
+          if (cancelBtn) {
+            cancelBtn.disabled = false;
+            cancelBtn.textContent = attr('data-label-cancel');
+          }
+          say(attr('data-msg-error'), 'error');
+        });
+    });
+
+    /* ── the machine key: the plaintext exists exactly once ─────── */
+    issueBtn?.addEventListener('click', () => {
+      if (issueBtn.disabled) return;
+      const token = loadToken();
+      if (!token) {
+        setState('locked');
+        say(attr('data-msg-locked'), 'error');
+        return;
+      }
+      issueBtn.disabled = true;
+      issueBtn.textContent = attr('data-label-issuing');
+      say('');
+
+      fetch('/api/v1/pro/api-key', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json', authorization: 'Bearer ' + token },
+        body: JSON.stringify({ domain }),
+      })
+        .then((r) => readJson(r).then((body) => ({ r, body })))
+        .then(({ r, body }) => {
+          if (issueBtn) {
+            issueBtn.disabled = false;
+            issueBtn.textContent = attr('data-label-issue');
+          }
+          if (r.status >= 200 && r.status < 300 && body && body.key) {
+            if (keyValue) keyValue.textContent = String(body.key);
+            if (keyPlain) keyPlain.hidden = false;
+            if (keyState) keyState.textContent = attr('data-msg-key-issued');
+            say(attr('data-msg-key-issued'), 'ok');
+            return;
+          }
+          if (r.status === 401) {
+            setState('locked');
+            say(attr('data-msg-unauthorized'), 'error');
+            return;
+          }
+          say(errorFor(String((body && body.error) || '')), 'error');
+        })
+        .catch(() => {
+          if (issueBtn) {
+            issueBtn.disabled = false;
+            issueBtn.textContent = attr('data-label-issue');
+          }
+          say(attr('data-msg-error'), 'error');
+        });
+    });
+
+    /* ── revoke the machine key ─────────────────────────────────── */
+    revokeBtn?.addEventListener('click', () => {
+      if (revokeBtn.disabled) return;
+      const token = loadToken();
+      if (!token) {
+        setState('locked');
+        say(attr('data-msg-locked'), 'error');
+        return;
+      }
+      revokeBtn.disabled = true;
+      revokeBtn.textContent = attr('data-label-revoking');
+      say('');
+
+      fetch('/api/v1/pro/api-key?domain=' + encodeURIComponent(domain), {
+        method: 'DELETE',
+        headers: authHeaders(),
+      })
+        .then((r) => readJson(r).then((body) => ({ r, body })))
+        .then(({ r, body }) => {
+          if (revokeBtn) {
+            revokeBtn.disabled = false;
+            revokeBtn.textContent = attr('data-label-revoke');
+          }
+          if (r.status === 401) {
+            setState('locked');
+            say(attr('data-msg-unauthorized'), 'error');
+            return;
+          }
+          if (r.ok && body && body.revoked === true) {
+            if (keyPlain) keyPlain.hidden = true;
+            if (keyValue) keyValue.textContent = '';
+            if (keyState) keyState.textContent = attr('data-msg-key-none');
+            say(attr('data-msg-revoked'), 'ok');
+            return;
+          }
+          say(errorFor(String((body && body.error) || '')), 'error');
+        })
+        .catch(() => {
+          if (revokeBtn) {
+            revokeBtn.disabled = false;
+            revokeBtn.textContent = attr('data-label-revoke');
+          }
+          say(attr('data-msg-error'), 'error');
+        });
+    });
+
+    /* ── copy buttons ───────────────────────────────────────────── */
+    const copyTimers = new WeakMap<Element, number>();
+    function flash(btn: HTMLButtonElement) {
+      btn.textContent = btn.dataset.done ?? 'Copied ✓';
+      btn.dataset.state = 'done';
+      const prev = copyTimers.get(btn);
+      if (prev) window.clearTimeout(prev);
+      copyTimers.set(
+        btn,
+        window.setTimeout(() => {
+          btn.textContent = btn.dataset.label ?? 'Copy';
+          delete btn.dataset.state;
+        }, 1500),
+      );
+    }
+    async function copyText(text: string) {
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch {
+        /* clipboard blocked — the value stays selectable in the panel */
+      }
+    }
+    root.querySelectorAll<HTMLButtonElement>('[data-op-copy-link]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const href = checkout?.getAttribute('href') ?? '';
+        void copyText(href);
+        flash(btn);
+      });
+    });
+    root.querySelectorAll<HTMLButtonElement>('[data-op-copy-key]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        void copyText(keyValue?.textContent ?? '');
+        flash(btn);
+      });
+    });
+
+    /* ── the owner asks for a fresh reading ─────────────────────── */
+    refreshBtn?.addEventListener('click', () => {
+      void loadStatus();
+    });
+
+    /* ── a hidden tab does not poll ─────────────────────────────── */
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        stopPolling();
+        return;
+      }
+      if (order) schedulePoll();
+    });
+
+    /* ── the panel restores itself from the token in this browser ─ */
+    if (loadToken()) {
+      setState('loading');
+      void loadStatus();
+    } else {
+      setState('locked');
+    }
+  }
+</script>

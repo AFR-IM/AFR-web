@@ -17,6 +17,12 @@ export interface CreateBillingOrder {
   asset: string;
   chainKey: string;
   returnUrl?: string;
+  /** Length of the paid term this order buys, in days (stored in the ledger). */
+  termDays?: number;
+  /** Description shown at the checkout (the ledger never stores it). */
+  description?: string;
+  /** Lifetime of the checkout session, in seconds. */
+  ttlSeconds?: number;
 }
 
 export interface AipayOrderResponse {
@@ -34,7 +40,10 @@ export interface AipayOrderResponse {
 }
 
 const BASE = 'https://api.aipay.im';
-const ID = /^[A-Za-z0-9_-]{1,64}$/;
+/** The id charset of the ledger. A dot is allowed so that a merchant order id
+ * can carry the domain it was bought for (`pro-example.com-<uuid>`); the id
+ * is always compared literally, never interpolated into SQL. */
+const ID = /^[A-Za-z0-9._-]{1,64}$/;
 const PURPOSES = new Set<BillingPurpose>(['pro', 'api', 'ad', 'torch', 'promo']);
 const STATUSES = new Set<BillingStatus>(['creating', 'pending', 'confirmed', 'expired', 'cancelled', 'review']);
 const enc = new TextEncoder();
@@ -150,19 +159,25 @@ export async function createBillingOrder(db: Db, env: AipayEnv, input: CreateBil
   fetchImpl: typeof fetch = fetch): Promise<{ order: AipayOrderResponse; idempotent: boolean }> {
   if (!env.AIPAY_API_KEY || !PURPOSES.has(input.purpose) || !ID.test(input.merchantOrderId) ||
     !input.subjectId.trim() || !/^\d+(?:\.\d{1,18})?$/.test(input.amount) || !/^[A-Z0-9]{2,12}$/.test(input.asset) ||
-    !/^[a-z0-9-]{2,32}$/.test(input.chainKey) || (input.returnUrl && (() => { try {
+    !/^[a-z0-9-]{2,32}$/.test(input.chainKey) ||
+    (input.termDays !== undefined && (!Number.isSafeInteger(input.termDays) || input.termDays < 1 || input.termDays > 3650)) ||
+    (input.ttlSeconds !== undefined && (!Number.isSafeInteger(input.ttlSeconds) || input.ttlSeconds < 60 || input.ttlSeconds > 86_400)) ||
+    (input.description !== undefined && (typeof input.description !== 'string' || input.description.length < 1 || input.description.length > 200)) ||
+    (input.returnUrl && (() => { try {
       const url = new URL(input.returnUrl); return url.protocol !== 'https:' || !['afr.im', 'www.afr.im'].includes(url.hostname);
     } catch { return true; } })())) throw new Error('invalid billing order');
   const created = new Date().toISOString();
   const insert = await db.prepare(`INSERT OR IGNORE INTO billing_orders
-    (merchant_order_id, purpose, subject_id, amount, asset, chain_key, status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, 'creating', ?, ?)`)
-    .run(input.merchantOrderId, input.purpose, input.subjectId, input.amount, input.asset, input.chainKey, created, created);
-  const existing = await db.prepare(`SELECT merchant_order_id, purpose, subject_id, amount, asset, chain_key,
+    (merchant_order_id, purpose, subject_id, amount, asset, chain_key, term_days, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'creating', ?, ?)`)
+    .run(input.merchantOrderId, input.purpose, input.subjectId, input.amount, input.asset, input.chainKey,
+      input.termDays ?? null, created, created);
+  const existing = await db.prepare(`SELECT merchant_order_id, purpose, subject_id, amount, asset, chain_key, term_days,
     status, aipay_reference, checkout_url, expires_at, aipay_confirmed_at, tx_hash
     FROM billing_orders WHERE merchant_order_id = ?`).get<Record<string, unknown>>(input.merchantOrderId);
   if (!existing || existing.purpose !== input.purpose || existing.subject_id !== input.subjectId ||
-    existing.amount !== input.amount || existing.asset !== input.asset || existing.chain_key !== input.chainKey) {
+    existing.amount !== input.amount || existing.asset !== input.asset || existing.chain_key !== input.chainKey ||
+    (input.termDays !== undefined && existing.term_days !== null && Number(existing.term_days) !== input.termDays)) {
     throw new Error('billing_order_conflict');
   }
   if (existing.aipay_reference && (existing.checkout_url || existing.status !== 'pending')) {
@@ -171,7 +186,9 @@ export async function createBillingOrder(db: Db, env: AipayEnv, input: CreateBil
       chainKey: input.chainKey, ...(existing.checkout_url ? { checkoutUrl: String(existing.checkout_url) } : {}) }, idempotent: true };
   }
   const body = JSON.stringify({ amount: input.amount, asset: input.asset, chainKey: input.chainKey,
-    merchantOrderId: input.merchantOrderId, description: `AFR ${input.purpose}`, ...(input.returnUrl ? { returnUrl: input.returnUrl } : {}) });
+    merchantOrderId: input.merchantOrderId, description: input.description ?? `AFR ${input.purpose}`,
+    ...(input.ttlSeconds !== undefined ? { ttlSeconds: input.ttlSeconds } : {}),
+    ...(input.returnUrl ? { returnUrl: input.returnUrl } : {}) });
   const response = await fetchImpl(`${safeBase(env.AIPAY_BASE_URL)}/v1/orders`, {
     method: 'POST', redirect: 'error', signal: AbortSignal.timeout(8000),
     headers: { Authorization: `Bearer ${env.AIPAY_API_KEY}`, 'Content-Type': 'application/json', Accept: 'application/json' }, body,

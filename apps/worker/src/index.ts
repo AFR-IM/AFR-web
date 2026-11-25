@@ -32,8 +32,20 @@ import {
 } from './verification.ts';
 import {
   API_KEY_HEADER,
+  enforceApiKeyQuota,
   isValidApiKey,
+  touchApiKeyUsage,
 } from './api-key.ts';
+import {
+  cancelProOrder,
+  createProOrder,
+  grantProForConfirmedOrders,
+  grantProForWebhook,
+  issueApiKey,
+  readProOrder,
+  readProStatus,
+  revokeApiKeys,
+} from './commercial.ts';
 import { pruneMailArtifacts } from './mail-gc.ts';
 import {
   buildMagicToken,
@@ -1231,10 +1243,36 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
       );
       if (result === 'invalid') return c.json({ error: 'invalid_webhook' }, 400);
       if (result === 'ignored') return c.json({ ok: true, ignored: true }, 202);
+      // The ledger says "paid": grant (or renew) the Pro term of the order.
+      // The grant is derived from the confirmed order, so a replayed webhook
+      // can never extend the term twice.
+      if (result === 'applied') {
+        await grantProForWebhook(dbOf(c, overrides), raw.subarray(0, size));
+      }
       return c.json({ ok: true, result });
     } catch {
       return c.json({ error: 'webhook_unavailable' }, 503);
     }
+  });
+
+  // The daily budget of a machine key (方案书 §11.4): a free key may call the
+  // API 100 times a day, a Pro key 10 000. The counter lives in KV, so every
+  // isolate shares one budget.
+  //
+  // Only a key that passed its own check is counted: an unknown key is not
+  // this gate's business (the endpoint's own authorisation decides about it),
+  // and a request without a key is never counted here — the per-IP limits of
+  // the endpoints apply to those.
+  app.use('/api/v1/*', async (c, next) => {
+    const key = c.req.header(API_KEY_HEADER) ?? null;
+    if (!key) return next();
+    const db = dbOf(c, overrides);
+    const decision = await enforceApiKeyQuota(db, c.env, key);
+    if (!decision.allowed) {
+      return c.json({ error: 'quota_exceeded', limit: decision.limit }, 429);
+    }
+    if (decision.keyHash) await touchApiKeyUsage(db, decision.keyHash);
+    return next();
   });
   app.use('/api/v1/owners/*', async (c, next) => {
     c.header('Cache-Control', 'no-store');
@@ -3164,6 +3202,112 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     return c.json({ domain, notify: payload.notify });
   });
 
+  // -------------------------------------------------------------------------
+  // Pro commerce (the paid side)
+  //
+  // The owner is the holder of the management token of the confirmed
+  // mailbox — the same key as `/api/v1/owners/*`. Nothing in this section
+  // touches the score of a site: paying buys service, never rank.
+  // -------------------------------------------------------------------------
+
+  // The private answers of the commerce routes are never cached.
+  app.use('/api/v1/billing/*', async (c, next) => {
+    c.header('Cache-Control', 'no-store');
+    c.header('Cloudflare-CDN-Cache-Control', 'no-store');
+    await next();
+  });
+  app.use('/api/v1/pro/*', async (c, next) => {
+    c.header('Cache-Control', 'no-store');
+    c.header('Cloudflare-CDN-Cache-Control', 'no-store');
+    await next();
+  });
+
+  // POST /api/v1/billing/pro/orders {domain} — start a Pro subscription.
+  //
+  // One order buys one term: 12 USDT on the Base chain for 30 days. The
+  // ledger row is written first, then AIPAY is asked for a checkout.
+  app.post('/api/v1/billing/pro/orders', async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: 'invalid_json' }, 400);
+    }
+    const payload = (body ?? {}) as { domain?: unknown };
+    if (typeof payload.domain !== 'string') {
+      return c.json({ error: 'invalid_domain' }, 400);
+    }
+    const result = await createProOrder(dbOf(c, overrides), {
+      domain: payload.domain,
+      manageToken: bearerToken(c),
+      env: c.env,
+      fetchImpl: overrides.fetchImpl ?? fetch,
+    });
+    if (!result.ok) return c.json({ error: result.error }, result.status);
+    return c.json(result.order, 201);
+  });
+
+  // GET /api/v1/billing/pro/orders/:reference — the state of one order.
+  // `:reference` is the AIPAY reference of the order; the merchant order id
+  // is accepted as well.
+  app.get('/api/v1/billing/pro/orders/:reference', async (c) => {
+    const result = await readProOrder(dbOf(c, overrides), c.req.param('reference'), bearerToken(c));
+    if (!result.ok) return c.json({ error: result.error }, result.status);
+    return c.json(result.order);
+  });
+
+  // POST /api/v1/billing/pro/orders/:reference/cancel — drop an open order.
+  app.post('/api/v1/billing/pro/orders/:reference/cancel', async (c) => {
+    const result = await cancelProOrder(dbOf(c, overrides), c.req.param('reference'), bearerToken(c));
+    if (!result.ok) return c.json({ error: result.error }, result.status);
+    return c.json({ cancelled: result.cancelled });
+  });
+
+  // GET /api/v1/pro/status?domain= — the Pro state of a site and the
+  // metadata of its machine key (never the key itself).
+  app.get('/api/v1/pro/status', async (c) => {
+    const result = await readProStatus(dbOf(c, overrides), c.req.query('domain') ?? '', bearerToken(c));
+    if (!result.ok) return c.json({ error: result.error }, result.status);
+    return c.json(result.status);
+  });
+
+  // POST /api/v1/pro/api-key {domain} — issue (or rotate) the machine key.
+  // The plaintext exists exactly once: in this answer.
+  app.post('/api/v1/pro/api-key', async (c) => {
+    let domain = c.req.query('domain') ?? '';
+    if (!domain) {
+      let body: unknown;
+      try {
+        body = await c.req.json();
+      } catch {
+        return c.json({ error: 'invalid_json' }, 400);
+      }
+      const payload = (body ?? {}) as { domain?: unknown };
+      if (typeof payload.domain !== 'string') return c.json({ error: 'invalid_domain' }, 400);
+      domain = payload.domain;
+    }
+    const result = await issueApiKey(dbOf(c, overrides), domain, bearerToken(c));
+    if (!result.ok) return c.json({ error: result.error }, result.status);
+    return c.json({ key: result.key, tier: result.tier, createdAt: result.createdAt }, 201);
+  });
+
+  // DELETE /api/v1/pro/api-key — revoke the machine key of a site. The
+  // domain may travel in the query string or in the body.
+  app.delete('/api/v1/pro/api-key', async (c) => {
+    let domain = c.req.query('domain') ?? '';
+    if (!domain) {
+      try {
+        const body = (await c.req.json()) as { domain?: unknown };
+        if (typeof body?.domain === 'string') domain = body.domain;
+      } catch {
+        // An unreadable body simply carries no domain.
+      }
+    }
+    const result = await revokeApiKeys(dbOf(c, overrides), domain, bearerToken(c));
+    if (!result.ok) return c.json({ error: result.error }, result.status);
+    return c.json({ revoked: true });
+  });
+
   // GET /api/v1/mail/status — which outbound mail channels are configured.
   //
   // Only *whether* a variable is set is reported: no key, no host, no
@@ -3297,7 +3441,14 @@ export default {
   /** Daily maintenance; releases separately own scan ingestion. */
   async scheduled(_controller: ScheduledController, env: WorkerEnv, ctx: ExecutionContext): Promise<void> {
     if (env.AIPAY_RECONCILE_ENABLED === 'true' && env.AIPAY_API_KEY?.trim()) {
-      ctx.waitUntil(runAipayReconcileCron(createD1Db(env.DB), env).catch((error) => {
+      ctx.waitUntil((async () => {
+        const db = createD1Db(env.DB);
+        await runAipayReconcileCron(db, env);
+        // An order that AIPAY confirmed while the local ledger did not know
+        // it yet (the webhook arrived too early and was ignored) still has to
+        // grant the term it paid for.
+        await grantProForConfirmedOrders(db);
+      })().catch((error) => {
         console.error('AIPAY reconciliation failed; checkpoint not advanced for failed page');
         throw error;
       }));

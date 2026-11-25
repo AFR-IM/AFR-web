@@ -20,8 +20,14 @@
 
 import type { Db } from './db.ts';
 
-/** Default length of one paid Pro term, in days. */
-export const DEFAULT_PRO_TERM_DAYS = 365;
+/** Default length of one paid Pro term, in days.
+ *
+ * The product sells one term per order: $12 buys 30 days of Pro. The length
+ * of a term is a property of the *order* (`billing_orders.term_days`), so a
+ * future price change can sell a different term without touching this
+ * fallback. This constant is only the fallback for an order that carries no
+ * term (an older row, or a row written before the column existed). */
+export const DEFAULT_PRO_TERM_DAYS = 30;
 
 const DAY_MS = 86_400_000;
 
@@ -42,6 +48,8 @@ export interface ProEntitlementState {
   sourceOrderId: string | null;
   /** Kind of the last event applied while replaying. */
   kind: ProEntitlementEventKind | null;
+  /** Length of the current term, in days (the term of the last grant/renew). */
+  termDays: number | null;
 }
 
 interface EntitlementEventRow {
@@ -80,6 +88,7 @@ interface ReplayedTerm {
   revokedAt: number | null;
   sourceOrderId: string | null;
   kind: ProEntitlementEventKind | null;
+  termDays: number | null;
 }
 
 /**
@@ -97,6 +106,7 @@ function replay(events: EntitlementEventRow[]): ReplayedTerm {
   let revokedAt: number | null = null;
   let sourceOrderId: string | null = null;
   let kind: ProEntitlementEventKind | null = null;
+  let termDays: number | null = null;
 
   for (const event of events) {
     const at = Date.parse(event.occurred_at);
@@ -109,7 +119,9 @@ function replay(events: EntitlementEventRow[]): ReplayedTerm {
       kind = 'revoke';
       continue;
     }
-    const span = termDaysOf(event) * DAY_MS;
+    const days = termDaysOf(event);
+    const span = days * DAY_MS;
+    termDays = days;
     if (revokedAt !== null || expiresAt === null || expiresAt <= at) {
       // No live term: start a new one at the event time.
       grantedAt = at;
@@ -123,7 +135,7 @@ function replay(events: EntitlementEventRow[]): ReplayedTerm {
     kind = event.kind;
   }
 
-  return { grantedAt, expiresAt, revokedAt, sourceOrderId, kind };
+  return { grantedAt, expiresAt, revokedAt, sourceOrderId, kind, termDays };
 }
 
 /**
@@ -134,7 +146,7 @@ export async function computeProEntitlement(db: Db, subjectId: string,
   now: number | string = Date.now()): Promise<ProEntitlementState> {
   const subject = String(subjectId ?? '').trim();
   if (!subject) {
-    return { active: false, grantedAt: null, expiresAt: null, revokedAt: null, sourceOrderId: null, kind: null };
+    return { active: false, grantedAt: null, expiresAt: null, revokedAt: null, sourceOrderId: null, kind: null, termDays: null };
   }
   const events = await db.prepare(`SELECT id, source_merchant_order_id, subject_id, kind, term_days, occurred_at
       FROM pro_entitlement_events WHERE subject_id = ? ORDER BY id ASC`).all<EntitlementEventRow>(subject);
@@ -148,13 +160,88 @@ export async function computeProEntitlement(db: Db, subjectId: string,
     revokedAt: toIso(term.revokedAt),
     sourceOrderId: term.sourceOrderId,
     kind: term.kind,
+    termDays: term.termDays,
   };
+}
+
+/** One subject's derived Pro state, as the boards show it. */
+export interface ProTermSummary {
+  subjectId: string;
+  active: boolean;
+  grantedAt: string | null;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  sourceOrderId: string | null;
+  kind: ProEntitlementEventKind | null;
+  termDays: number | null;
+}
+
+/**
+ * The derived Pro state of every subject that ever held a term.
+ *
+ * The event log stays the only source of truth: the rows are grouped by
+ * subject and replayed with the very same rules as `computeProEntitlement`,
+ * so the board cannot show a term the API would not honour.
+ *
+ * `limit` bounds the number of subjects (the most recently touched ones).
+ */
+export async function listProEntitlements(db: Db, limit = 50,
+  now: number | string = Date.now()): Promise<ProTermSummary[]> {
+  const rows = await db.prepare(`SELECT id, source_merchant_order_id, subject_id, kind, term_days, occurred_at
+      FROM pro_entitlement_events ORDER BY id ASC LIMIT 10000`).all<EntitlementEventRow>();
+  const grouped = new Map<string, EntitlementEventRow[]>();
+  for (const row of rows) {
+    const list = grouped.get(row.subject_id);
+    if (list) list.push(row);
+    else grouped.set(row.subject_id, [row]);
+  }
+  const at = toMillis(now);
+  const summaries: ProTermSummary[] = [];
+  for (const [subjectId, events] of grouped) {
+    const term = replay(events);
+    summaries.push({
+      subjectId,
+      active: term.revokedAt === null && term.expiresAt !== null && term.expiresAt > at,
+      grantedAt: toIso(term.grantedAt),
+      expiresAt: toIso(term.expiresAt),
+      revokedAt: toIso(term.revokedAt),
+      sourceOrderId: term.sourceOrderId,
+      kind: term.kind,
+      termDays: term.termDays,
+    });
+  }
+  summaries.sort((a, b) => (b.grantedAt ?? '').localeCompare(a.grantedAt ?? ''));
+  return summaries.slice(0, Math.max(1, limit));
 }
 
 /** Pro access check: true only while the term is live (expired ⇒ false). */
 export async function hasProEntitlement(db: Db, subjectId: string,
   now: number | string = Date.now()): Promise<boolean> {
   return (await computeProEntitlement(db, subjectId, now)).active;
+}
+
+/**
+ * The confirmed Pro order of a merchant order id.
+ *
+ * The term column is read when the database has it (the commercial
+ * migration was applied); a database without the column still answers — the
+ * term then falls back to the default length.
+ */
+async function readConfirmedOrder(db: Db, merchantOrderId: string): Promise<{ subject_id: string; term_days: number | null } | undefined> {
+  try {
+    return await db.prepare(`SELECT subject_id, term_days FROM billing_orders
+        WHERE merchant_order_id = ? AND status = 'confirmed' AND purpose = 'pro'`)
+      .get<{ subject_id: string; term_days: number | null }>(merchantOrderId);
+  } catch {
+    try {
+      const row = await db.prepare(`SELECT subject_id FROM billing_orders
+          WHERE merchant_order_id = ? AND status = 'confirmed' AND purpose = 'pro'`)
+        .get<{ subject_id: string }>(merchantOrderId);
+      return row ? { subject_id: row.subject_id, term_days: null } : undefined;
+    } catch {
+      return undefined;
+    }
+  }
 }
 
 /**
@@ -169,11 +256,15 @@ export async function hasProEntitlement(db: Db, subjectId: string,
  * never extend the term twice.
  */
 export async function syncEntitlementFromBilling(db: Db, merchantOrderId: string): Promise<boolean> {
-  const order = await db.prepare(`SELECT subject_id FROM billing_orders
-      WHERE merchant_order_id = ? AND status = 'confirmed' AND purpose = 'pro'`).get<{ subject_id: string }>(merchantOrderId);
+  const order = await readConfirmedOrder(db, merchantOrderId);
   if (!order) return false;
   const subjectId = String(order.subject_id ?? '').trim();
   if (!subjectId) return false;
+
+  // The length of the term belongs to the order: $12 buys 30 days today, and
+  // a different price may buy a different term later.
+  const ordered = Number(order.term_days);
+  const termDays = Number.isFinite(ordered) && ordered > 0 ? Math.floor(ordered) : DEFAULT_PRO_TERM_DAYS;
 
   const stamp = new Date().toISOString();
   await db.prepare(`INSERT INTO pro_entitlement_events
@@ -186,7 +277,7 @@ export async function syncEntitlementFromBilling(db: Db, merchantOrderId: string
       WHERE NOT EXISTS (SELECT 1 FROM pro_entitlement_events e2
                         WHERE e2.source_merchant_order_id = ?)
       ON CONFLICT(source_merchant_order_id) WHERE kind IN ('grant', 'renew') DO NOTHING`)
-    .run(merchantOrderId, subjectId, subjectId, DEFAULT_PRO_TERM_DAYS, stamp, stamp, merchantOrderId);
+    .run(merchantOrderId, subjectId, subjectId, termDays, stamp, stamp, merchantOrderId);
 
   // The order only counts for the subject it was actually paid for.
   const event = await db.prepare(`SELECT subject_id FROM pro_entitlement_events
