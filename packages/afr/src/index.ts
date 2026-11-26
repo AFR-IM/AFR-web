@@ -21,7 +21,12 @@ import { evaluateRobotsPolicy, parseRobots, type RobotsTxt } from './robots.ts';
 // afr-1.5.0: the in-site AI feature signals are now derived from markup
 // structure (no text matching), so scores computed by this engine can differ
 // from afr-1.4.0 on the very same scan signals.
-export const ENGINE_VERSION = 'afr-1.5.0';
+// afr-1.6.0: two evidence rules tightened — C3 awards only a verified MCP
+// tools/list handshake (discovery alone scores 0), and the API-docs signal no
+// longer folds in the OpenAPI hit, so a lone openapi.json can no longer max C1
+// (8 → 6). Check-level deltas are applied to stored snapshots by
+// scripts/rejudge-c1-c3.mjs, because the pruned corpus cannot be re-scored.
+export const ENGINE_VERSION = 'afr-1.6.0';
 
 export function gradeFor(score: number): Grade {
   for (const t of GRADE_THRESHOLDS) {

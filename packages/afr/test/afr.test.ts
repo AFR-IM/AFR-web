@@ -51,7 +51,7 @@ function idealSignals(): ScanSignals {
     aiTxt: { status: 200, body: 'ai.txt' },
     openapi: { probed: true, found: true, urls: ['https://api.example.com/openapi.json'] },
     apiDocs: { found: true, urls: ['https://api.example.com/docs'] },
-    mcp: { probed: true, found: true, urls: ['https://example.com/.well-known/mcp'] },
+    mcp: { probed: true, found: true, urls: ['https://example.com/.well-known/mcp'], tools: ['site_rating', 'search_sites'] },
     aiFeatures: { chatWidget: true, aiSearch: true, developerConsole: true },
   };
 }
@@ -362,5 +362,57 @@ describe('end-to-end scoring', () => {
     const counts = { search: 0, hybrid: 0, training: 0 };
     for (const u of AI_UAS) counts[u.family]++;
     assert.ok(counts.search! > 0 && counts.hybrid! > 0 && counts.training! > 0);
+  });
+});
+
+describe('afr-1.6.0 evidence rules', () => {
+  /** The ideal site with its API-docs and MCP evidence stripped, so each rule is isolated */
+  function base(): ScanSignals {
+    const s = idealSignals();
+    s.llms = { status: 404 };
+    s.apiDocs = { found: false, urls: [] };
+    s.openapi = { probed: true, found: false };
+    s.mcp = { probed: true, found: false };
+    return s;
+  }
+  const mcpCheck = (s: ScanSignals) => scoreAfr(s).layers[2]!.checks.find((c) => c.id === 'l3.mcp')!;
+  const c1Check = (s: ScanSignals) => scoreAfr(s).layers[2]!.checks.find((c) => c.id === 'l3.public-api')!;
+
+  it('an OpenAPI document alone scores C1 6/8: API evidence + spec point, no docs entry', () => {
+    const s = base();
+    s.openapi = { probed: true, found: true, urls: ['https://example.com/openapi.json'] };
+    const c1 = c1Check(s);
+    assert.equal(c1.awarded, 6);
+    assert.equal(c1.status, 'partial');
+    assert.match(c1.evidence!.detail, /OpenAPI document discovered/);
+    assert.match(c1.evidence!.detail, /no API documentation entry point/);
+    assert.doesNotMatch(c1.evidence!.detail, /homepage links API\/docs paths/);
+  });
+
+  it('C3 awards only a verified tools/list handshake: discovery is unknown 0, empty tools is fail 0', () => {
+    const discovered = base();
+    discovered.mcp = { probed: true, found: true, urls: ['https://example.com/.well-known/mcp'] };
+    const c = mcpCheck(discovered);
+    assert.equal(c.awarded, 0);
+    assert.equal(c.status, 'unknown');
+    assert.match(c.evidence!.detail, /no verified tools\/list handshake/);
+
+    const verified = { ...discovered, mcp: { ...discovered.mcp!, tools: ['site_rating', 'search_sites'] } };
+    const c2 = mcpCheck(verified);
+    assert.equal(c2.awarded, 6);
+    assert.equal(c2.status, 'pass');
+    assert.match(c2.evidence!.detail, /tools\/list handshake verified: site_rating, search_sites/);
+
+    const empty = { ...discovered, mcp: { ...discovered.mcp!, tools: [] } };
+    const c3 = mcpCheck(empty);
+    assert.equal(c3.awarded, 0);
+    assert.equal(c3.status, 'fail');
+    assert.match(c3.evidence!.detail, /tools\/list returned no tools/);
+
+    const absent = base();
+    const c4 = mcpCheck(absent);
+    assert.equal(c4.awarded, 0);
+    assert.equal(c4.status, 'fail');
+    assert.match(c4.evidence!.detail, /no endpoint found/);
   });
 });

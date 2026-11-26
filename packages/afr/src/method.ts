@@ -1,4 +1,4 @@
-// Public description of the rules actually executed by afr-1.5.0.
+// Public description of the rules actually executed by afr-1.6.0.
 // Revision tracks documentation/schema changes, not changes to scores.
 import { GRADE_THRESHOLDS, LAYER_MAX, type Grade } from '../../shared/src/index.ts';
 import { AI_UAS, FAMILY_MAX, FAMILY_NAME, type UaFamily } from './ua.ts';
@@ -19,8 +19,8 @@ function layer(id: LayerId, name: Localized, checks: ReturnType<typeof check>[])
 }
 
 export const AFR_METHOD = {
-  engineVersion: 'afr-1.5.0',
-  revision: 1,
+  engineVersion: 'afr-1.6.0',
+  revision: 2,
   ratedWhen: {
     en: 'Scored only when the homepage or robots.txt probe has HTTP 2xx and no probe error. Otherwise the grade is Pending, even if individual checks have points.',
     zh: '首页或 robots.txt 至少有一项探测返回 HTTP 2xx 且无探测错误，才给出正式等级。否则即使个别检查得分，仍标为待评（Pending）。',
@@ -72,16 +72,16 @@ export const AFR_METHOD = {
     ]),
     layer('L3', { en: 'Actionability', zh: '可交互层' }, [
       check('C1', 'l3.public-api', 8, { en: 'Public API signals', zh: '公开 API 信号' }, {
-        en: '5 for API/developer(s)/reference/REST keywords in a successful llms.txt or a positive API-docs or OpenAPI signal; 2 for a positive API-docs signal or docs./developer/documentation text in a successful llms.txt; 1 for a positive OpenAPI signal. This scanner sets both signals on an OpenAPI hit, so an OpenAPI-only result can score 8. These heuristics do not establish a callable API or verify documentation.',
-        zh: '成功获取的 llms.txt 含 API、developer(s)、reference 或 REST 关键词，或 API 文档、OpenAPI 信号命中，得 5 分；API 文档信号命中或 llms.txt 含 docs.、developer、documentation，得 2 分；OpenAPI 信号命中得 1 分。该扫描器命中 OpenAPI 时也会标记 API 文档信号，因此仅有 OpenAPI 也可能得 8 分。这些启发式不证明接口可调用或文档已验证。',
+        en: '5 for API/developer(s)/reference/REST keywords in a successful llms.txt, a homepage link to API/docs paths, or a discovered OpenAPI document; 2 for a homepage link to API/docs paths or docs./developer/documentation text in a successful llms.txt; 1 for a positive OpenAPI signal. An OpenAPI document alone scores 6 of 8: it proves the API exists but never substitutes for the human-readable documentation entry point. These heuristics do not establish a callable API or verify documentation.',
+        zh: '成功获取的 llms.txt 含 API、developer(s)、reference 或 REST 关键词，首页链接到 API/文档路径，或发现 OpenAPI 文档，得 5 分；首页链接到 API/文档路径，或成功获取的 llms.txt 含 docs.、developer、documentation，得 2 分；OpenAPI 信号命中得 1 分。仅有 OpenAPI 文档得 6/8：它证明 API 存在，但不能替代人类可读的文档入口。这些启发式不证明接口可调用或文档已验证。',
       }),
       check('C2', 'l3.agent-instructions', 4, { en: 'Agent instructions', zh: '智能体指令' }, {
         en: 'Agents.md probe HTTP 2xx: 2; successful llms.txt has an agent policy/instruction/usage/guideline heading or label: 2. No ai.txt points.',
         zh: 'agents.md 探测返回 HTTP 2xx 得 2 分；成功获取的 llms.txt 命中 agent 政策、指令、用法或指南标题或标签得 2 分。ai.txt 不计分。',
       }),
-      check('C3', 'l3.mcp', 6, { en: 'MCP discovery signal', zh: 'MCP 发现信号' }, {
-        en: 'A probed, positive MCP signal: 6. The scanner records a hit when /.well-known/mcp returns HTTP 2xx with a non-blank body, including ordinary HTML. No document validation or handshake is performed. An absent probe is unknown; an attempted probe without a hit, including a timeout, is recorded as fail.',
-        zh: 'MCP 探测信号命中得 6 分。/.well-known/mcp 返回 HTTP 2xx 且正文非空白即命中，包括普通 HTML。不验证文档也不执行握手。未探测为未知；已探测但未命中（含超时）记录为未通过。',
+      check('C3', 'l3.mcp', 6, { en: 'MCP interface (verified handshake)', zh: 'MCP 接口（握手验证）' }, {
+        en: '6 only after a verified handshake: the scanner POSTs JSON-RPC initialize and tools/list to the endpoint the site declares in /.well-known/mcp, and at least one tool must come back. Discovery alone earns 0 — an ordinary page served under that path is not an MCP server — and is recorded as unknown; a completed handshake whose tools/list returns no tools earns 0 with fail status; a probed path without a discovery hit, including a timeout, is recorded as fail; an absent probe is unknown. Snapshots taken before the handshake existed store discovery only and score 0.',
+        zh: '仅在握手验证通过后得 6 分：扫描器向站点在 /.well-known/mcp 声明的端点 POST JSON-RPC initialize 与 tools/list，且至少返回一个工具。仅发现端点得 0 分——该路径下返回普通页面不构成 MCP 服务器——并记为未知；握手完成但工具列表为空得 0 分、记为未通过；已探测未发现（含超时）记为未通过；未探测记为未知。握手机制上线前的存量快照只存发现证据，计 0 分。',
       }),
       check('C4', 'l3.site-ai-features', 7, { en: 'In-site AI feature signals', zh: '站内 AI 功能信号' }, {
         en: 'Homepage markup heuristics: chat/assistant 4, AI search 2, developer console 1. Missing derived signals are unknown. Features behind login, rendered later, or on other pages may be missed; a hit does not verify that a feature works.',

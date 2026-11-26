@@ -103,6 +103,14 @@ export interface McpProbe {
   probed: boolean;
   found: boolean;
   urls?: string[];
+  /**
+   * Tool names returned by a verified `tools/list` handshake (afr-1.6.0).
+   * Present only when the scanner completed initialize → initialized →
+   * tools/list against the endpoint the site declared; an empty array means
+   * the handshake completed but listed no tools. Absent = discovery only,
+   * which earns no points (C3).
+   */
+  tools?: string[];
 }
 
 export interface AiFeatures {

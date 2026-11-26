@@ -28,7 +28,7 @@ GET https://afr.im/api/v1/sites/{domain}
   - `site.status` — `active` | `delisted`
   - `site.category` — category slug, e.g. `dev-tools`, `news`, `other`
   - `site.scanned_at` — when that snapshot was taken (scores are snapshots, always cite it)
-  - `scan.engine_version` — the scoring engine version, e.g. `afr-1.5.0`
+  - `scan.engine_version` — the scoring engine version, e.g. `afr-1.6.0`
   - `evidence[]` — one row per check: `check_id`, `points`, `status` (`pass`/`partial`/`fail`), `detail`. This is how you explain *why* a site lost points.
 - `404` → `{ "error": "not_found", "domain": "…" }` — **the site has never been scanned.**
 
@@ -303,7 +303,7 @@ Authorization: Bearer manage-…
 A complete citation has five parts: **domain, score, grade, engine version, scan timestamp**, plus a link back to the site's page on AFR.IM.
 
 ```text
-github.com — 91/100 (grade A, AI-Open), AFR engine afr-1.5.0,
+github.com — 91/100 (grade A, AI-Open), AFR engine afr-1.6.0,
 scanned 2026-11-17T03:44:00Z — https://afr.im/site/github.com
 ```
 

@@ -1,20 +1,28 @@
 // Polite HTTP client (spec §4)
-// · ≤8 GET slots per site, hard cap of 12 actual requests (incl. agents fallback and 1 retry on key slots)
+// · ≤9 GET slots per site (robots, llms, llms-full, homepage, sitemap, agents,
+//   openapi, well-known/mcp, ai.txt) plus the MCP handshake POSTs
+//   (initialize / initialized / tools/list, only after a discovery hit),
+//   hard cap of 18 actual requests (incl. fallbacks and 1 retry on key slots)
 // · Transparent UA, 15s timeout, 1 retry on network error (robots/homepage only), capped response bodies
 // · The request counter is visible throughout, so the "polite budget" can be asserted not to be exceeded
 
-// scanner-0.2.0: the in-site AI feature signals are extracted structurally
-// (markup, not raw text), so snapshots taken with this scanner are not
-// comparable with scanner-0.1.0 snapshots.
-export const SCANNER_VERSION = 'scanner-0.2.0';
+// scanner-0.3.0: the API-docs signal no longer folds in the OpenAPI hit
+// (an OpenAPI document alone can no longer max C1), and the MCP probe now
+// completes a real initialize → tools/list handshake when the discovery
+// document declares an endpoint — discovery alone scores 0. Snapshots taken
+// with this scanner are not comparable with earlier ones on those two checks.
+export const SCANNER_VERSION = 'scanner-0.3.0';
 
 /** Transparent UA: identifies who we are + homepage (webmasters can block us anytime and get in touch) */
 export const USER_AGENT = 'afrScanner/0.1 (+https://afr.im/bot; AI-friendliness research crawler)';
 
 export const TIMEOUT_MS = 15_000;
 
-/** Hard cap on actual requests: 9 endpoints × (transparent + challenge fallback) = 18;
- *  includes the agents 404 fallback and 1 network retry on key slots */
+/** Hard cap on actual requests: 9 GET endpoints × (transparent + challenge
+ * fallback) = 16, plus the MCP handshake POSTs (initialize / initialized /
+ * tools/list) — 18. Includes the agents 404 fallback and 1 network retry on
+ * key slots; when the budget runs out the handshake is simply skipped and the
+ * snapshot records discovery-only evidence. */
 export const MAX_REQUESTS = 18;
 
 /** Status codes that trigger the challenge fallback (a refinement of the spec §4 "Declined"
@@ -149,6 +157,79 @@ export async function politeGet(url: string, opts: GetOptions): Promise<HttpResu
 
 export function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+/** Response headers a POST caller may need to read (allowlist — response
+ * headers are never stored in snapshots, only consumed inline) */
+const POST_HEADER_ALLOW = ['content-type', 'mcp-session-id'];
+
+export interface PostJsonOptions {
+  counter: RequestCounter;
+  fetchImpl?: FetchImpl;
+  /** Response body cap (bytes) */
+  maxBytes?: number;
+  /** Extra request headers (e.g. Mcp-Session-Id on follow-up calls) */
+  headers?: Record<string, string>;
+}
+
+export interface PostJsonResult extends HttpResult {
+  /** Allowlisted response headers (content-type, mcp-session-id) */
+  responseHeaders?: Record<string, string>;
+}
+
+/**
+ * One budget-capped JSON POST (used by the MCP handshake).
+ *
+ * No challenge fallback: a POST that is walled off or rejected simply fails —
+ * the handshake must prove the endpoint works for a plain client, so a
+ * browser-UA retry would defeat its purpose. No retry either: every call in
+ * the handshake sequence is a distinct step, and re-running it blindly would
+ * burn the polite budget.
+ */
+export async function politePostJson(
+  url: string,
+  body: string,
+  opts: PostJsonOptions,
+): Promise<PostJsonResult> {
+  const maxBytes = opts.maxBytes ?? DEFAULT_MAX_BYTES;
+  const fetchImpl: FetchImpl = opts.fetchImpl ?? ((u, init) => fetch(u, init));
+  if (!opts.counter.trySpend()) return { error: `budget-exceeded: ${url}` };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const resp = await fetchImpl(url, {
+      method: 'POST',
+      redirect: 'follow',
+      signal: controller.signal,
+      headers: {
+        'user-agent': USER_AGENT,
+        accept: 'application/json, text/event-stream',
+        'content-type': 'application/json',
+        ...opts.headers,
+      },
+      body,
+    });
+    const responseHeaders: Record<string, string> = {};
+    for (const name of POST_HEADER_ALLOW) {
+      const value = resp.headers.get(name);
+      if (value) responseHeaders[name] = value;
+    }
+    const declared = Number(resp.headers.get('content-length') ?? '0');
+    if (declared > maxBytes * 4) {
+      return { status: resp.status, url: resp.url, responseHeaders };
+    }
+    const text = (await resp.text()).slice(0, maxBytes);
+    return { status: resp.status, body: text, url: resp.url, responseHeaders };
+  } catch (err) {
+    const e = err as Error & { cause?: { code?: string; message?: string } };
+    const name = e.name === 'AbortError' ? 'timeout' : e.name;
+    const cause = e.cause
+      ? `${e.cause.code ?? ''}${e.cause.code ? ': ' : ''}${e.cause.message ?? e.cause.code ?? ''}`
+      : '';
+    return { error: cause ? `${name}: ${e.message} (${cause})` : `${name}: ${e.message}` };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Normalize a domain: strip scheme/path/port/www, lowercase */

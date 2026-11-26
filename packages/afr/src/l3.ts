@@ -12,7 +12,11 @@ export function scoreL3(signals: ScanSignals): LayerScore {
   const doc = homeOk ? (signals.homepage.body ?? '') : undefined;
 
   // 1) Public API 8 = public-API evidence 5 + human-readable docs 2 + OpenAPI 1
-  //    (published split; engine previously used an unpublished 4/2/2 layout)
+  //    (published split; engine previously used an unpublished 4/2/2 layout).
+  //    Since afr-1.6.0 the scanner's apiDocs signal is homepage links only —
+  //    an OpenAPI document proves the API exists (5) and carries its own spec
+  //    point (1), but never substitutes for the human-readable docs entry (2),
+  //    so an OpenAPI-only site scores 6 of 8 instead of 8.
   let a = 0;
   let aUnknown = false;
   const aDetails: string[] = [];
@@ -104,16 +108,33 @@ export function scoreL3(signals: ScanSignals): LayerScore {
     evidence: { source: 'GET /agents.md + /llms.txt', detail: bDetails.join('; ') },
   });
 
-  // 3) MCP interface — 6 points
+  // 3) MCP interface — 6 points. A verified tools/list handshake is the only
+  //    award path (afr-1.6.0): discovery (GET /.well-known/mcp answering 2xx
+  //    with any body) is recorded but never scored, because an ordinary page
+  //    under that path is not an MCP server. Snapshots taken before the
+  //    handshake existed store discovery only and therefore score 0 with
+  //    unknown status — the evidence chain says exactly that.
   const mcp = signals.mcp;
   let c = 0;
   let cStatus: CheckResult['status'] = 'unknown';
   let cDetail = 'MCP not probed';
   if (mcp?.probed) {
-    if (mcp.found) {
+    if (Array.isArray(mcp.tools) && mcp.tools.length > 0) {
       c = 6;
       cStatus = 'pass';
-      cDetail = `MCP endpoint found: ${(mcp.urls ?? []).join(', ') || 'yes'}`;
+      cDetail = `tools/list handshake verified: ${mcp.tools.slice(0, 8).join(', ')}${
+        mcp.tools.length > 8 ? ` … (+${mcp.tools.length - 8})` : ''
+      }`;
+    } else if (Array.isArray(mcp.tools)) {
+      c = 0;
+      cStatus = 'fail';
+      cDetail = 'MCP handshake completed; tools/list returned no tools';
+    } else if (mcp.found) {
+      c = 0;
+      cStatus = 'unknown';
+      cDetail = `MCP endpoint discovered: ${
+        (mcp.urls ?? []).join(', ') || 'yes'
+      } — no verified tools/list handshake`;
     } else {
       c = 0;
       cStatus = 'fail';

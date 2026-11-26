@@ -201,3 +201,125 @@ describe('heuristics', () => {
     });
   });
 });
+
+describe('afr-1.6.0 signals: API-docs split + MCP handshake', () => {
+  /** GET routes shared by the handshake tests; /.well-known/mcp returns `discovery` */
+  function getRoutes(discovery: string) {
+    return {
+      '/robots.txt': { status: 404 },
+      '/llms.txt': { status: 404 },
+      '/llms-full.txt': { status: 404 },
+      '/': { status: 200, body: '<html lang="en"><body><main><h1>hi</h1></main></body></html>' },
+      '/sitemap.xml': { status: 404 },
+      '/agents.md': { status: 404 },
+      '/openapi.json': { status: 404 },
+      '/.well-known/mcp': { status: 200, body: discovery },
+      '/ai.txt': { status: 404 },
+    };
+  }
+
+  /** Mock that answers the MCP handshake on POST /mcp and records every POST */
+  function mockHandshake(opts: {
+    discovery: string;
+    failAt?: 'initialize' | 'tools';
+    session?: string;
+  }) {
+    const posts: { method?: string; sessionId?: string }[] = [];
+    const impl: FetchImpl = async (url, init) => {
+      const path = '/' + new URL(url).pathname.replace(/^\//, '');
+      const reply = (status: number, body: string, extra: Record<string, string> = {}) =>
+        new Response(body, {
+          status,
+          headers: { 'content-type': 'application/json', ...extra },
+        }) as unknown as Response;
+      if ((init?.method ?? 'GET') === 'POST') {
+        const msg = JSON.parse(String(init.body ?? '{}')) as { method?: string; id?: number };
+        const headers = (init.headers ?? {}) as Record<string, string>;
+        posts.push({ method: msg.method, sessionId: headers['mcp-session-id'] });
+        if (msg.method === 'initialize') {
+          if (opts.failAt === 'initialize') return reply(500, 'boom');
+          return reply(
+            200,
+            JSON.stringify({
+              jsonrpc: '2.0',
+              id: msg.id,
+              result: { protocolVersion: '2025-06-18', serverInfo: { name: 'demo', version: '1.0' } },
+            }),
+            opts.session ? { 'mcp-session-id': opts.session } : {},
+          );
+        }
+        if (msg.method === 'notifications/initialized') return reply(202, '');
+        if (msg.method === 'tools/list') {
+          if (opts.failAt === 'tools') {
+            return reply(200, JSON.stringify({ jsonrpc: '2.0', id: msg.id, error: { code: -32601, message: 'no' } }));
+          }
+          return reply(
+            200,
+            JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { tools: [{ name: 'alpha' }, { name: 'beta' }] } }),
+          );
+        }
+        return reply(400, '{}');
+      }
+      const route = getRoutes(opts.discovery)[path as '/'] ?? { status: 404 };
+      return reply(route.status ?? 404, route.body ?? '');
+    };
+    return { impl, posts };
+  }
+
+  it('apiDocs is homepage links only — an OpenAPI hit no longer sets it', async () => {
+    const { impl } = mockFetch({
+      ...getRoutes('not a document'),
+      '/openapi.json': { status: 200, body: '{"openapi":"3.1.0","info":{"title":"t","version":"1"}}' },
+    });
+    const signals = await scanSite('example.com', { fetchImpl: impl, gapMs: 0 });
+    assert.equal(signals.openapi!.found, true);
+    assert.equal(signals.apiDocs!.found, false);
+    assert.deepEqual(signals.apiDocs!.urls, []);
+  });
+
+  it('discovery document + successful handshake stores the tool names', async () => {
+    const discovery = JSON.stringify({ endpoint: 'https://example.com/mcp', transport: 'http' });
+    const { impl, posts } = mockHandshake({ discovery, session: 'sess-1' });
+    const signals = await scanSite('example.com', { fetchImpl: impl, gapMs: 0 });
+    assert.equal(signals.mcp!.found, true);
+    assert.deepEqual(signals.mcp!.tools, ['alpha', 'beta']);
+    assert.deepEqual(
+      posts.map((p) => p.method),
+      ['initialize', 'notifications/initialized', 'tools/list'],
+    );
+    // the session id minted by initialize rides on the two follow-up calls
+    assert.equal(posts[1]!.sessionId, 'sess-1');
+    assert.equal(posts[2]!.sessionId, 'sess-1');
+  });
+
+  it('a discovery body without an endpoint field records discovery only (no POSTs)', async () => {
+    const { impl, posts } = mockHandshake({ discovery: '<html><body>marketing page</body></html>' });
+    const signals = await scanSite('example.com', { fetchImpl: impl, gapMs: 0 });
+    assert.equal(signals.mcp!.found, true);
+    assert.equal(signals.mcp!.tools, undefined);
+    assert.equal(posts.length, 0);
+  });
+
+  it('a failed initialize or a tools/list error leaves the snapshot unverified', async () => {
+    const discovery = JSON.stringify({ endpoint: 'https://example.com/mcp' });
+    const failed = mockHandshake({ discovery, failAt: 'initialize' });
+    const s1 = await scanSite('example.com', { fetchImpl: failed.impl, gapMs: 0 });
+    assert.equal(s1.mcp!.found, true);
+    assert.equal(s1.mcp!.tools, undefined);
+    assert.equal(failed.posts.length, 1, 'handshake stops at the failed step');
+
+    const errored = mockHandshake({ discovery, failAt: 'tools' });
+    const s2 = await scanSite('example.com', { fetchImpl: errored.impl, gapMs: 0 });
+    assert.equal(s2.mcp!.tools, undefined);
+    assert.equal(errored.posts.length, 3);
+  });
+
+  it('the handshake adds exactly three POSTs to the scan', async () => {
+    const discovery = JSON.stringify({ endpoint: 'https://example.com/mcp' });
+    const { impl, posts } = mockHandshake({ discovery });
+    const signals = await scanSite('example.com', { fetchImpl: impl, gapMs: 0 });
+    assert.deepEqual(signals.mcp!.tools, ['alpha', 'beta']);
+    // 9 GET slots + 3 handshake POSTs = 12 ≤ MAX_REQUESTS
+    assert.equal(posts.length, 3);
+  });
+});

@@ -25,7 +25,10 @@ export interface AfrLayerDef {
 }
 
 /** AFR standard version (spec §14-D shape) */
-export const AFR_VERSION = '1.5.0';
+export const AFR_VERSION = '1.6.0';
+// v1.6 (2026-11-27): C3 scores a verified MCP tools/list handshake only
+// (discovery alone is 0), and the API-docs signal no longer folds in the
+// OpenAPI hit — a lone openapi.json now scores C1 6/8, never 8/8.
 // v1.2 (2026-11-13): engine aligned to this published composition —
 // C1 now scores 5/2/1 (was an unpublished 4/2/2 + homepage link) and C2 scores
 // agents.md 2 + llms.txt agent-policy 2 (engine-only ai.txt/homepage awards

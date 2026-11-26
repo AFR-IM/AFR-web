@@ -4642,7 +4642,7 @@
             "properties": {
               "engineVersion": {
                 "type": "string",
-                "example": "afr-1.5.0"
+                "example": "afr-1.6.0"
               },
               "revision": {
                 "type": "integer",
