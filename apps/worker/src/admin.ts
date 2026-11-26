@@ -29,6 +29,7 @@ import {
   type Beneficiary,
 } from './admin-settings.ts';
 import { adminAlert, adminDocument, adminNav, adminPanel, adminTable } from './admin-ui.ts';
+import type { RateLimiter } from './rate-limit.ts';
 import type { Db } from './db.ts';
 
 const headers = {
@@ -76,13 +77,23 @@ function page(title: string, body: HtmlEscapedString, status = 200) {
   });
 }
 
-function loginPage(failed = false) {
-  return page('管理员登录', h`${failed ? adminAlert('error', '邮箱或密码错误。') : ''}
+function loginPage(failed = false, notice = '邮箱或密码错误。', retryAfter?: number) {
+  const response = page('管理员登录', h`${failed ? adminAlert('error', notice) : ''}
     <form method="post" action="/admin/login">
       <p><label>邮箱 <input name="email" type="email" autocomplete="username" required maxlength="254"></label></p>
       <p><label>密码 <input name="password" type="password" autocomplete="current-password" required maxlength="64"></label></p>
       <button type="submit">登录</button>
     </form>`, failed ? 401 : 200);
+  if (retryAfter !== undefined) response.headers.set('Retry-After', String(retryAfter));
+  return response;
+}
+
+/** Same precedence as the public API's client IP: first X-Forwarded-For hop,
+ * then X-Real-IP. Used only to key the failed-login limiter. */
+function adminClientIp(request: Request): string {
+  const forwarded = request.headers.get('x-forwarded-for');
+  if (forwarded) return forwarded.split(',')[0]?.trim() || 'unknown';
+  return request.headers.get('x-real-ip') ?? 'unknown';
 }
 
 /** A redirect back to a console page with a notice code. */
@@ -171,7 +182,7 @@ function claimIdsOf(form: URLSearchParams): number[] | null {
   return ids;
 }
 
-export async function handleAdmin(request: Request, env: AdminAccessEnv & AdminLoginEnv & { ADS_SALES_OPEN?: string }, getDb: () => Db): Promise<Response> {
+export async function handleAdmin(request: Request, env: AdminAccessEnv & AdminLoginEnv & { ADS_SALES_OPEN?: string }, getDb: () => Db, loginLimiter?: RateLimiter): Promise<Response> {
   try {
     const url = new URL(request.url);
     const isBoard = url.pathname === '/admin' || url.pathname === '/admin/';
@@ -186,9 +197,40 @@ export async function handleAdmin(request: Request, env: AdminAccessEnv & AdminL
       if (url.pathname === '/admin/logout') {
         return new Response(null, { status: 303, headers: { ...headers, Location: '/admin/', 'Set-Cookie': clearAdminSession() } });
       }
+      // Failed-login guard: ADMIN_LOGIN_FAIL_LIMIT attempts per IP per minute.
+      // The password is a 256-bit secret, so this only bounds online tryout —
+      // it exists to make probing visible and rate-limited. Fail-open: any
+      // limiter/store error lets the attempt through instead of failing login.
+      const ip = adminClientIp(request);
+      let blocked = false;
+      if (loginLimiter) {
+        try {
+          blocked = !(await loginLimiter.check(ip)).allowed;
+        } catch (error) {
+          console.warn(`admin login limiter unavailable (${error instanceof Error ? error.message : String(error)})`);
+        }
+      }
+      if (blocked) {
+        console.warn(`admin login blocked ip=${ip}`);
+        return loginPage(true, '尝试过于频繁，请稍后再试。', loginLimiter?.retryAfter());
+      }
       const form = await readAdminCredentials(request);
       const session = form && await issueAdminSession(env, form.get('email') ?? '', form.get('password') ?? '');
-      if (!session) return loginPage(true);
+      if (!session) {
+        // Every failure is logged (console only — no audit table) and counts
+        // against the per-IP budget, so the next attempt from this IP can be
+        // refused before the credential check runs.
+        const email = (form?.get('email') ?? '').slice(0, 254).replace(/[^\w.+-]+/g, '_');
+        console.warn(`admin login failed ip=${ip} email=${email}`);
+        if (loginLimiter) {
+          try {
+            await loginLimiter.consume(ip);
+          } catch (error) {
+            console.warn(`admin login limiter consume failed (${error instanceof Error ? error.message : String(error)})`);
+          }
+        }
+        return loginPage(true);
+      }
       return new Response(null, { status: 303, headers: { ...headers, Location: '/admin/', 'Set-Cookie': session } });
     }
     const localActor = localLogin ? await verifyAdminSession(request, env) : null;

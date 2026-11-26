@@ -1,5 +1,5 @@
 // test/verify.test.ts — verification flow: POST /api/v1/verify/start (response
-// shape, token storage, the 3/day/domain + 10/hour/IP limits) and
+// shape, token storage, the 3/day/domain + 5/hour/IP limits) and
 // GET /api/v1/verify/check (injected probes: file pass, DNS pass over a fake
 // DoH, meta pass, all-fail, network failure) plus owner/site writes on success.
 
@@ -172,7 +172,7 @@ describe('POST /api/v1/verify/start', () => {
     );
   });
 
-  it('limits starts to 10 per IP per hour across domains', async () => {
+  it('limits starts to 5 per IP per hour across domains', async () => {
     const { app } = freshApp();
     for (let i = 0; i < VERIFY_IP_LIMIT; i++) {
       const res = await start(app, `ip${i}.example`, '203.0.113.50');
@@ -379,7 +379,7 @@ describe('GET /api/v1/verify/check', () => {
     }
   });
 
-  it('limits checks to 10 per IP per hour', async () => {
+  it('limits checks to 5 per IP per hour', async () => {
     const { app } = freshApp();
     for (let i = 0; i < VERIFY_IP_LIMIT; i++) {
       const res = await check(app, `probe${i}.example`, '203.0.113.70');

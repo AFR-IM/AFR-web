@@ -9,6 +9,8 @@ import { DatabaseSync } from 'node:sqlite';
 import worker, {
   createApp,
   QUEUE_LIST_LIMIT,
+  RESCAN_GLOBAL_LIMIT,
+  RESCAN_IP_LIMIT,
   SCAN_GLOBAL_LIMIT,
   SCAN_IP_LIMIT,
   SCAN_ETA_SECONDS,
@@ -29,7 +31,9 @@ import { openSeededDb, SCHEMA_SQL } from './helpers.ts';
 function freshScanLimits(): ScanRateLimits {
   return {
     ip: new RateLimiter(memoryStore(), SCAN_IP_LIMIT, DAY_MS, 'scan-ip'),
-      rescanIp: new RateLimiter(memoryStore(), 1, SCAN_DOMAIN_WINDOW_MS, 'rescan-ip'),
+    rescanIp: new RateLimiter(memoryStore(), 1, SCAN_DOMAIN_WINDOW_MS, 'rescan-ip'),
+    rescanDailyIp: new RateLimiter(memoryStore(), RESCAN_IP_LIMIT, DAY_MS, 'rescan-ip-day'),
+    rescanGlobal: new RateLimiter(memoryStore(), RESCAN_GLOBAL_LIMIT, DAY_MS, 'rescan-global'),
     domain: new RateLimiter(memoryStore(), 1, SCAN_DOMAIN_WINDOW_MS, 'scan-domain'),
     global: new RateLimiter(memoryStore(), SCAN_GLOBAL_LIMIT, DAY_MS, 'scan-global'),
   };

@@ -1,11 +1,14 @@
 // test/rescan.test.ts — POST /api/v1/rescan: input validation, unknown
-// domains, the per-domain quota shared with search-scan, and the soft
-// GitHub scan dispatch.
+// domains, the anti-abuse tiers (device 1/30min, IP/day, global/day,
+// per-domain window shared with search-scan), and the soft GitHub scan
+// dispatch.
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   createApp,
+  RESCAN_GLOBAL_LIMIT,
+  RESCAN_IP_LIMIT,
   SCAN_ETA_SECONDS,
   type ScanRateLimits,
   type WorkerEnv
@@ -22,8 +25,24 @@ function freshScanLimits(): ScanRateLimits {
   return {
     ip: new RateLimiter(memoryStore(), 10, DAY_MS, 'scan-ip'),
     rescanIp: new RateLimiter(memoryStore(), 1, SCAN_DOMAIN_WINDOW_MS, 'rescan-ip'),
+    rescanDailyIp: new RateLimiter(memoryStore(), RESCAN_IP_LIMIT, DAY_MS, 'rescan-ip-day'),
+    rescanGlobal: new RateLimiter(memoryStore(), RESCAN_GLOBAL_LIMIT, DAY_MS, 'rescan-global'),
     domain: new RateLimiter(memoryStore(), 1, SCAN_DOMAIN_WINDOW_MS, 'scan-domain'),
     global: new RateLimiter(memoryStore(), 50, DAY_MS, 'scan-global'),
+  };
+}
+
+/** Rescan limits with the device and per-domain gates relaxed, so a single
+ * remaining budget can be exercised in isolation. */
+function openRescanLimits(patch: Partial<ScanRateLimits> = {}): ScanRateLimits {
+  return {
+    ip: new RateLimiter(memoryStore(), 10, DAY_MS, 'scan-ip'),
+    rescanIp: new RateLimiter(memoryStore(), 1000, SCAN_DOMAIN_WINDOW_MS, 'rescan-ip'),
+    rescanDailyIp: new RateLimiter(memoryStore(), RESCAN_IP_LIMIT, DAY_MS, 'rescan-ip-day'),
+    rescanGlobal: new RateLimiter(memoryStore(), RESCAN_GLOBAL_LIMIT, DAY_MS, 'rescan-global'),
+    domain: new RateLimiter(memoryStore(), 1000, SCAN_DOMAIN_WINDOW_MS, 'scan-domain'),
+    global: new RateLimiter(memoryStore(), 50, DAY_MS, 'scan-global'),
+    ...patch,
   };
 }
 
@@ -41,11 +60,10 @@ function fakeFetch(): { calls: DispatchCall[]; impl: typeof fetch } {
   return { calls, impl };
 }
 
-function freshApp(fetchImpl?: typeof fetch) {
+function freshApp(fetchImpl?: typeof fetch, limits: ScanRateLimits = freshScanLimits()) {
   const { db, raw } = openSeededDb();
-  const scanLimits = freshScanLimits();
-  const app = createApp({ db, scanLimits, fetchImpl });
-  return { app, raw, scanLimits };
+  const app = createApp({ db, scanLimits: limits, fetchImpl });
+  return { app, raw, scanLimits: limits };
 }
 
 function envWith(overrides: Partial<WorkerEnv> = {}): WorkerEnv {
@@ -224,5 +242,53 @@ describe('POST /api/v1/rescan', () => {
     assert.ok(body.retryAfter > 0);
     assert.ok(Number(rescan.headers.get('retry-after')) > 0);
     assert.equal(rescanRows(raw), 0, 'no rescan row inserted on the rejected request');
+  });
+
+  it('caps one IP at RESCAN_IP_LIMIT rescans per UTC day — 429 before queueing', async () => {
+    const { calls, impl } = fakeFetch();
+    const { app, raw } = freshApp(impl, openRescanLimits());
+    const env = envWith({ GITHUB_DISPATCH_TOKEN: 'test-token' });
+    const ip = '203.0.113.77';
+    // The first two legitimate requests from this IP still pass, and so do all
+    // of them up to the daily budget.
+    for (let i = 0; i < RESCAN_IP_LIMIT; i++) {
+      const res = await postTo(app, '/api/v1/rescan', { domain: 'example.com' }, ip, env);
+      assert.equal(res.status, 200, `rescan ${i + 1} should pass`);
+    }
+    const blocked = await postTo(app, '/api/v1/rescan', { domain: 'example.com' }, ip, env);
+    assert.equal(blocked.status, 429, `rescan ${RESCAN_IP_LIMIT + 1} must be refused`);
+    const body = await blocked.json();
+    assert.equal(body.error, 'rate_limited');
+    assert.equal(body.scope, 'ip');
+    assert.ok(body.retryAfter > 0 && body.retryAfter <= 86400, 'retryAfter is seconds');
+    assert.ok(Number(blocked.headers.get('retry-after')) > 0, 'Retry-After header present');
+    assert.equal(rescanRows(raw), RESCAN_IP_LIMIT, 'the rejected request wrote no submissions row');
+    assert.equal(calls.length, RESCAN_IP_LIMIT, 'the rejected request dispatched nothing');
+    const other = await postTo(app, '/api/v1/rescan', { domain: 'example.com' }, '203.0.113.78', env);
+    assert.equal(other.status, 200, 'another IP still has budget');
+  });
+
+  it('keeps rescans in their own global daily bucket (search-scan untouched)', async () => {
+    const { calls, impl } = fakeFetch();
+    const scanLimits = openRescanLimits({
+      rescanGlobal: new RateLimiter(memoryStore(), 2, DAY_MS, 'rescan-global'),
+    });
+    const { app, raw } = freshApp(impl, scanLimits);
+    const env = envWith({ GITHUB_DISPATCH_TOKEN: 'test-token' });
+    assert.equal((await postTo(app, '/api/v1/rescan', { domain: 'example.com' }, '203.0.113.80', env)).status, 200);
+    assert.equal((await postTo(app, '/api/v1/rescan', { domain: 'coolsite.io' }, '203.0.113.81', env)).status, 200);
+    const blocked = await postTo(app, '/api/v1/rescan', { domain: 'neutral.net' }, '203.0.113.82', env);
+    assert.equal(blocked.status, 429, 'the rescan global budget runs out');
+    const body = await blocked.json();
+    assert.equal(body.error, 'rate_limited');
+    assert.equal(body.scope, 'global');
+    assert.ok(Number(blocked.headers.get('retry-after')) > 0, 'Retry-After header present');
+    assert.equal(rescanRows(raw), 2, 'the rejected request wrote no submissions row');
+    assert.equal(calls.length, 2, 'the rejected request dispatched nothing');
+    assert.equal(
+      (await scanLimits.global.check('global')).allowed,
+      true,
+      'rescans must not consume the search-scan global budget',
+    );
   });
 });

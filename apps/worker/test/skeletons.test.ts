@@ -1,14 +1,13 @@
 // test/skeletons.test.ts — surfaces that are not built yet must say so
-// explicitly instead of pretending to work.
+// explicitly instead of pretending to work. There are none left on the public
+// API: the advertising surface ships with its own contract (below), and the
+// former badge-report placeholder was removed rather than left as a 501.
+// Kept as a guard: a route that regresses to `not_implemented` fails here.
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createApp } from '../src/index.ts';
 import { openSeededDb } from './helpers.ts';
-
-const VERIFY_ROUTES: [string, string][] = [
-  ['POST', '/api/v1/badge/report'],
-];
 
 function request(method: string, path: string): Promise<Response> {
   const app = createApp({ db: openSeededDb().db });
@@ -21,14 +20,6 @@ function request(method: string, path: string): Promise<Response> {
 }
 
 describe('feature skeletons', () => {
-  for (const [method, path] of VERIFY_ROUTES) {
-    it(`${method} ${path} → 501 not_implemented (verification)`, async () => {
-      const res = await request(method, path);
-      assert.equal(res.status, 501);
-      assert.deepEqual(await res.json(), { error: 'not_implemented', feature: 'verification' });
-    });
-  }
-
   // The advertising surface is built: it answers with its own contract rather
   // than a 501. Sales are closed until the operator opens them, and the second
   // webhook of the old Stripe design does not exist (payments arrive on the
@@ -47,6 +38,11 @@ describe('feature skeletons', () => {
 
   it('the old per-purpose webhook is gone', async () => {
     const res = await request('POST', '/api/v1/_ads/webhook');
+    assert.equal(res.status, 404);
+  });
+
+  it('POST /api/v1/badge/report is gone (never shipped, not a 501 stub)', async () => {
+    const res = await request('POST', '/api/v1/badge/report');
     assert.equal(res.status, 404);
   });
 });

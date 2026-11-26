@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AFR.IM API",
-    "version": "1.0.0",
+    "version": "1.5.0",
     "description": "Public, key-free read API for the AFR.IM AI-Friendliness Rating (AFR) directory. All JSON endpoints send Access-Control-Allow-Origin: *. Ratings are snapshots computed from public, reproducible evidence — see GET /api/v1/method for the machine-readable standard."
   },
   "servers": [
@@ -239,6 +239,65 @@
         }
       }
     },
+    "/api/v1/sites/{domain}/views": {
+      "get": {
+        "summary": "Detail-page view counter",
+        "description": "Read-only counter { \"domain\", \"views\", \"today\" }. A valid domain that was never counted reports zeros. The counter itself is written by a 1×1 pixel (GET or POST /api/v1/pv), which always answers 204.",
+        "parameters": [
+          {
+            "name": "domain",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Bare registered domain, e.g. example.com",
+            "example": "example.com"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The counters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "domain": {
+                      "type": "string"
+                    },
+                    "views": {
+                      "type": "integer"
+                    },
+                    "today": {
+                      "type": "integer"
+                    }
+                  }
+                },
+                "example": {
+                  "domain": "example.com",
+                  "views": 123,
+                  "today": 4
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_domain",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "invalid_domain"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/stats": {
       "get": {
         "summary": "Totals, grade distribution, and average score",
@@ -308,7 +367,7 @@
     "/api/v1/charity": {
       "get": {
         "summary": "Charity settings (beneficiary list and the two receiving addresses)",
-        "description": "Public charity settings. The beneficiary list and the two receiving addresses are edited in the administrator console and published here; the public charity page renders exactly this payload. The fingerprint is the sha256 of the charity pool address, so a published address can be verified against the audit trail.",
+        "description": "Public charity settings: the beneficiary list and the two receiving addresses are edited in the administrator console and published here — this is the data contract for the charity surface; the public page is not published yet. The fingerprint is the sha256 of the charity pool address, so a published address can be verified against the audit trail.",
         "responses": {
           "200": {
             "description": "Charity settings",
@@ -400,6 +459,107 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Method"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp": {
+      "post": {
+        "summary": "MCP endpoint (JSON-RPC 2.0)",
+        "description": "Stateless Model Context Protocol transport: POST one JSON-RPC 2.0 message (initialize, tools/list, tools/call) and read one response — no SSE stream and no session state. Tools: site_rating, search_sites and grade_distribution, all read-only over the same data as the directory API. Rate limit: 60 requests per IP per minute (429 { \"error\": \"rate_limited\", \"retryAfter\": … }). GET and the other verbs answer 405 { \"error\": \"method_not_allowed\", \"allow\": \"POST\" }.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "jsonrpc",
+                  "method"
+                ],
+                "properties": {
+                  "jsonrpc": {
+                    "type": "string",
+                    "enum": [
+                      "2.0"
+                    ]
+                  },
+                  "id": {},
+                  "method": {
+                    "type": "string"
+                  },
+                  "params": {
+                    "type": "object"
+                  }
+                }
+              },
+              "example": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {
+                  "name": "site_rating",
+                  "arguments": {
+                    "domain": "github.com"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "JSON-RPC response (result or error). Unknown domains are a tool-level error, not a protocol error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                },
+                "example": {
+                  "jsonrpc": "2.0",
+                  "id": 1,
+                  "result": {
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "{\"domain\":\"github.com\",\"grade\":\"A\"}"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Empty body with no-cache headers — the transport accepted the message but has no result to return."
+          },
+          "405": {
+            "description": "method_not_allowed — only POST is offered (no SSE stream).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "method_not_allowed",
+                  "allow": "POST"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited — 60 requests per IP per minute",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "rate_limited",
+                  "retryAfter": 42
                 }
               }
             }
@@ -767,7 +927,7 @@
     "/api/v1/submissions": {
       "post": {
         "summary": "Request a scan of a site",
-        "description": "Fully automatic inclusion. Registered domains only (eTLD+1 heuristic): subdomains like blog.example.com are rejected with error subdomain_not_allowed, www is stripped. Already-listed domains return status 'exists' (open the detail page); already-queued domains return status 'queued' (idempotent, no quota burned). New submissions are queued AND immediately dispatch the scan workflow, so a typical listing is searchable within ~10 minutes (etaSeconds covers scan + rebuild); if dispatch is deferred the next daily scan (02:00 UTC) collects it. Rate-limited to 5 new submissions per IP per day. New entries carry etaSeconds 600 (scan plus rebuild) and dispatch 'scheduled' | 'ok' | 'deferred'; the idempotent 'exists'/'queued' responses omit dispatch. The request is gated by a human check: the body field 'turnstile_token' carries a Cloudflare Turnstile token minted by the widget on the AFR submit form (action 'afr_submit'). Without a valid token the endpoint answers 400 { \"error\": \"turnstile_failed\", \"reason\": \"missing_token\" | \"invalid_token\" | \"wrong_action\" | \"verify_failed\" } and nothing is queued. AI agents and scripts that cannot run a browser widget may send the 'X-AFR-Agent-Key' request header instead: a key issued by AFR and not revoked skips the human check (self-service issuance is not open yet).",
+        "description": "Fully automatic inclusion. Registered domains only (eTLD+1 heuristic): subdomains like blog.example.com are rejected with error subdomain_not_allowed, www is stripped. Already-listed domains return status 'exists' (open the detail page); already-queued domains return status 'queued' (idempotent, no quota burned). New submissions are queued AND immediately dispatch the scan workflow, so a typical listing is searchable within ~10 minutes (etaSeconds covers scan + rebuild); if dispatch is deferred the next daily scan (02:00 UTC) collects it. Rate-limited to 5 new submissions per IP per day. New entries carry etaSeconds 600 (scan plus rebuild) and dispatch 'scheduled' | 'ok' | 'deferred'; the idempotent 'exists'/'queued' responses omit dispatch. The request is gated by a human check: the body field 'turnstile_token' carries a Cloudflare Turnstile token minted by the widget on the AFR submit form (action 'afr_submit'). Without a valid token the endpoint answers 400 { \"error\": \"turnstile_failed\", \"reason\": \"missing_token\" | \"invalid_token\" | \"wrong_action\" | \"verify_failed\" } and nothing is queued. AI agents and scripts that cannot run a browser widget may send the 'X-AFR-Agent-Key' request header instead: a key issued by AFR and not revoked skips the human check (site owners issue one from their owner panel; others ask AFR).",
         "parameters": [
           {
             "name": "X-AFR-Agent-Key",
@@ -929,7 +1089,7 @@
     "/api/v1/search-scan": {
       "post": {
         "summary": "Request an on-demand scan of a domain",
-        "description": "Interactive-session variant of a submission: looser quota tiers (10 per IP per day, 1 per domain per 30-minute window, 50 globally per day). Already-listed domains return status 'exists' and already-queued domains return status 'queued' with no quota burned - both omit the dispatch field. The scan workflow is dispatched in the background, so the response never waits for GitHub: 'scheduled' means triggered, 'deferred' means the nightly run will pick it up (still queued, not lost). The same human check as the submission endpoint applies: the body field 'turnstile_token' carries a Cloudflare Turnstile token minted by the widget on the AFR search page (action 'afr_search_scan'), and a missing or invalid token is answered 400 { \"error\": \"turnstile_failed\", \"reason\": \"missing_token\" | \"invalid_token\" | \"wrong_action\" | \"verify_failed\" }. AI agents and scripts that cannot run a browser widget may send the 'X-AFR-Agent-Key' request header instead: a key issued by AFR and not revoked skips the human check (self-service issuance is not open yet).",
+        "description": "Interactive-session variant of a submission: looser quota tiers (10 per IP per day, 1 per domain per 30-minute window, 50 globally per day). Already-listed domains return status 'exists' and already-queued domains return status 'queued' with no quota burned - both omit the dispatch field. The scan workflow is dispatched in the background, so the response never waits for GitHub: 'scheduled' means triggered, 'deferred' means the nightly run will pick it up (still queued, not lost). The same human check as the submission endpoint applies: the body field 'turnstile_token' carries a Cloudflare Turnstile token minted by the widget on the AFR search page (action 'afr_search_scan'), and a missing or invalid token is answered 400 { \"error\": \"turnstile_failed\", \"reason\": \"missing_token\" | \"invalid_token\" | \"wrong_action\" | \"verify_failed\" }. AI agents and scripts that cannot run a browser widget may send the 'X-AFR-Agent-Key' request header instead: a key issued by AFR and not revoked skips the human check (site owners issue one from their owner panel; others ask AFR).",
         "parameters": [
           {
             "name": "X-AFR-Agent-Key",
@@ -1100,6 +1260,190 @@
         }
       }
     },
+    "/api/v1/verify/start": {
+      "post": {
+        "summary": "Start a domain verification",
+        "description": "Asks for a one-time verification token and answers the three ways to publish it on the domain (well-known file, DNS TXT record, homepage meta tag). Publish the token, then call GET /api/v1/verify/check. Limits: 3 starts per domain per day and 10 per IP per hour, the hourly IP budget being shared with verify/check; both tiers are pre-checked, so a refused request spends neither. Quota is not consumed by a rejected request.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "domain"
+                ],
+                "properties": {
+                  "domain": {
+                    "type": "string",
+                    "example": "example.com"
+                  }
+                }
+              },
+              "example": {
+                "domain": "example.com"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A pending token plus the publication methods",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                },
+                "example": {
+                  "token": "vfy-0123456789abcdef0123456789abcdef",
+                  "expiresAt": "2026-11-26T12:00:00.000Z",
+                  "checkUrl": "/api/v1/verify/check?domain=example.com",
+                  "methods": {
+                    "file": {
+                      "url": "https://example.com/.well-known/afr-verify.txt",
+                      "content": "vfy-…"
+                    },
+                    "dns": {
+                      "type": "TXT",
+                      "name": "example.com",
+                      "value": "afr-verify=vfy-…"
+                    },
+                    "meta": {
+                      "name": "afr-verification",
+                      "content": "vfy-…"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_json or invalid_domain",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "invalid_domain",
+                  "message": "expected a bare domain like example.com"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited — carries retryAfter, nextAllowedAt and a Retry-After header",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "rate_limited",
+                  "retryAfter": 120,
+                  "nextAllowedAt": "2026-11-26T18:00:00.000Z"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/verify/check": {
+      "get": {
+        "summary": "Run a domain verification check",
+        "description": "Probes the pending token on the domain itself (well-known file, DNS TXT, homepage meta) and answers on the first pass. Unreachable sites surface as failed checks, never as a 500. Limits: 10 probes per IP per hour (shared with verify/start); the quota is spent even when no token is pending, so the endpoint cannot be used as a free probe.",
+        "parameters": [
+          {
+            "name": "domain",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Bare registered domain, e.g. example.com",
+            "example": "example.com"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "verified true with the method that passed, or verified false with every check",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "verified": {
+                      "type": "boolean"
+                    },
+                    "method": {
+                      "type": "string",
+                      "enum": [
+                        "file",
+                        "dns",
+                        "meta"
+                      ]
+                    },
+                    "checks": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "verified": true,
+                  "method": "dns"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_domain, or no_pending_verification when no unused token is waiting",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "no_pending_verification"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited — carries retryAfter, nextAllowedAt and a Retry-After header",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "rate_limited",
+                  "retryAfter": 300,
+                  "nextAllowedAt": "2026-11-26T18:00:00.000Z"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/queue": {
       "get": {
         "summary": "List pending submissions",
@@ -1248,10 +1592,59 @@
         }
       }
     },
+    "/api/v1/mail/status": {
+      "get": {
+        "summary": "Outbound mail channel status",
+        "description": "Health check of the mail infrastructure: which channels are configured and how much of the daily outbound quota is left. Only whether a variable is set is reported — no key, host or address is ever echoed back; the answer lists variable names at most.",
+        "responses": {
+          "200": {
+            "description": "Channels, quota and missing configuration",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "channels": {
+                      "type": "object"
+                    },
+                    "quota": {
+                      "type": "object"
+                    },
+                    "missing": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "ok": true,
+                  "channels": {
+                    "resend": "configured",
+                    "smtp": "configured",
+                    "cf_email": "unavailable"
+                  },
+                  "quota": {
+                    "day": "2026-11-26",
+                    "globalUsed": 12,
+                    "globalLimit": 500
+                  },
+                  "missing": []
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/owners/email/start": {
       "post": {
         "summary": "Request a domain-control challenge for an owner mailbox",
-        "description": "Starts the owner-mailbox registration of a domain (score-change notifications). The body carries the domain and the address that should receive the notices; AFR answers with a challenge plus the three ways to publish it on the domain (DNS TXT record, well-known file, homepage meta tag). The challenge is bound to the address, valid for 24 hours and can be spent only once. Quotas: 3 challenges per domain per day, 5 per IP per hour. A human check is part of the contract: the body must also carry { \"turnstile_token\": \"…\" } (a Cloudflare Turnstile token, action 'afr_owner_email', minted by the widget on the site detail page). A missing, expired or foreign token is answered 400 { \"error\": \"turnstile_failed\", \"reason\": \"missing_token\" | \"invalid_token\" | \"wrong_action\" | \"verify_failed\" } — no challenge is minted and no rate-limit budget is spent. An agent that cannot run the widget may send the 'X-AFR-Agent-Key' header instead (a key issued by AFR, not self-service yet).",
+        "description": "Starts the owner-mailbox registration of a domain (score-change notifications). The body carries the domain and the address that should receive the notices; AFR answers with a challenge plus the three ways to publish it on the domain (DNS TXT record, well-known file, homepage meta tag). The challenge is bound to the address, valid for 24 hours and can be spent only once. Quotas: 3 challenges per domain per day, 5 per IP per hour. A human check is part of the contract: the body must also carry { \"turnstile_token\": \"…\" } (a Cloudflare Turnstile token, action 'afr_owner_email', minted by the widget on the site detail page). A missing, expired or foreign token is answered 400 { \"error\": \"turnstile_failed\", \"reason\": \"missing_token\" | \"invalid_token\" | \"wrong_action\" | \"verify_failed\" } — no challenge is minted and no rate-limit budget is spent. An agent that cannot run the widget may send the 'X-AFR-Agent-Key' header instead (a key issued by AFR (site owners issue one from their owner panel; others ask AFR)).",
         "parameters": [
           {
             "name": "X-AFR-Agent-Key",
@@ -2127,6 +2520,716 @@
                 },
                 "example": {
                   "error": "unauthorized"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pro/status": {
+      "get": {
+        "summary": "Pro status of a site (management token required)",
+        "description": "The Pro state of the owner's domain plus the metadata of its machine key — never the key itself. The key can be issued or rotated with POST /api/v1/pro/api-key; the plaintext exists exactly once, in that answer.",
+        "parameters": [
+          {
+            "name": "domain",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Bare registered domain, e.g. example.com",
+            "example": "example.com"
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Management token of the target domain's confirmed mailbox, e.g. 'Bearer manage-0123456789abcdef0123456789abcdef'"
+          }
+        ],
+        "security": [
+          {
+            "ownerMailboxToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pro state and key metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "domain": {
+                      "type": "string"
+                    },
+                    "pro": {
+                      "type": "object",
+                      "properties": {
+                        "active": {
+                          "type": "boolean"
+                        },
+                        "expiresAt": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "termDays": {
+                          "type": "integer"
+                        },
+                        "source": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      }
+                    },
+                    "apiKey": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "issued": {
+                          "type": "boolean"
+                        },
+                        "createdAt": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "lastUsedAt": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "tier": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "domain": "example.com",
+                  "pro": {
+                    "active": true,
+                    "expiresAt": "2026-12-20T09:00:00.000Z",
+                    "termDays": 30,
+                    "source": "aipay-ref-…"
+                  },
+                  "apiKey": {
+                    "issued": true,
+                    "createdAt": "2026-11-25T07:10:00.000Z",
+                    "lastUsedAt": null,
+                    "tier": "pro"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_domain",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "invalid_domain"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized — missing, invalid or wrong-domain management token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "unauthorized"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pro/api-key": {
+      "post": {
+        "summary": "Issue or rotate the machine key of a site (management token required)",
+        "description": "Body { \"domain\": \"example.com\" } (or the domain in the query string). The answer carries the plaintext key — it exists exactly once, here: only its hash is stored, so AFR can never show it again. A new key revokes the previous one in the same transaction, so a domain never has two live keys. The key is sent as the X-AFR-Agent-Key request header and unlocks the human check on the scan endpoints; its daily and monthly budgets follow the site's effective tier (free 100/day, pro 10000/day).",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Management token of the target domain's confirmed mailbox, e.g. 'Bearer manage-0123456789abcdef0123456789abcdef'"
+          }
+        ],
+        "security": [
+          {
+            "ownerMailboxToken": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "domain"
+                ],
+                "properties": {
+                  "domain": {
+                    "type": "string",
+                    "example": "example.com"
+                  }
+                }
+              },
+              "example": {
+                "domain": "example.com"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new key, shown once",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "key",
+                    "tier",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "key": {
+                      "type": "string",
+                      "example": "afr_0123456789abcdef0123456789abcdef"
+                    },
+                    "tier": {
+                      "type": "string",
+                      "enum": [
+                        "free",
+                        "pro"
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "key": "afr_0123456789abcdef0123456789abcdef",
+                  "tier": "pro",
+                  "createdAt": "2026-11-26T09:00:00.000Z"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_domain or invalid_json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "invalid_domain"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized — missing, invalid or wrong-domain management token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "unauthorized"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "api_keys_unavailable — the key table cannot be written",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "api_keys_unavailable"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Revoke the machine key of a site (management token required)",
+        "description": "The domain travels in the query string or in the body. The key stops working immediately; the human check on the scan endpoints applies again.",
+        "parameters": [
+          {
+            "name": "domain",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Bare registered domain, e.g. example.com",
+            "example": "example.com"
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Management token of the target domain's confirmed mailbox, e.g. 'Bearer manage-0123456789abcdef0123456789abcdef'"
+          }
+        ],
+        "security": [
+          {
+            "ownerMailboxToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revoked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "revoked": {
+                      "const": true
+                    }
+                  }
+                },
+                "example": {
+                  "revoked": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_domain",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "invalid_domain"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized — missing, invalid or wrong-domain management token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "unauthorized"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/pro/orders": {
+      "post": {
+        "summary": "Open a Pro order (management token required)",
+        "description": "Body { \"domain\": \"example.com\" }. Creates a non-custodial on-chain order and returns the checkout URL; the link is valid for 15 minutes. One open order per domain — a second checkout for the same term is refused with 409 order_pending. Read the state with GET /api/v1/billing/pro/orders/{reference} and drop an unpaid one with POST /api/v1/billing/pro/orders/{reference}/cancel. Payment never changes a score, a grade or a ranking position.",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Management token of the target domain's confirmed mailbox, e.g. 'Bearer manage-0123456789abcdef0123456789abcdef'"
+          }
+        ],
+        "security": [
+          {
+            "ownerMailboxToken": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "domain"
+                ],
+                "properties": {
+                  "domain": {
+                    "type": "string",
+                    "example": "example.com"
+                  }
+                }
+              },
+              "example": {
+                "domain": "example.com"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The order and its payment link",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "orderId",
+                    "reference",
+                    "checkoutUrl"
+                  ],
+                  "properties": {
+                    "orderId": {
+                      "type": "string"
+                    },
+                    "reference": {
+                      "type": "string"
+                    },
+                    "checkoutUrl": {
+                      "type": "string"
+                    },
+                    "amount": {
+                      "type": "string"
+                    },
+                    "asset": {
+                      "type": "string"
+                    },
+                    "chainKey": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "orderId": "mch-order-…",
+                  "reference": "aipay-ref-…",
+                  "checkoutUrl": "https://pay.aipay.im/…",
+                  "amount": "12",
+                  "asset": "USDC",
+                  "chainKey": "base",
+                  "expiresAt": "2026-11-26T17:30:00.000Z"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_domain or invalid_json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "invalid_domain"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized — missing, invalid or wrong-domain management token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "unauthorized"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "unknown_domain",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "unknown_domain"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "order_pending — this domain already has an open order",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "order_pending"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "billing_unavailable — the payment provider could not be reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "billing_unavailable"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "billing_not_configured — the payment channel is not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "billing_not_configured"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/pro/orders/{reference}": {
+      "get": {
+        "summary": "State of one Pro order (management token required)",
+        "description": ":reference is the payment-provider reference of the order; the merchant order id is accepted as well.",
+        "parameters": [
+          {
+            "name": "reference",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Payment-provider reference or merchant order id of the order"
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Management token of the target domain's confirmed mailbox, e.g. 'Bearer manage-0123456789abcdef0123456789abcdef'"
+          }
+        ],
+        "security": [
+          {
+            "ownerMailboxToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The order state — status, whether it is paid, the amount and the Pro state it grants",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "reference": {
+                      "type": "string"
+                    },
+                    "orderId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "paid": {
+                      "type": "boolean"
+                    },
+                    "amount": {
+                      "type": "string"
+                    },
+                    "asset": {
+                      "type": "string"
+                    },
+                    "chainKey": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "type": "string"
+                    },
+                    "checkoutUrl": {
+                      "type": "string"
+                    },
+                    "pro": {
+                      "type": "object",
+                      "properties": {
+                        "active": {
+                          "type": "boolean"
+                        },
+                        "expiresAt": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "reference": "aipay-ref-…",
+                  "orderId": "mch-order-…",
+                  "status": "confirmed",
+                  "paid": true,
+                  "amount": "12",
+                  "asset": "USDC",
+                  "chainKey": "base",
+                  "expiresAt": "2026-12-26T09:00:00.000Z",
+                  "pro": {
+                    "active": true,
+                    "expiresAt": "2026-12-26T09:00:00.000Z"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized — missing, invalid or wrong-domain management token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "unauthorized"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "not_found"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/pro/orders/{reference}/cancel": {
+      "post": {
+        "summary": "Cancel an unpaid Pro order (management token required)",
+        "description": "Drops an open order. A paid order cannot be cancelled ({ \"cancelled\": false }); an already cancelled order answers { \"cancelled\": true }. No body.",
+        "parameters": [
+          {
+            "name": "reference",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Payment-provider reference or merchant order id of the order"
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Management token of the target domain's confirmed mailbox, e.g. 'Bearer manage-0123456789abcdef0123456789abcdef'"
+          }
+        ],
+        "security": [
+          {
+            "ownerMailboxToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Whether the order was cancelled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "cancelled": {
+                      "type": "boolean"
+                    }
+                  }
+                },
+                "example": {
+                  "cancelled": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized — missing, invalid or wrong-domain management token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "unauthorized"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "not_found"
                 }
               }
             }

@@ -159,6 +159,9 @@ export interface AppOverrides {
   mcpLimit?: RateLimiter;
   /** Injected owner-email rate limiters (tests use isolated in-memory stores) */
   emailLimits?: EmailRateLimits;
+  /** Injected admin self-service login failure limiter (tests use an isolated
+   * in-memory store). Missing → an in-memory limiter built per app instance. */
+  adminLoginLimit?: RateLimiter;
   /** Injected fetch for the GitHub dispatch (tests pass a fake) */
   fetchImpl?: typeof fetch;
   /** Injected fetch for the Turnstile siteverify call (tests pass a fake);
@@ -176,6 +179,11 @@ export const SCAN_DOMAIN_LIMIT = 1; // per domain per 30-minute window
  * per 30-minute window — a per-domain-only rule would let a single device
  * hammer unlimited distinct sites. */
 export const SCAN_GLOBAL_LIMIT = 50; // all callers per UTC day
+// POST /rescan budgets, metered in their own buckets apart from the
+// search-scan tiers above: a rescan storm must never crowd out
+// search-triggered scans (and vice versa).
+export const RESCAN_IP_LIMIT = 10; // re-scan requests per IP per UTC day
+export const RESCAN_GLOBAL_LIMIT = 50; // all re-scan requests per UTC day
 /** Manual re-scan / search-triggered scan: one per domain per 30-minute window.
  * The daily cron keeps its own once-per-day cadence (spec politeness applies to
  * unattended crawling; an owner-triggered rescan of their own site is bounded
@@ -190,8 +198,18 @@ export const QUEUE_LIST_LIMIT = 50;
 
 // Verification flow limits
 export const VERIFY_START_DOMAIN_LIMIT = 3; // verify/start per domain per UTC day
-export const VERIFY_IP_LIMIT = 10; // verify/start + verify/check per IP per hour (shared)
+/** verify/start + verify/check per IP per hour (shared bucket). Tightened to
+ * 5: the endpoint that costs the network is verify/check, which runs only
+ * after a token is minted, so the start side just needs to slow an online
+ * abuser — no Turnstile needed here (x-afr-agent-key only exempts Turnstile,
+ * never these limits). */
+export const VERIFY_IP_LIMIT = 5;
 export const CLAIMS_DOMAIN_LIMIT = 5; // claims per domain per UTC day
+
+// Admin self-service login: failed attempts per IP per minute (the password
+// is a 256-bit secret — this only bounds online tryout and makes it visible)
+export const ADMIN_LOGIN_FAIL_LIMIT = 5;
+export const ADMIN_LOGIN_FAIL_WINDOW_MS = 60 * 1000;
 
 // Owner email subsystem limits
 export const EMAIL_DOMAIN_LIMIT = 3; // mailbox registrations per domain per UTC day
@@ -401,6 +419,11 @@ export interface ScanRateLimits {
   global: RateLimiter;
   /** device-level gate for POST /rescan: 1 per 30 minutes */
   rescanIp: RateLimiter;
+  /** POST /rescan per-IP UTC-day budget (RESCAN_IP_LIMIT) */
+  rescanDailyIp: RateLimiter;
+  /** POST /rescan global UTC-day budget (RESCAN_GLOBAL_LIMIT) — its own
+   * bucket, never shared with the search-scan `global` tier */
+  rescanGlobal: RateLimiter;
 }
 
 /** Verification tiers: starts per domain per day + probes per IP per hour */
@@ -434,7 +457,9 @@ export interface EmailRateLimits {
 /** Fallback scan limiters (per-isolate memory — degraded but serviceable) */
 const fallbackScanLimits: ScanRateLimits = {
   ip: new RateLimiter(memoryStore(), SCAN_IP_LIMIT, DAY_MS, 'scan-ip'),
-      rescanIp: new RateLimiter(memoryStore(), 1, SCAN_DOMAIN_WINDOW_MS, 'rescan-ip'),
+  rescanIp: new RateLimiter(memoryStore(), 1, SCAN_DOMAIN_WINDOW_MS, 'rescan-ip'),
+  rescanDailyIp: new RateLimiter(memoryStore(), RESCAN_IP_LIMIT, DAY_MS, 'rescan-ip-day'),
+  rescanGlobal: new RateLimiter(memoryStore(), RESCAN_GLOBAL_LIMIT, DAY_MS, 'rescan-global'),
   domain: new RateLimiter(memoryStore(), SCAN_DOMAIN_LIMIT, SCAN_DOMAIN_WINDOW_MS, 'scan-domain'),
   global: new RateLimiter(memoryStore(), SCAN_GLOBAL_LIMIT, DAY_MS, 'scan-global'),
 };
@@ -456,6 +481,8 @@ function scanLimitsOf(c: Context<AppEnv>, overrides: AppOverrides): ScanRateLimi
     return {
       ip: new RateLimiter(store, SCAN_IP_LIMIT, DAY_MS, 'scan-ip'),
       rescanIp: new RateLimiter(store, 1, SCAN_DOMAIN_WINDOW_MS, 'rescan-ip'),
+      rescanDailyIp: new RateLimiter(store, RESCAN_IP_LIMIT, DAY_MS, 'rescan-ip-day'),
+      rescanGlobal: new RateLimiter(store, RESCAN_GLOBAL_LIMIT, DAY_MS, 'rescan-global'),
       domain: new RateLimiter(store, SCAN_DOMAIN_LIMIT, SCAN_DOMAIN_WINDOW_MS, 'scan-domain'),
       global: new RateLimiter(store, SCAN_GLOBAL_LIMIT, DAY_MS, 'scan-global'),
     };
@@ -1184,7 +1211,20 @@ const adResponseHeaders: MiddlewareHandler<AppEnv> = async (c, next) => {
 export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
 
-  const admin = (c: Context<AppEnv>) => handleAdmin(c.req.raw, c.env ?? {}, () => dbOf(c, overrides));
+  // Admin self-service login guard: ADMIN_LOGIN_FAIL_LIMIT failed attempts per
+  // IP per minute. Built per app instance (production builds one app per
+  // isolate; tests get an isolated counter). KV when bound so the counter
+  // survives isolate rotation, in-memory otherwise — either way handleAdmin
+  // treats limiter errors as fail-open and never 500s on them.
+  const adminLoginFallback =
+    overrides.adminLoginLimit ??
+    new RateLimiter(memoryStore(), ADMIN_LOGIN_FAIL_LIMIT, ADMIN_LOGIN_FAIL_WINDOW_MS, 'admin-login-fail');
+  const adminLoginLimitOf = (c: Context<AppEnv>): RateLimiter =>
+    c.env?.KV && !overrides.adminLoginLimit
+      ? new RateLimiter(kvStore(c.env.KV), ADMIN_LOGIN_FAIL_LIMIT, ADMIN_LOGIN_FAIL_WINDOW_MS, 'admin-login-fail')
+      : adminLoginFallback;
+  const admin = (c: Context<AppEnv>) =>
+    handleAdmin(c.req.raw, c.env ?? {}, () => dbOf(c, overrides), adminLoginLimitOf(c));
   app.all('/admin', admin);
   app.all('/admin/*', admin);
   app.get('/robots.txt', (c) => c.text('User-agent: *\nDisallow: /admin\n'));
@@ -2165,28 +2205,35 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     if (!site) return c.json({ error: 'unknown_domain' }, 404);
 
     const limits = scanLimitsOf(c, overrides);
-    // Device gate first: one re-scan per device per 30 minutes (anti-abuse —
-    // a per-domain rule alone would allow hammering unlimited distinct sites).
-    const ipDecision = await limits.rescanIp.check('global');
-    if (!ipDecision.allowed) {
-      const { retryAfter, nextAllowedAt } = retryPayload(limits.rescanIp);
-      return c.json(
-        { error: 'rate_limited', scope: 'device', retryAfter, nextAllowedAt },
-        429,
-        { 'Retry-After': String(retryAfter) },
-      );
+    // Anti-abuse tiers — every tier is pre-checked before any is consumed, so a
+    // rejected request never burns quota elsewhere, and all checks run before
+    // the queue insert and the GitHub dispatch below:
+    //   device — one re-scan per caller per 30 minutes (a per-domain rule alone
+    //            would let a single caller hammer unlimited distinct sites),
+    //   ip     — RESCAN_IP_LIMIT per IP per UTC day,
+    //   global — RESCAN_GLOBAL_LIMIT per UTC day in its own bucket, so rescans
+    //            never crowd out search-triggered scans,
+    //   domain — one per domain per 30-minute window (shared with search-scan).
+    // As everywhere else, x-afr-agent-key does not exempt any of these tiers —
+    // it only skips the Turnstile human check, never the rate limits.
+    const tiers: [string, RateLimiter, string][] = [
+      ['global', limits.rescanIp, 'device'],
+      [clientIp(c), limits.rescanDailyIp, 'ip'],
+      ['global', limits.rescanGlobal, 'global'],
+      [domain, limits.domain, 'domain'],
+    ];
+    for (const [key, limiter, scope] of tiers) {
+      const decision = await limiter.check(key);
+      if (!decision.allowed) {
+        const { retryAfter, nextAllowedAt } = retryPayload(limiter);
+        return c.json(
+          { error: 'rate_limited', scope, retryAfter, nextAllowedAt },
+          429,
+          { 'Retry-After': String(retryAfter) },
+        );
+      }
     }
-    const decision = await limits.domain.check(domain);
-    if (!decision.allowed) {
-      const { retryAfter, nextAllowedAt } = retryPayload(limits.domain);
-      return c.json(
-        { error: 'rate_limited', scope: 'domain', retryAfter, nextAllowedAt },
-        429,
-        { 'Retry-After': String(retryAfter) },
-      );
-    }
-    await limits.rescanIp.consume('global');
-    await limits.domain.consume(domain);
+    for (const [key, limiter] of tiers) await limiter.consume(key);
 
     await db
       .prepare(
@@ -2245,8 +2292,9 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
       return c.json({ error: 'invalid_domain', message: 'expected a bare domain like example.com' }, 400);
     }
 
-    // Limits: 3 starts per domain per day + 10 per IP per hour (the hourly IP
-    // budget is shared with verify/check). Both tiers are pre-checked before
+    // Limits: 3 starts per domain per day + VERIFY_IP_LIMIT (5) per IP per hour
+    // (the hourly IP budget is shared with verify/check). Both tiers are
+    // pre-checked before
     // either is consumed, so a rejected request never burns the other tier.
     const limits = verifyLimitsOf(c, overrides);
     const tiers: [string, RateLimiter][] = [
@@ -2297,7 +2345,7 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
       return c.json({ error: 'invalid_domain', message: 'expected a bare domain like example.com' }, 400);
     }
 
-    // 10 probes per IP per hour, shared with verify/start. Quota is spent even
+    // VERIFY_IP_LIMIT (5) probes per IP per hour, shared with verify/start. Quota is spent even
     // when no token is pending, so the endpoint cannot be used for free spam.
     const limits = verifyLimitsOf(c, overrides);
     const ipDecision = await limits.hourlyIp.check(clientIp(c));
@@ -3445,15 +3493,6 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     }
     return c.json({ domain, views, today });
   });
-
-  // ----------------------------------------------------------------------
-  // Route skeletons — 501 until each feature ships
-  // ----------------------------------------------------------------------
-
-  // Badge abuse reports: forged/tampered badge submissions.
-  app.post('/api/v1/badge/report', (c) =>
-    c.json({ error: 'not_implemented', feature: 'verification' }, 501),
-  ); // {domain} → forged/tampered badge report
 
   return app;
 }

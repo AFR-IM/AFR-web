@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createApp } from '../src/index.ts';
+import { createApp, ADMIN_LOGIN_FAIL_LIMIT } from '../src/index.ts';
 import { issueAdminSession, verifyAdminSession } from '../src/admin-login.ts';
 import { openSeededDb } from './helpers.ts';
 
@@ -39,6 +39,53 @@ test('local admin login protects the board and queue, and sets a secure cookie',
   assert.match(await (await get('/admin/', cookie.split(';')[0])).text(), /扫描队列/);
   assert.equal((await get('/admin/queue', cookie.split(';')[0])).status, 200);
   assert.match((await post('/admin/logout', '')).headers.get('set-cookie')!, /Max-Age=0/);
+});
+
+test('failed admin logins are capped per IP and logged, and blocking is fail-safe', async t => {
+  const { db, raw } = openSeededDb();
+  t.after(() => raw.close());
+  const app = createApp({ db });
+  const ip = '198.51.100.44';
+  const post = (password: string, forwardedIp = ip) => app.request(base + '/admin/login', {
+    method: 'POST',
+    headers: { Origin: base, 'x-forwarded-for': forwardedIp },
+    body: new URLSearchParams({ email: env.ADMIN_LOGIN_EMAIL, password }),
+  }, env);
+
+  const warnings: string[] = [];
+  const originalWarn = console.warn;
+  console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(' ')); };
+  t.after(() => { console.warn = originalWarn; });
+
+  for (let i = 0; i < ADMIN_LOGIN_FAIL_LIMIT; i++) {
+    const res = await post('cd'.repeat(32));
+    assert.equal(res.status, 401, `failure ${i + 1} renders the login page`);
+    assert.equal(res.headers.has('set-cookie'), false);
+  }
+  assert.equal(
+    warnings.filter(line => line.includes('admin login failed')).length,
+    ADMIN_LOGIN_FAIL_LIMIT,
+    'every failed attempt is warned on the console',
+  );
+
+  const blocked = await post('cd'.repeat(32));
+  assert.equal(blocked.status, 401, 'the next attempt is refused before the credential check');
+  assert.ok(Number(blocked.headers.get('retry-after')) > 0, 'Retry-After header present');
+  assert.match(await blocked.text(), /尝试过于频繁/);
+
+  const correct = await post(env.ADMIN_LOGIN_SECRET);
+  assert.equal(correct.status, 401, 'a correct password is also refused while blocked');
+  assert.equal(correct.headers.has('set-cookie'), false);
+
+  const otherIp = await post(env.ADMIN_LOGIN_SECRET, '198.51.100.45');
+  assert.equal(otherIp.status, 303, 'another IP is unaffected');
+
+  // The origin gate still runs first: no Origin header → 403, quota untouched.
+  const noOrigin = await app.request(base + '/admin/login', {
+    method: 'POST',
+    body: new URLSearchParams({ email: env.ADMIN_LOGIN_EMAIL, password: env.ADMIN_LOGIN_SECRET }),
+  }, env);
+  assert.equal(noOrigin.status, 403, 'a request without Origin is still forbidden');
 });
 
 test('expired, altered and rotated local credentials reject prior sessions', async () => {

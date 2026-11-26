@@ -75,6 +75,7 @@ const CRUMB_NAMES: Record<string, string> = {
   about: 'About',
   bot: 'For Bots',
   badge: 'Badge',
+  pro: 'AFR Pro',
   docs: 'API docs',
   offline: 'Offline',
   site: 'Site',
@@ -208,6 +209,7 @@ const ldJson = (obj: unknown) => JSON.stringify(obj).replace(/</g, '\\u003c');
           <a href={href('/method')}>{L.ui.navMethod}</a>
           <a href={href('/bot')}>{L.ui.navBot}</a>
           <a href={href('/about')}>{L.ui.navAbout}</a>
+          <a href={href('/pro')}>{L.ui.navPro}</a>
           <a href="https://github.com/AFR-IM/AFR-web" rel="noopener">GitHub</a>
         </nav>
         <p class="footer-meta mono">{AFR_METHOD.engineVersion} · {L.ui.footerRights as string}</p>
