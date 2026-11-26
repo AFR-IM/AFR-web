@@ -15,8 +15,8 @@ const DAY = 86_400_000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CATEGORY = /^[a-z0-9][a-z0-9-]{0,79}$/;
 const OFFERED_SLOTS = ['category-top', 'search-top', 'home-supporter', 'report-sponsor'] as const;
-const CONTROL = /[\p{Cc}\p{Cf}\p{Cs}]/u;
-const MISLEADING = /官方(?:认证|推荐|认可|指定|授权|合作)|权威认证|行业(?:第[一1]|领先)|第[一1]名|排名第[一1]|全网第[一1]|(?:afr|afr\.im)(?:认证|推荐|官方|合作)|#\s*1(?!\d)|\b(?:no\.?\s*1(?!\d)|number\s+one|ranked\s+(?:first|1st)|best[\s-]+in[\s-]+class|official(?:ly)?[\s-]+(?:certified|endorsed|recommended|approved)|(?:certified|endorsed|recommended|approved)\s+by\s+afr)\b/iu;
+export const CONTROL = /[\p{Cc}\p{Cf}\p{Cs}]/u;
+export const MISLEADING = /官方(?:认证|推荐|认可|指定|授权|合作)|权威认证|行业(?:第[一1]|领先)|第[一1]名|排名第[一1]|全网第[一1]|(?:afr|afr\.im)(?:认证|推荐|官方|合作)|#\s*1(?!\d)|\b(?:no\.?\s*1(?!\d)|number\s+one|ranked\s+(?:first|1st)|best[\s-]+in[\s-]+class|official(?:ly)?[\s-]+(?:certified|endorsed|recommended|approved)|(?:certified|endorsed|recommended|approved)\s+by\s+afr)\b/iu;
 
 export type AdSlot = typeof OFFERED_SLOTS[number];
 export type AdDecision = 'approve' | 'reject' | 'pause' | 'resume';
@@ -99,7 +99,7 @@ interface CheckoutRow {
 
 type OrderResult = { ok: true; status: 200 | 201; order: AdOrder } | Failure;
 
-function plainText(value: unknown, max: number): string | null {
+export function plainText(value: unknown, max: number): string | null {
   if (typeof value !== 'string' || value.length > max * 2 + 32 || CONTROL.test(value)) return null;
   const text = value.trim();
   return Array.from(text).length <= max ? text : null;

@@ -47,7 +47,7 @@
 - [AI crawler policy](https://afr.im/ai.txt): short machine-readable summary of what AFR.IM allows and why.
 - [robots.txt](https://afr.im/robots.txt): explicit Allow rules for the 14 AI user-agent families plus the Sitemap declaration.
 - Ratings, grades, and check names may be reused with attribution to AFR.IM; the AFR standard text is CC BY 4.0. See [About](https://afr.im/about) for contact and correction channels.
-- **Paid blocks are not assessment output:** blocks marked `data-promo="owner-ad"` (site-owner promotions) and `Sponsored` blocks are advertising, never AFR evaluations — cite ratings only from `GET /api/v1/sites/:domain`.
+- **Paid blocks are not assessment output:** blocks marked `data-promo="owner-ad"` (site-owner promotions), blocks marked `data-promo="promo"` (paid site promotions on a report page), the Torch Boost leaderboard (`?torch=` tabs on the home page), Torch Boost badges and any boosted amount are advertising — never AFR evaluations — and none of them affect a score, a grade or a ranking. Cite ratings only from `GET /api/v1/sites/:domain`.
 
 ## Three listing states (read this before answering "is my site in the directory?")
 

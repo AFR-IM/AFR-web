@@ -21,6 +21,8 @@ import {
 import { readMonitorBoard, renderMonitorBoard } from './admin-monitor.ts';
 import { listScoringReleases, publishScoringRelease, renderScoringBoard } from './admin-scoring.ts';
 import { ADS_ADMIN_PATH, moderateAd, readAdsBoard, renderAdsBoard } from './ads.ts';
+import { moderatePromo } from './promo.ts';
+import { recordCharityDonation } from './charity.ts';
 import {
   parseBeneficiaryForm,
   readSettings,
@@ -66,6 +68,8 @@ const NOTICES: Record<string, string> = {
   pro_revoked: 'Pro 期限已撤销。',
   apikey_revoked: '机器密钥已吊销。',
   ad_moderated: '广告状态已更新。',
+  promo_moderated: '推广状态已更新。',
+  donation_recorded: '捐赠已登记（台账只追加，不可修改）。',
   scoring_published: '评分版本说明已发布。',
   settings_updated: '设置已保存。',
   replayed: '这个请求已经执行过了，重复提交被忽略。',
@@ -182,7 +186,7 @@ function claimIdsOf(form: URLSearchParams): number[] | null {
   return ids;
 }
 
-export async function handleAdmin(request: Request, env: AdminAccessEnv & AdminLoginEnv & { ADS_SALES_OPEN?: string }, getDb: () => Db, loginLimiter?: RateLimiter): Promise<Response> {
+export async function handleAdmin(request: Request, env: AdminAccessEnv & AdminLoginEnv & { ADS_SALES_OPEN?: string; PAID_SALES_OPEN?: string }, getDb: () => Db, loginLimiter?: RateLimiter): Promise<Response> {
   try {
     const url = new URL(request.url);
     const isBoard = url.pathname === '/admin' || url.pathname === '/admin/';
@@ -284,7 +288,8 @@ export async function handleAdmin(request: Request, env: AdminAccessEnv & AdminL
         const [board, ads] = await Promise.all([readCommercialBoard(db), readAdsBoard(db)]);
         const notice = NOTICES[(url.searchParams.get('notice') ?? '').trim()];
         return page('商业化', h`${notice ? adminAlert('ok', notice) : ''}${renderCommercialBoard(board)}
-          <p class="muted">站长自助购买${env.ADS_SALES_OPEN === 'true' ? '已启用' : '已关闭'}。</p>
+          <p class="muted">站长自助购买${env.ADS_SALES_OPEN === 'true' ? '已启用' : '已关闭'}；
+            火把与推广${env.PAID_SALES_OPEN === 'true' ? '已开售' : '已停售（默认关）'}。</p>
           ${renderAdsBoard(ads, actor.canWrite)}`);
       }
       if (url.pathname === '/admin/scoring') {
@@ -435,6 +440,25 @@ export async function handleAdmin(request: Request, env: AdminAccessEnv & AdminL
       });
       if (result.result === 'conflict') return errorPage('广告操作未执行', result.error, '/admin/commercial');
       return back('/admin/commercial', result.result === 'replayed' ? 'replayed' : 'ad_moderated');
+    }
+
+    if (url.pathname === '/admin/commercial/promo/decide') {
+      const result = await moderatePromo(db, {
+        requestId, subject: actor.subject, id: Number(form.get('id')),
+        decision: form.get('decision') ?? '', note: form.get('note'),
+      });
+      if (result.result === 'conflict') return errorPage('推广操作未执行', result.error, '/admin/commercial');
+      return back('/admin/commercial', result.result === 'replayed' ? 'replayed' : 'promo_moderated');
+    }
+
+    if (url.pathname === '/admin/commercial/charity/record') {
+      const result = await recordCharityDonation(db, {
+        requestId, subject: actor.subject,
+        amount: form.get('amount') ?? '', txHash: form.get('tx_hash') ?? '',
+        beneficiary: form.get('beneficiary') ?? '', note: form.get('note'),
+      });
+      if (result.result === 'conflict') return errorPage('捐赠登记未执行', result.error, '/admin/commercial');
+      return back('/admin/commercial', result.result === 'replayed' ? 'replayed' : 'donation_recorded');
     }
 
     if (url.pathname === '/admin/scoring') {

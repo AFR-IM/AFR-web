@@ -34,6 +34,7 @@ import { CATEGORY_SLUGS, categorize } from '../src/data/categorize.mjs';
 import { CATEGORY_OVERRIDES_FILE, CLAIMS_FILE, SITE_PATHS_FILE, buildDetail, resolveCategorySlug } from '../src/data/detail.ts';
 import { fetchCategoryOverrides } from './fetch-category-overrides.mjs';
 import { fetchPublishedClaims } from './fetch-claims.mjs';
+import { CHARITY_LEDGER_FILE, fetchCharityLedger } from './fetch-charity-ledger.mjs';
 import { resolvePageLang, resolvePageMeta, resolvePageTitle } from '../../../packages/scanner/src/page-meta.ts';
 import {
   SEARCH_INDEX_RAW_PER_ENTRY,
@@ -338,6 +339,9 @@ async function main() {
   // an empty map, so the build falls back to exactly what it shipped before.
   const overrides = await fetchCategoryOverrides();
   const claims = await fetchPublishedClaims();
+  // The append-only ledger is an asset as well: the repo carries a mirror so
+  // the trail stays verifiable even when the live endpoint is unreachable.
+  const ledger = await fetchCharityLedger();
   let overridden = 0;
   for (const s of sites) {
     const resolved = resolveCategorySlug(domainOf(s), s.category, overrides);
@@ -532,6 +536,14 @@ async function main() {
   await writeFile(
     path.join(PUBLIC_DATA_DIR, CLAIMS_FILE),
     `${JSON.stringify(claims)}\n`,
+    'utf8',
+  );
+
+  // The charity ledger mirror — the endpoint stays the source of truth; a
+  // failed fetch already warned above and ships the honest empty ledger.
+  await writeFile(
+    path.join(PUBLIC_DATA_DIR, CHARITY_LEDGER_FILE),
+    `${JSON.stringify(ledger)}\n`,
     'utf8',
   );
 

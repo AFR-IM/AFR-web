@@ -19,7 +19,7 @@ import { clickAd, createAdOrder, expireAds, listActiveAds, readAdOffers, readAdO
 import { handleAdReport } from './ad-report-page.ts';
 import { recordBadgeReferrer, recordCronRun } from './admin-monitor.ts';
 import { readPublicCharity } from './admin-settings.ts';
-import { applyAipayWebhook, getAipayOrder, runAipayReconcileCron, type AipayEnv } from './aipay.ts';
+import { applyAipayWebhook, getAipayOrder, pollBillingOrders, runAipayReconcileCron, type AipayEnv } from './aipay.ts';
 import type { AdminAccessEnv } from './admin-access.ts';
 import type { AdminLoginEnv } from './admin-login.ts';
 import { githubAuthedFetch, runDailySync } from './cron.ts';
@@ -54,6 +54,20 @@ import {
   revokeApiKeys,
 } from './commercial.ts';
 import { pruneMailArtifacts } from './mail-gc.ts';
+import {
+  createTorchOrder,
+  readTorchDetail,
+  readTorchLeaderboard,
+  readTorchStatus,
+  syncBoardLedgers,
+} from './torch.ts';
+import {
+  createPromoOrder,
+  expirePromos,
+  readActivePromo,
+  readPromoOrder,
+} from './promo.ts';
+import { readCharityLedger } from './charity.ts';
 import {
   buildMagicToken,
   buildMailChallenge,
@@ -139,6 +153,21 @@ export interface WorkerEnv extends AdminAccessEnv, AdminLoginEnv, AipayEnv {
   PUBLIC_SITE_URL?: string;
   /** Off unless explicitly enabled once self-serve sponsorship is ready. */
   ADS_SALES_OPEN?: string;
+  /** Off unless explicitly enabled: the master switch of both paid boards
+   * (torch boosts and owner promos). While it is off nothing can be bought,
+   * and switching it off again is the one-click stop-sale of a charity
+   * failure. Missing secrets keep the boards closed as well. */
+  PAID_SALES_OPEN?: string;
+  /** Worker secret: AIPAY key of the charity merchant (the wallet published
+   * as CHARITY_POOL receives every torch payment). Missing → torch orders
+   * answer 503 until the merchant is provisioned. */
+  AIPAY_CHARITY_API_KEY?: string;
+  /** Worker secret: webhook secret of the charity merchant. */
+  AIPAY_CHARITY_WEBHOOK_SECRET?: string;
+  /** Worker secret: AIPAY key of the promo merchant (PROMO_WALLET). */
+  AIPAY_PROMO_API_KEY?: string;
+  /** Worker secret: webhook secret of the promo merchant. */
+  AIPAY_PROMO_WEBHOOK_SECRET?: string;
   /** Worker secret: Cloudflare Turnstile siteverify secret (the sitekey is
    * public and lives in the front-end build). Missing → the human check is
    * skipped (fail-open) so local dev keeps working; PRODUCTION MUST set it
@@ -1244,8 +1273,18 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     c.header('Cache-Control', 'no-store');
     c.header('Cloudflare-CDN-Cache-Control', 'no-store');
     const env = c.env;
-    const secret = env?.AIPAY_WEBHOOK_SECRET;
-    if (!secret?.trim() || !env?.AIPAY_API_KEY?.trim()) {
+    // One endpoint, several merchants: each board wallet has its own AIPAY
+    // merchant and therefore its own webhook secret. Candidates are tried in
+    // order (a handful of HMAC computations, see applyAipayWebhook).
+    const secrets = [env?.AIPAY_WEBHOOK_SECRET, env?.AIPAY_CHARITY_WEBHOOK_SECRET, env?.AIPAY_PROMO_WEBHOOK_SECRET]
+      .map((value) => value?.trim() ?? '')
+      .filter(Boolean);
+    // Both halves are needed before the body is touched: a signature to
+    // verify with and a merchant key to re-read the order with (any of the
+    // three merchants — board orders never touch the main key).
+    const hasKey = [env?.AIPAY_API_KEY, env?.AIPAY_CHARITY_API_KEY, env?.AIPAY_PROMO_API_KEY]
+      .some((value) => !!value?.trim());
+    if (secrets.length === 0 || !hasKey) {
       return c.json({ error: 'webhook_unavailable' }, 503);
     }
 
@@ -1281,9 +1320,23 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     }
 
     try {
+      const db = dbOf(c, overrides);
+      // The order's own merchant verifies the transaction: board orders were
+      // created under the charity/promo keys, never under the main one.
+      const verifyOrder = async (reference: string) => {
+        const local = await db
+          .prepare('SELECT purpose FROM billing_orders WHERE aipay_reference = ?')
+          .get<{ purpose: string }>(reference);
+        const keyEnv: AipayEnv = local?.purpose === 'torch'
+          ? { ...env, AIPAY_API_KEY: env?.AIPAY_CHARITY_API_KEY }
+          : local?.purpose === 'promo'
+            ? { ...env, AIPAY_API_KEY: env?.AIPAY_PROMO_API_KEY }
+            : env;
+        return getAipayOrder(keyEnv, reference);
+      };
       const result = await applyAipayWebhook(
-        dbOf(c, overrides), raw.subarray(0, size), request.headers, secret,
-        (reference) => getAipayOrder(env, reference),
+        db, raw.subarray(0, size), request.headers, secrets,
+        verifyOrder,
       );
       if (result === 'invalid') return c.json({ error: 'invalid_webhook' }, 400);
       if (result === 'ignored') return c.json({ ok: true, ignored: true }, 202);
@@ -1291,7 +1344,9 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
       // The grant is derived from the confirmed order, so a replayed webhook
       // can never extend the term twice.
       if (result === 'applied') {
-        await grantProForWebhook(dbOf(c, overrides), raw.subarray(0, size));
+        await grantProForWebhook(db, raw.subarray(0, size));
+        // …and the board rows follow their ledger row (idempotent).
+        await syncBoardLedgers(db, 'webhook');
       }
       return c.json({ ok: true, result });
     } catch {
@@ -2200,6 +2255,81 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
   });
   app.get('/api/v1/ads/report', (c) => handleAdReport(c.req.raw, () => dbOf(c, overrides)));
   app.post('/api/v1/ads/report', smallBody, (c) => handleAdReport(c.req.raw, () => dbOf(c, overrides)));
+
+  // -------------------------------------------------------------------------
+  // Torch Boost (public boosts) and the owner promo cards — the two paid
+  // boards. Both read like ads: live JSON, no-store, never any score write.
+  // -------------------------------------------------------------------------
+  const liveJsonHeaders: MiddlewareHandler<AppEnv> = async (c, next) => {
+    c.header('Cache-Control', 'no-store');
+    c.header('Cloudflare-CDN-Cache-Control', 'no-store');
+    c.header('Referrer-Policy', 'no-referrer');
+    await next();
+  };
+  const torchSalesOpen = (env: WorkerEnv | undefined): boolean =>
+    env?.PAID_SALES_OPEN === 'true' && !!env.AIPAY_CHARITY_API_KEY?.trim();
+
+  app.use('/api/v1/torch/*', liveJsonHeaders);
+  app.use('/api/v1/promos', liveJsonHeaders);
+  app.use('/api/v1/promo/*', liveJsonHeaders);
+  app.use('/api/v1/charity/ledger', liveJsonHeaders);
+
+  app.post('/api/v1/torch/order', smallBody, async (c) => {
+    const result = await createTorchOrder(dbOf(c, overrides), {
+      input: await c.req.json<unknown>().catch(() => null),
+      env: c.env,
+      fetchImpl: overrides.fetchImpl ?? fetch,
+    });
+    return result.ok ? c.json({ ...result.order }, result.status) : c.json({ error: result.error }, result.status);
+  });
+  app.get('/api/v1/torch/status', async (c) => {
+    const result = await readTorchStatus(dbOf(c, overrides), {
+      order: c.req.query('order'), code: c.req.query('code'),
+    });
+    return result.ok ? c.json(result.value, 200) : c.json({ error: result.error }, result.status);
+  });
+  app.get('/api/v1/torch/leaderboard', async (c) => {
+    const page = Number(c.req.query('page') ?? '1');
+    const board = await readTorchLeaderboard(dbOf(c, overrides), {
+      tab: c.req.query('tab'),
+      page: Number.isSafeInteger(page) ? page : 1,
+      salesOpen: torchSalesOpen(c.env),
+    });
+    return board ? c.json(board) : c.json({ error: 'invalid_tab' }, 400);
+  });
+  app.get('/api/v1/torch/detail', async (c) => {
+    const detail = await readTorchDetail(dbOf(c, overrides), {
+      domain: c.req.query('domain'),
+      salesOpen: torchSalesOpen(c.env),
+    });
+    return detail ? c.json(detail) : c.json({ error: 'invalid_domain' }, 400);
+  });
+
+  app.get('/api/v1/promos', async (c) => {
+    const promo = await readActivePromo(dbOf(c, overrides), c.req.query('domain'));
+    return c.json({ promo });
+  });
+  app.post('/api/v1/promo/apply', async (c, next) => {
+    if (c.env?.PAID_SALES_OPEN !== 'true') return c.json({ error: 'promo_sales_closed' }, 403);
+    if (!c.env.AIPAY_PROMO_API_KEY?.trim()) return c.json({ error: 'billing_not_configured' }, 503);
+    return next();
+  }, smallBody, async (c) => {
+    const result = await createPromoOrder(dbOf(c, overrides), {
+      input: await c.req.json<unknown>().catch(() => null),
+      manageToken: bearerToken(c),
+      env: c.env,
+      fetchImpl: overrides.fetchImpl ?? fetch,
+    });
+    return result.ok ? c.json(result.order, result.status) : c.json({ error: result.error }, result.status);
+  });
+  app.get('/api/v1/promo/orders/:orderId', async (c) => {
+    const result = await readPromoOrder(dbOf(c, overrides), c.req.param('orderId'), bearerToken(c));
+    return result.ok ? c.json(result.order) : c.json({ error: result.error }, result.status);
+  });
+
+  app.get('/api/v1/charity/ledger', async (c) => {
+    return c.json(await readCharityLedger(dbOf(c, overrides)));
+  });
 
   // -------------------------------------------------------------------------
   // Rescan requests, domain verification, owner claims, view counter
@@ -3618,8 +3748,29 @@ export default {
     return app.fetch(request, env, ctx);
   },
 
-  /** Daily maintenance; releases separately own scan ingestion. */
-  async scheduled(_controller: ScheduledController, env: WorkerEnv, ctx: ExecutionContext): Promise<void> {
+  /** Daily maintenance at 04:30 UTC; the ten-minute trigger only runs the
+   * board confirmation poll. Releases separately own scan ingestion. */
+  async scheduled(controller: ScheduledController, env: WorkerEnv, ctx: ExecutionContext): Promise<void> {
+    // The ten-minute trigger: confirm torch/promo orders that live under the
+    // board merchants. Log-only on purpose — 144 success rows a day would
+    // drown the monitoring board, and a missed poll is covered by the
+    // webhook (and retried on the next tick).
+    if (typeof controller?.cron === 'string' && controller.cron.includes('*')) {
+      ctx.waitUntil((async () => {
+        const db = createD1Db(env.DB);
+        const result = await pollBillingOrders(db, {
+          torch: env.AIPAY_CHARITY_API_KEY?.trim() ? { ...env, AIPAY_API_KEY: env.AIPAY_CHARITY_API_KEY } : undefined,
+          promo: env.AIPAY_PROMO_API_KEY?.trim() ? { ...env, AIPAY_API_KEY: env.AIPAY_PROMO_API_KEY } : undefined,
+        });
+        await syncBoardLedgers(db, 'scan');
+        if (result.checked > 0 || result.applied > 0) {
+          console.log(`board poll: ${result.checked} checked, ${result.applied} applied`);
+        }
+      })().catch((error) => {
+        console.error('board poll failed:', error);
+      }));
+      return;
+    }
     if (env.AIPAY_RECONCILE_ENABLED === 'true' && env.AIPAY_API_KEY?.trim()) {
       ctx.waitUntil((async () => {
         const db = createD1Db(env.DB);
@@ -3659,6 +3810,10 @@ export default {
           // eat the daily row-write budget.
           const pruned = await pruneMailArtifacts(db);
           await expireAds(db);
+          // The boards: promo terms that ran out close, and the ledger rows
+          // follow their billing rows whichever channel confirmed them.
+          await expirePromos(db);
+          await syncBoardLedgers(db, 'reconcile');
           const removed =
             pruned.challenges + pruned.inboundMail + pruned.inboundActions + pruned.outbox + pruned.cooldown;
           if (removed > 0) {

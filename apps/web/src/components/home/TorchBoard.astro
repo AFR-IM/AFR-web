@@ -1,0 +1,298 @@
+---
+// TorchBoostBoard — homepage paid-boost leaderboard (four time windows).
+// Advertising surface: boosted amounts are never part of the AFR score and
+// never change the natural ranking. Hidden until the API answers; a shop
+// that never sold anything stays invisible, while an open shop shows its
+// (possibly empty) window so the other tabs remain reachable.
+//
+// URL state: ?torch=day|week|month|all&p=N — read on load, written with
+// history.replaceState so the board is shareable and back-button friendly.
+
+import { pathFor, type Locale } from '../../i18n/loader.ts';
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const isZh = locale === 'zh-CN';
+const T = (en: string, zh: string) => (isZh ? zh : en);
+
+// Precomputed here so the client script only appends the validated domain.
+const siteBase = pathFor(locale, '/site/');
+
+const tabs = [
+  { id: 'day', label: T('Today', '今日') },
+  { id: 'week', label: T('This week', '本周') },
+  { id: 'month', label: T('This month', '本月') },
+  { id: 'all', label: T('All time', '累计') },
+];
+
+const copy = {
+  heading: T('Torch Boost leaderboard', '火把助力榜'),
+  // Public promise — keep both halves in sync with the charity page copy.
+  note: T('Paid boosts, never part of the AFR score', '助力金额不参与评分'),
+  prev: T('Previous', '上一页'),
+  next: T('Next', '下一页'),
+  page: T('Page {n} of {m}', '第 {n} / {m} 页'),
+  empty: T('No boosts in this window yet.', '本窗口暂无助力。'),
+};
+---
+
+<section class="section container" data-torch-board data-locale={locale} data-site-base={siteBase} hidden>
+  <div class="sec-head">
+    <h2>{copy.heading}</h2>
+    <span class="sec-note">{copy.note}</span>
+  </div>
+
+  <div class="tb-tabs" role="tablist" aria-label={copy.heading}>
+    {tabs.map((t) => (
+      <button
+        class="tab mono"
+        type="button"
+        role="tab"
+        data-torch-tab={t.id}
+        aria-selected="false"
+      >
+        {t.label}
+      </button>
+    ))}
+  </div>
+
+  <ol class="tb-list" data-torch-items></ol>
+  <p class="tb-empty" data-torch-empty hidden>{copy.empty}</p>
+
+  <div class="tb-pager" data-torch-pager hidden>
+    <button class="btn btn-ghost" type="button" data-torch-prev>{copy.prev}</button>
+    <span class="tb-page mono" data-torch-page>{copy.page}</span>
+    <button class="btn btn-ghost" type="button" data-torch-next>{copy.next}</button>
+  </div>
+</section>
+
+<style>
+  .tb-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+  .tab {
+    padding: 6px 12px;
+    font-size: 12.5px;
+    color: var(--text-3);
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: var(--r-1);
+    transition: color var(--t-micro) var(--ease), border-color var(--t-micro) var(--ease);
+  }
+  .tab[aria-selected='true'] {
+    color: var(--text-1);
+    border-color: var(--brand);
+  }
+  .tb-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    overflow: hidden;
+    background: var(--bg-surface);
+  }
+  .tb-list:empty {
+    display: none;
+  }
+  .tb-item + .tb-item .tb-row {
+    border-top: 1px solid var(--line);
+  }
+  .tb-row {
+    display: grid;
+    grid-template-columns: 44px minmax(140px, 1fr) 28px 90px;
+    align-items: center;
+    gap: 14px;
+    padding: 11px 16px;
+    transition: background var(--t-micro) var(--ease);
+  }
+  .tb-row:hover {
+    background: var(--bg-elevated);
+    color: inherit;
+  }
+  .tb-rank {
+    font-size: 13px;
+    color: var(--text-3);
+  }
+  .tb-domain {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-1);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tb-row:hover .tb-domain {
+    color: var(--brand);
+  }
+  .tb-grade {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-2);
+    text-align: center;
+  }
+  .tb-amount {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-1);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .tb-pager {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    margin-top: 14px;
+  }
+  .tb-pager[hidden] {
+    display: none;
+  }
+  .tb-empty {
+    margin: 4px 0 0;
+    font-size: 13px;
+    color: var(--text-3);
+  }
+  .tb-page {
+    font-size: 12.5px;
+    color: var(--text-3);
+  }
+  @media (max-width: 767px) {
+    .tb-row {
+      grid-template-columns: 32px minmax(0, 1fr) 24px 76px;
+      gap: 10px;
+      padding: 11px 12px;
+    }
+  }
+</style>
+
+<script>
+  // Client-side board: fetch on mount, re-fetch on tab/page change, sync URL.
+  import { fetchTorchLeaderboard, formatUsd, type TorchBoard } from '../../data/torch.ts';
+
+  const BOARD_TABS = ["day", "week", "month", "all"];
+  const PER_PAGE = 30;
+
+  const root = document.querySelector<HTMLElement>('[data-torch-board]');
+  if (root) {
+    const siteBase = root.dataset.siteBase ?? '/site/';
+    const list = root.querySelector<HTMLElement>('[data-torch-items]');
+    const pager = root.querySelector<HTMLElement>('[data-torch-pager]');
+    const prev = root.querySelector<HTMLButtonElement>('[data-torch-prev]');
+    const next = root.querySelector<HTMLButtonElement>('[data-torch-next]');
+    const pageLabel = root.querySelector<HTMLElement>('[data-torch-page]');
+    const tabButtons = Array.from(root.querySelectorAll<HTMLButtonElement>('[data-torch-tab]'));
+    const pageTpl = pageLabel?.textContent?.trim() || 'Page {n} of {m}';
+
+    // Restore state from the URL; anything invalid falls back to the default.
+    const params = new URLSearchParams(location.search);
+    const rawTab = params.get('torch') ?? '';
+    let tab: string = BOARD_TABS.includes(rawTab) ? rawTab : 'day';
+    const rawPage = Number.parseInt(params.get('p') ?? '', 10);
+    let page: number = Number.isFinite(rawPage) && rawPage > 0 ? rawPage : 1;
+
+    let token = 0; // drop stale responses when the user clicks fast
+
+    function syncUrl() {
+      try {
+        const url = new URL(location.href);
+        url.searchParams.set('torch', tab);
+        if (page > 1) url.searchParams.set('p', String(page));
+        else url.searchParams.delete('p');
+        history.replaceState(null, '', url);
+      } catch {
+        /* file:// or sandboxed — the board still works, just not shareable */
+      }
+    }
+
+    function paintTabs() {
+      for (const btn of tabButtons) {
+        btn.setAttribute('aria-selected', String(btn.dataset.torchTab === tab));
+      }
+    }
+
+    function render(board: TorchBoard) {
+      if (!list) return;
+      // The server clamps the page; keep the local state honest so the label
+      // and the pager never claim a page that does not exist.
+      page = board.page;
+      const empty = root?.querySelector<HTMLElement>('[data-torch-empty]');
+      if (board.items.length === 0) {
+        // An empty window still shows the tabs — the other windows (and the
+        // URL) must stay reachable — unless nothing was ever boosted and the
+        // shop is closed: that board would only advertise a closed feature.
+        list.replaceChildren();
+        if (pager) pager.hidden = true;
+        if (empty) empty.hidden = false;
+        root!.hidden = false;
+        return;
+      }
+      if (empty) empty.hidden = true;
+      const rows = board.items.map((item, i) => {
+        const rank = String((board.page - 1) * PER_PAGE + i + 1).padStart(2, '0');
+        const grade = item.grade ? `<span class="tb-grade mono">${item.grade.toLowerCase()}</span>` : '<span class="tb-grade"></span>';
+        // Domains are validated by the parser ([a-z0-9.-]) — safe as text and href.
+        return (
+          `<li class="tb-item"><a class="tb-row" href="${siteBase}${item.domain}">` +
+          `<span class="tb-rank mono">${rank}</span>` +
+          `<span class="tb-domain mono">${item.domain}</span>` +
+          grade +
+          `<span class="tb-amount mono">${formatUsd(item.total)}</span>` +
+          `</a></li>`
+        );
+      });
+      list.innerHTML = rows.join('');
+      const pages = Math.max(1, board.pages);
+      if (pager) pager.hidden = pages <= 1;
+      if (pageLabel) pageLabel.textContent = pageTpl.replace('{n}', String(page)).replace('{m}', String(pages));
+      if (prev) prev.disabled = page <= 1;
+      if (next) next.disabled = page >= pages;
+      root!.hidden = false;
+    }
+
+    async function load() {
+      const my = ++token;
+      const board = await fetchTorchLeaderboard(tab as 'day' | 'week' | 'month' | 'all', page);
+      if (my !== token) return; // a newer click already won
+      if (!board) return; // keep whatever is on screen (or hidden)
+      if (board.items.length === 0 && !board.salesOpen) {
+        // Closed shop, empty window: look at the whole book before deciding
+        // the board has nothing at all to show.
+        const all = await fetchTorchLeaderboard('all', 1);
+        if (my !== token) return;
+        if (!all || all.total === 0) {
+          root!.hidden = true;
+          return;
+        }
+      }
+      render(board);
+    }
+
+    function go(nextTab: string, nextPage: number) {
+      tab = nextTab;
+      page = nextPage;
+      paintTabs();
+      syncUrl();
+      void load();
+    }
+
+    for (const btn of tabButtons) {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.torchTab ?? 'day';
+        if (id === tab) return;
+        go(id, 1);
+      });
+    }
+    prev?.addEventListener('click', () => { if (page > 1) go(tab, page - 1); });
+    next?.addEventListener('click', () => go(tab, page + 1));
+
+    paintTabs();
+    void load();
+  }
+</script>

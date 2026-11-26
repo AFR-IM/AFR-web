@@ -4,9 +4,12 @@ compatibility_date = "2026-11-10"
 workers_dev = true
 
 # Daily cron (04:30 UTC): owner notifications and mail housekeeping.
+# Every 10 minutes: confirmation poll of the torch/promo orders that live
+# under the board merchants (their own AIPAY accounts, so the daily
+# reconcile of the main merchant never sees them).
 # Scan snapshots enter D1 through the pinned sync-site release workflow.
 [triggers]
-crons = ["30 4 * * *"]
+crons = ["30 4 * * *", "*/10 * * * *"]
 
 # Required secrets — set per environment, values are never committed:
 #   GITHUB_DISPATCH_TOKEN  token that can dispatch scan.yml (search-then-collect;

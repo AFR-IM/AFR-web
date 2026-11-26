@@ -367,7 +367,7 @@
     "/api/v1/charity": {
       "get": {
         "summary": "Charity settings (beneficiary list and the two receiving addresses)",
-        "description": "Public charity settings: the beneficiary list and the two receiving addresses are edited in the administrator console and published here — this is the data contract for the charity surface; the public page is not published yet. The fingerprint is the sha256 of the charity pool address, so a published address can be verified against the audit trail.",
+        "description": "Public charity settings: the beneficiary list and the two receiving addresses are edited in the administrator console and published here — this is the data contract for the charity surface behind /charity. The fingerprint is the sha256 of the charity pool address, so a published address can be verified against the audit trail.",
         "responses": {
           "200": {
             "description": "Charity settings",
@@ -378,6 +378,634 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/torch/leaderboard": {
+      "get": {
+        "summary": "Torch Boost leaderboard (advertising, not assessment)",
+        "description": "Paid boost totals per site for one time window, 30 items per page. Advertising only: boosted amounts never enter the AFR score, grade or natural ranking. The response is never cached.",
+        "parameters": [
+          {
+            "name": "tab",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "day",
+                "week",
+                "month",
+                "all"
+              ]
+            },
+            "description": "Time window (UTC): today, this week, this month, all time"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "description": "Page number, 30 items per page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Leaderboard page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "tab": {
+                      "type": "string"
+                    },
+                    "page": {
+                      "type": "integer"
+                    },
+                    "pages": {
+                      "type": "integer"
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "salesOpen": {
+                      "type": "boolean"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "domain": {
+                            "type": "string"
+                          },
+                          "total": {
+                            "type": "number"
+                          },
+                          "count": {
+                            "type": "integer"
+                          },
+                          "grade": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "score": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/torch/detail": {
+      "get": {
+        "summary": "Torch Boost totals for one site (advertising, not assessment)",
+        "description": "Paid boost total, count and all-time rank for a single domain, plus the charity pool state. Advertising only: boosts never affect the score, grade or ranking.",
+        "parameters": [
+          {
+            "name": "domain",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The site's domain"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Boost detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "domain": {
+                      "type": "string"
+                    },
+                    "total": {
+                      "type": "number"
+                    },
+                    "count": {
+                      "type": "integer"
+                    },
+                    "rank": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "lastAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "raised": {
+                      "type": "number"
+                    },
+                    "target": {
+                      "type": "number"
+                    },
+                    "salesOpen": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "unknown_domain"
+          }
+        }
+      }
+    },
+    "/api/v1/charity/ledger": {
+      "get": {
+        "summary": "Append-only charity ledger (boost inflows and donation outflows)",
+        "description": "Every boost received and every donation executed, newest first, each with its on-chain transaction hash and anchor id. Append-only: entries are never edited or removed, so the list is publicly verifiable.",
+        "responses": {
+          "200": {
+            "description": "Ledger",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "generatedAt": {
+                      "type": "string"
+                    },
+                    "entries": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "torch_in",
+                              "donation_out"
+                            ]
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "amount": {
+                            "type": "string"
+                          },
+                          "domain": {
+                            "type": "string"
+                          },
+                          "beneficiary": {
+                            "type": "string"
+                          },
+                          "txHash": {
+                            "type": "string"
+                          },
+                          "at": {
+                            "type": "string"
+                          },
+                          "fundedInTx": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "anchor": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/promos": {
+      "get": {
+        "summary": "Live site promotion for one domain (advertising, not assessment)",
+        "description": "The paid promotion currently running on a site's own report page, or null. Advertising only: a promotion never affects the score, grade or ranking of the site it belongs to.",
+        "parameters": [
+          {
+            "name": "domain",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The site's domain"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The promotion, or null when none is live",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "promo": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "domain": {
+                          "type": "string"
+                        },
+                        "headline": {
+                          "type": "string"
+                        },
+                        "body": {
+                          "type": "string"
+                        },
+                        "startsAt": {
+                          "type": "string"
+                        },
+                        "endsAt": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/torch/order": {
+      "post": {
+        "summary": "Create a boost order (advertising, not assessment)",
+        "description": "Create a boost order for a listed site. The wallet is chosen server-side; the single-wallet $1,000 per-site daily cap is enforced atomically. Advertising only: a boost never affects the score, grade or ranking. Answers 403 torch_sales_closed while sales are closed, 409 torch_cap_reached / request_conflict, 404 unknown_domain, 503 billing_not_configured / settings_missing / wallet_mismatch, 502 billing_unavailable. Reusing the same requestId resumes the same order instead of paying twice.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "requestId",
+                  "domain",
+                  "amount"
+                ],
+                "properties": {
+                  "requestId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "domain": {
+                    "type": "string"
+                  },
+                  "amount": {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 1000,
+                    "description": "USDC, at most two decimals"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Order created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "orderId": {
+                      "type": "string"
+                    },
+                    "bindingCode": {
+                      "type": "string",
+                      "minLength": 8,
+                      "maxLength": 8
+                    },
+                    "amount": {
+                      "type": "number"
+                    },
+                    "checkoutUrl": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "expiresAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request_id / invalid_domain / invalid_amount"
+          },
+          "403": {
+            "description": "torch_sales_closed"
+          },
+          "404": {
+            "description": "unknown_domain"
+          },
+          "409": {
+            "description": "torch_cap_reached / request_conflict"
+          },
+          "502": {
+            "description": "billing_unavailable"
+          },
+          "503": {
+            "description": "billing_not_configured / settings_missing / wallet_mismatch"
+          }
+        }
+      }
+    },
+    "/api/v1/torch/status": {
+      "get": {
+        "summary": "Poll one boost order by binding code (advertising, not assessment)",
+        "description": "Status of one boost order, claimed with its 8-character binding code. The code answers for a pending order for 15 minutes (403 binding_expired afterwards) and for terminal states thereafter. Advertising only.",
+        "parameters": [
+          {
+            "name": "order",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The order id (torch-<uuid>)"
+          },
+          {
+            "name": "code",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The 8-character binding code"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Order status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "pending",
+                        "paid",
+                        "expired",
+                        "cancelled",
+                        "review"
+                      ]
+                    },
+                    "amount": {
+                      "type": "number"
+                    },
+                    "paidAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request_id"
+          },
+          "403": {
+            "description": "binding_expired"
+          },
+          "404": {
+            "description": "not_found"
+          }
+        }
+      }
+    },
+    "/api/v1/promo/apply": {
+      "post": {
+        "summary": "Buy a promotion for your own verified site (advertising, not assessment)",
+        "description": "Owner-authenticated: Authorization: Bearer <manage token>. $19 / $49 / $149 buys 30 / 90 / 365 days, halved while the site holds Pro (decided at order time). The card is served only after AIPAY confirms the payment and an operator approves it, and can only link back to the buying site. Answers 403 promo_sales_closed / not_verified, 401 unauthorized, 409 order_pending / request_conflict, 400 invalid_tier / invalid_copy / disallowed_claim, 503 billing_not_configured / settings_missing / wallet_mismatch. There is no refund channel today.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "requestId",
+                  "domain",
+                  "tier",
+                  "headline",
+                  "body"
+                ],
+                "properties": {
+                  "requestId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "domain": {
+                    "type": "string"
+                  },
+                  "tier": {
+                    "type": "integer",
+                    "enum": [
+                      19,
+                      49,
+                      149
+                    ],
+                    "description": "USD price; the term follows the tier"
+                  },
+                  "headline": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "body": {
+                    "type": "string",
+                    "maxLength": 90
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Order created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "orderId": {
+                      "type": "string"
+                    },
+                    "domain": {
+                      "type": "string"
+                    },
+                    "tier": {
+                      "type": "integer"
+                    },
+                    "termDays": {
+                      "type": "integer"
+                    },
+                    "amount": {
+                      "type": "number"
+                    },
+                    "isProHalf": {
+                      "type": "boolean"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "paid": {
+                      "type": "boolean"
+                    },
+                    "checkoutUrl": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "expiresAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request_id / invalid_tier / invalid_domain / invalid_copy / disallowed_claim"
+          },
+          "401": {
+            "description": "unauthorized"
+          },
+          "403": {
+            "description": "promo_sales_closed / not_verified"
+          },
+          "409": {
+            "description": "order_pending / request_conflict"
+          },
+          "502": {
+            "description": "billing_unavailable"
+          },
+          "503": {
+            "description": "billing_not_configured / settings_missing / wallet_mismatch"
+          }
+        }
+      }
+    },
+    "/api/v1/promo/orders/{orderId}": {
+      "get": {
+        "summary": "Owner view of one promotion order",
+        "description": "The owner view of one promotion order: status, paid flag, term window and review note. Only the site owner can read it (Authorization: Bearer <manage token>).",
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The order id (promo-<uuid>)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The order",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "orderId": {
+                      "type": "string"
+                    },
+                    "domain": {
+                      "type": "string"
+                    },
+                    "tier": {
+                      "type": "integer"
+                    },
+                    "termDays": {
+                      "type": "integer"
+                    },
+                    "amount": {
+                      "type": "number"
+                    },
+                    "isProHalf": {
+                      "type": "boolean"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "pending",
+                        "paid",
+                        "active",
+                        "paused",
+                        "expired",
+                        "rejected",
+                        "cancelled"
+                      ]
+                    },
+                    "paid": {
+                      "type": "boolean"
+                    },
+                    "startsAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "endsAt": {
+                      "type": "stringnull"
+                    },
+                    "reviewNote": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized"
+          },
+          "404": {
+            "description": "not_found"
           }
         }
       }
@@ -4422,6 +5050,30 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/CharityPublication"
+            }
+          },
+          "torch": {
+            "type": "object",
+            "description": "Torch Boost charity pool state: cumulative paid boosts against the fixed $1,000 target, plus the crossing time and the 7-day beneficiary publication window.",
+            "properties": {
+              "raised": {
+                "type": "number"
+              },
+              "target": {
+                "type": "number"
+              },
+              "crossedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "publishedUntil": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
             }
           }
         }

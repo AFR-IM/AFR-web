@@ -1,13 +1,16 @@
 // src/admin-commercial.ts — the commercial board of the administrator
 // console (SSOT item 18, domain C).
 //
-// Two operator workflows live here:
+// Operator workflows live here:
 //   1. revoke a Pro term  — a refund, a chargeback, a site that asked to go;
-//   2. revoke a machine key — a key that leaked, a client that was retired.
+//   2. revoke a machine key — a key that leaked, a client that was retired;
+//   3. moderate a paid promo card (approve/reject);
+//   4. register an executed charity donation against the pre-vetted list.
 //
-// Both writes go through the same pattern as the other domains: a write-only
-// view whose trigger performs the business write *and* its audit row in one
-// statement, plus the request-id reservation that makes a replay detectable.
+// Both writes of the two paid boards go through the same pattern as the other
+// domains: a write-only view whose trigger performs the business write
+// *and* its audit row in one statement, plus the request-id reservation
+// that makes a replay detectable.
 
 import { html } from 'hono/html';
 import type { HtmlEscapedString } from 'hono/utils/html';
@@ -19,6 +22,7 @@ import {
 } from './admin-audit.ts';
 import {
   adminAlert,
+  adminField,
   adminForm,
   adminNav,
   adminPanel,
@@ -27,6 +31,8 @@ import {
 } from './admin-ui.ts';
 import { resolveSiteKey } from './commercial.ts';
 import { listProEntitlements, type ProTermSummary } from './entitlements.ts';
+import { readSettings, type Beneficiary } from './admin-settings.ts';
+import { readTorchPool, type TorchPool } from './torch.ts';
 import type { Db, SqlParam } from './db.ts';
 
 /** hono's `h` is typed as possibly async; this module never nests async
@@ -66,11 +72,41 @@ export interface CommercialBoard {
   orders: LedgerOrderRow[];
   apiKeys: ApiKeyRow[];
   audit: AdminAuditEntryView[];
+  promos: PromoReviewRow[];
+  donations: DonationRow[];
+  pool: TorchPool;
+  beneficiaries: Beneficiary[];
+}
+
+export interface PromoReviewRow {
+  id: number;
+  domain: string;
+  tier: number;
+  term_days: number;
+  amount: string;
+  pro_half: number;
+  headline: string;
+  body: string;
+  status: string;
+  created_at: string;
+  starts_at: string | null;
+  ends_at: string | null;
+  billing_status: string | null;
+  paid: number;
+}
+
+export interface DonationRow {
+  id: number;
+  amount: string;
+  tx_hash: string;
+  beneficiary: string;
+  note: string;
+  executed_at: string;
 }
 
 /** The private board data. Call only after the admin access check passed. */
 export async function readCommercialBoard(db: Db): Promise<CommercialBoard> {
-  const [subscribers, orders, apiKeys, audit] = await Promise.all([
+  const [subscribers, orders, apiKeys, audit, promos, donations, pool, settings] = await Promise.all([
     listProEntitlements(db, BOARD_LIMIT),
     db
       .prepare(
@@ -87,8 +123,29 @@ export async function readCommercialBoard(db: Db): Promise<CommercialBoard> {
       )
       .all<ApiKeyRow>(BOARD_LIMIT),
     readAdminAudit(db, BOARD_LIMIT),
+    // The review queue first (paid, awaiting a decision), then the rest.
+    db
+      .prepare(
+        `SELECT p.id, p.domain, p.tier, p.term_days, p.amount, p.pro_half, p.headline, p.body,
+                p.status, p.created_at, p.starts_at, p.ends_at,
+                b.status AS billing_status,
+                CASE WHEN b.status = 'confirmed' AND b.tx_hash IS NOT NULL THEN 1 ELSE 0 END AS paid
+         FROM detail_promos p
+         LEFT JOIN billing_orders b ON b.merchant_order_id = p.merchant_order_id
+         ORDER BY CASE p.status WHEN 'paid' THEN 0 WHEN 'active' THEN 1 ELSE 2 END, p.id DESC
+         LIMIT ?`,
+      )
+      .all<PromoReviewRow>(BOARD_LIMIT),
+    db
+      .prepare(
+        `SELECT id, amount, tx_hash, beneficiary, note, executed_at
+         FROM charity_donations ORDER BY id DESC LIMIT ?`,
+      )
+      .all<DonationRow>(BOARD_LIMIT),
+    readTorchPool(db),
+    readSettings(db),
   ]);
-  return { subscribers, orders, apiKeys, audit };
+  return { subscribers, orders, apiKeys, audit, promos, donations, pool, beneficiaries: settings.beneficiaries };
 }
 
 // ---------------------------------------------------------------------------
@@ -215,7 +272,64 @@ export function renderCommercialBoard(board: CommercialBoard): HtmlEscapedString
     ${adminPanel('Pro 订阅', subscribersSection(board))}
     ${adminPanel('最近订单', ordersSection(board))}
     ${adminPanel('机器密钥', apiKeysSection(board))}
+    ${adminPanel('推广审核', promoSection(board))}
+    ${adminPanel('公益池与捐赠', charitySection(board))}
     ${adminPanel('最近审计记录', auditSection(board))}`;
+}
+
+const PROMO_STATE_LABEL: Record<string, string> = {
+  pending: '待付款', paid: '待审核', active: '投放中', paused: '已暂停',
+  expired: '已到期', rejected: '已拒绝', cancelled: '已取消',
+};
+
+/** Paid promo orders (the review queue) and their terms. */
+function promoSection(board: CommercialBoard): HtmlEscapedString {
+  const rows = board.promos.map(row => h`<tr>
+      <th scope="row">#${row.id} ${row.domain}</th>
+      <td>${row.headline}<br>${row.body}</td>
+      <td>$${row.tier} / ${row.term_days} 天${row.pro_half ? '（Pro 半价）' : ''}<br>实付 $${row.amount}</td>
+      <td>${PROMO_STATE_LABEL[row.status] ?? row.status}<br>账单：${row.billing_status ?? '无'}</td>
+      <td>${row.starts_at ?? '—'}<br>${row.ends_at ?? '—'}</td>
+      <td>${row.status === 'paid' && row.paid ? promoModerationForm(row) : ''}</td>
+    </tr>`);
+  return h`<p class="muted">仅已确认付款的推广可审核；通过即刻生效，按购买期限自动到期。推广卡只链到站点自身，永不参与评分。</p>
+    ${adminTable(['推广', '文案', '价格', '状态', '档期（UTC）', '审核'], rows, '还没有推广订单。')}`;
+}
+
+function promoModerationForm(row: PromoReviewRow): HtmlEscapedString {
+  return adminForm('/admin/commercial/promo/decide', crypto.randomUUID(),
+    h`<input type="hidden" name="id" value="${row.id}">
+      ${adminField('操作', h`<select name="decision">
+        <option value="approve">通过</option><option value="reject">拒绝</option></select>`)}
+      ${adminField('审核备注', h`<input name="note" maxlength="500">`)}`, '保存');
+}
+
+/** The pool block, the donation registry and the form that adds one. */
+function charitySection(board: CommercialBoard): HtmlEscapedString {
+  const pool = board.pool;
+  const stats = h`${adminStat('已累计助力', `$${pool.raised}`, `目标 $${pool.target}`)}
+    ${adminStat('触发状态', pool.crossedAt ? '已触发' : '未触发',
+      pool.crossedAt ? `${pool.crossedAt} 触达 $${pool.target}，公示至 ${pool.publishedUntil}` : '达到目标后公示受益人名单 7 天')}`;
+  const rows = board.donations.map(row => h`<tr>
+      <th scope="row">#${row.id}</th>
+      <td>$${row.amount}</td>
+      <td><code>${row.tx_hash}</code></td>
+      <td>${row.beneficiary}</td>
+      <td>${row.executed_at}</td>
+      <td>${row.note}</td>
+    </tr>`);
+  const registry = adminTable(['编号', '金额', '交易哈希', '受益人', '执行时间（UTC）', '备注'], rows,
+    '登记后不可修改（台账只追加）；入账交易互指见公开台账。');
+  const form = board.beneficiaries.length
+    ? adminForm('/admin/commercial/charity/record', crypto.randomUUID(),
+      h`${adminField('金额（USDC）', h`<input name="amount" inputmode="decimal" maxlength="16" required>`)}
+        ${adminField('交易哈希（0x 开头 64 位）', h`<input name="tx_hash" maxlength="66" pattern="0x[0-9a-fA-F]{64}" required>`)}
+        ${adminField('受益人', h`<select name="beneficiary">${board.beneficiaries.map(item =>
+          h`<option value="${item.name}">${item.name}</option>`)}</select>`)}
+        ${adminField('备注', h`<input name="note" maxlength="500">`)}`, '登记捐赠')
+    : adminAlert('warn', '受益人名单为空：先在设置域维护预审名单，才能登记捐赠。');
+  return h`<p class="muted">资金流向公开可查：每笔捐赠登记交易哈希，并记录被它覆盖的入账交易（双向互指）。</p>
+    ${stats}${registry}${form}`;
 }
 
 /** The Pro terms and the form that revokes one. */

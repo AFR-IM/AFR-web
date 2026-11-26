@@ -185,9 +185,84 @@ const endpoints: Endpoint[] = [
     method: 'GET',
     path: '/api/v1/charity',
     desc: T(
-      'Public charity settings: the beneficiary list and the two receiving addresses, with the sha256 fingerprint of the charity pool address so a reader can verify it against the audit trail. The public charity page is not published yet.',
-      '公开的公益设置：受益人列表与两个收款地址，含公益资金池地址的 sha256 指纹，供读者对照审计轨迹核验。公益页面尚未发布。',
+      'Public charity settings: the beneficiary list, the two receiving addresses and the Torch Boost pool state, with the sha256 fingerprint of the charity pool address so a reader can verify it against the audit trail. Backs the public /charity page.',
+      '公开的公益设置：受益人名单、两个收款地址与火把助力资金池状态，含公益资金池地址的 sha256 指纹，供读者对照审计轨迹核验。支撑公开的 /charity 页面。',
     ),
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/charity/ledger',
+    desc: T(
+      'The append-only charity ledger: every boost received and every donation executed, newest first, each with its on-chain transaction hash and anchor id. Never edited or removed — publicly verifiable.',
+      '只增不改的公益台账：每笔助力入账与每笔捐赠出账，最新在前，均带链上交易哈希与锚点 id。绝不修改或删除——公开可核。',
+    ),
+    example: `{ "generatedAt": "2026-11-26T08:00:00.000Z",
+  "entries": [ { "kind": "torch_in", "id": "t1", "amount": "10.00",
+    "domain": "example.com", "txHash": "0xabc…", "at": "2026-11-26T07:00:00.000Z",
+    "anchor": "torch-t1" } ] }`,
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/torch/leaderboard',
+    desc: T(
+      'Paid boost totals per site for one time window (day | week | month | all), 30 items per page. Advertising only — never part of the score, grade or natural ranking.',
+      '某时间窗口（day | week | month | all）内各站的付费助力总额，每页 30 条。仅是广告——不参与分数、等级或自然排名。',
+    ),
+    params: 'tab (day | week | month | all) · page',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/torch/detail',
+    desc: T(
+      'Paid boost total, count and all-time rank for one site, plus the charity pool state. Advertising only — boosts never affect the rating.',
+      '单个站点的付费助力总额、次数与全站排名，以及公益池状态。仅是广告——助力绝不影响评级。',
+    ),
+    params: 'domain',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/promos',
+    desc: T(
+      'The live paid promotion on a site\'s own report page, or null when none runs. Advertising only — never assessment output.',
+      '站点自己报告页上的实时付费推广，无投放时为 null。仅是广告——绝非评级结果。',
+    ),
+    params: 'domain',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/torch/order',
+    desc: T(
+      'Create a boost order for a listed site: the wallet is chosen server-side, the $1,000 per-site daily cap is enforced atomically, and the answer carries an AIPAY checkout link plus an 8-character binding code valid for 15 minutes. Advertising only — boosts never affect the rating.',
+      '为已收录站点创建助力订单：收款钱包由服务端决定，单站每日 $1,000 上限在插入时原子判定，返回 AIPAY 收银台链接与 15 分钟内有效的 8 位绑定码。仅是广告——助力绝不影响评级。',
+    ),
+    params: 'body: { domain, amount, requestId }',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/torch/status',
+    desc: T(
+      'Poll one boost order with its binding code: { status, amount, paidAt }. A pending order whose 15-minute code ran out answers 403 binding_expired.',
+      '用绑定码查询一笔助力订单：{ status, amount, paidAt }；待付款订单超过绑定码 15 分钟有效期时返回 403 binding_expired。',
+    ),
+    params: 'order · code',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/promo/apply',
+    desc: T(
+      'Buy a promotion for your own verified site: $19 / $49 / $149 buys 30 / 90 / 365 days, halved while the site holds Pro. Owner-authenticated; the card is served only after payment and operator approval, and can only link back to the buying site.',
+      '为自己的已验证站点购买推广：$19 / $49 / $149 对应 30 / 90 / 365 天，站点持 Pro 时半价。需站主管理令牌；付款并经运营审核后才展示，且只能链回购买站点自身。',
+    ),
+    params: 'body: { domain, tier, headline, body, requestId } · Authorization: Bearer <token>',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/promo/orders/{orderId}',
+    desc: T(
+      'The owner view of one promotion order: status, paid flag, term window and review note. Only the site owner can read it.',
+      '推广订单的站主视图：状态、付款标记、档期与审核备注。仅站点所有者可读。',
+    ),
+    params: 'orderId · Authorization: Bearer <token>',
   },
   {
     method: 'GET',

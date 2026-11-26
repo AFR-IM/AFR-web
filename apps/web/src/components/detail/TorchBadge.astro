@@ -1,0 +1,74 @@
+---
+// TorchBadge — detail-page paid-boost badge (right column, near the views
+// counter). Hidden until the API answers; a site with no boosts never shows
+// it. The boost amounts are advertising: they never enter the AFR score.
+//
+// The element carries data-torch-total / data-torch-count so the payment
+// flow can update it in place after a successful payment.
+
+import { paintTorchBadge } from '../../data/torch.ts';
+
+interface Props {
+  domain: string;
+  locale: string;
+}
+
+const { domain, locale } = Astro.props;
+const isZh = locale === 'zh-CN';
+const T = (en: string, zh: string) => (isZh ? zh : en);
+
+const tplTotal = T('🔥 {amount} · {count} boosts', '🔥 {amount} · 助力 {count} 次');
+const tplRank = T(' · #{rank} all time', ' · 全站第 {rank}');
+const label = T('Paid boosts', '付费助力');
+---
+
+<p
+  class="torch-badge mono"
+  data-torch-badge
+  data-domain={domain}
+  data-torch-total="0"
+  data-torch-count="0"
+  data-torch-rank=""
+  data-torch-tpl-total={tplTotal}
+  data-torch-tpl-rank={tplRank}
+  data-label={label}
+  hidden
+>
+  <span data-torch-badge-text></span>
+</p>
+
+<style>
+  .torch-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    padding: 5px 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-1);
+    background: var(--bg-surface);
+    font-size: 12px;
+    color: var(--text-2);
+    font-variant-numeric: tabular-nums;
+  }
+  .torch-badge[hidden] {
+    display: none;
+  }
+</style>
+
+<script>
+  // One detail fetch per page (memoised in torch.ts): the badge and the
+  // boost button ask the same question.
+  import { fetchTorchDetail, paintTorchBadge } from '../../data/torch.ts';
+
+  for (const el of document.querySelectorAll<HTMLElement>('[data-torch-badge]')) {
+    const domain = el.dataset.domain ?? '';
+    fetchTorchDetail(domain).then((detail) => {
+      if (!detail) return; // API down or domain invalid — stay hidden
+      el.dataset.torchTotal = String(detail.total);
+      el.dataset.torchCount = String(detail.count);
+      el.dataset.torchRank = detail.rank === null ? '' : String(detail.rank);
+      paintTorchBadge(el);
+    });
+  }
+</script>

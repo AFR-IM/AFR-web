@@ -26,6 +26,9 @@ import ClaimBlock from '../../../components/detail/ClaimBlock.astro';
 import BadgeEmbed from '../../../components/detail/BadgeEmbed.astro';
 import HistorySpark from '../../../components/detail/HistorySpark.astro';
 import RescanButton from '../../../components/detail/RescanButton.astro';
+import TorchBadge from '../../../components/detail/TorchBadge.astro';
+import TorchBoost from '../../../components/detail/TorchBoost.astro';
+import PromoCard from '../../../components/detail/PromoCard.astro';
 import { getCatalog, pathFor, toLocale, type Locale } from '../../../i18n/loader.ts';
 import { uiText } from '../../../components/home/fallbacks.ts';
 import { loadRuntimeDetail } from '../../../data/runtime-detail.ts';
@@ -132,7 +135,12 @@ const description = notFound
               <a href={href('/')}>AFR.IM</a> <span>/</span> <span>site</span>
             </p>
             <div class="head-row">
-              <h1 class="domain mono">{site.domain}</h1>
+              {/* The domain itself is a sponsorship link (rel="nofollow
+                  sponsored"): visitors who follow it leave for the site —
+                  paid links carry the sponsored rel by convention. */}
+              <h1 class="domain mono">
+                <a href={`https://${site.domain}`} rel="noopener nofollow sponsored" target="_blank">{site.domain}</a>
+              </h1>
               {site.verified && <VerifiedTick locale={locale} />}
             </div>
             {site.title && <p class="title">{site.title}</p>}
@@ -198,6 +206,8 @@ const description = notFound
         <div class="grid" data-tab="report">
           <div class="col col-left">
             <ReportCard site={site} locale={locale} />
+            {/* Paid promotion — never part of the score (see PromoCard). */}
+            <PromoCard domain={site.domain} locale={locale} />
           </div>
           <div class="col col-center">
             <ObservationPanel site={site} locale={locale} />
@@ -210,6 +220,8 @@ const description = notFound
               <a class="btn" href={href(`/owner/${site.domain}/`)}>{T('Site owner tools', '站主管理')}</a>
             )}
             <HistorySpark site={site} locale={locale} />
+            <TorchBadge domain={site.domain} locale={locale} />
+            <TorchBoost domain={site.domain} locale={locale} />
             <p class="views mono" data-views data-domain={site.domain} data-label={viewsLabel}>
               <span class="views-sk" aria-hidden="true"></span>
               <span class="views-txt" data-views-txt hidden></span>
@@ -275,6 +287,14 @@ const description = notFound
     letter-spacing: -0.02em;
     color: var(--text-1);
     word-break: break-all;
+  }
+  /* The h1 wraps a sponsorship link — keep the exact heading look. */
+  .domain a {
+    color: inherit;
+    text-decoration: none;
+  }
+  .domain a:hover {
+    color: var(--brand);
   }
   .title {
     margin: 6px 0 0;

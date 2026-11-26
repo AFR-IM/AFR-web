@@ -1,0 +1,593 @@
+---
+// TorchBoost — the detail-page "Boost this site" button and its payment
+// dialog. Advertising surface: paying never changes the score, the grade or
+// the natural ranking, and the copy says so in both languages.
+//
+// Flow: amount → POST /api/v1/torch/order → open checkout in a new tab and
+// poll GET /api/v1/torch/status every 5 s with the order id + binding code.
+// When the payment lands, the TorchBadge on the same page updates in place.
+//
+// Fail-closed surfaces: `torch_sales_closed` hides the whole block (we do
+// not advertise a shop that is shut), `torch_cap_reached` explains today's
+// $1,000 per-site cap, 503 says payments are unavailable.
+
+import { formatUsd } from '../../data/torch.ts';
+
+interface Props {
+  domain: string;
+  locale: string;
+}
+
+const { domain, locale } = Astro.props;
+const isZh = locale === 'zh-CN';
+const T = (en: string, zh: string) => (isZh ? zh : en);
+
+const copy = {
+  open: T('Boost this site', '助力本站'),
+  title: T('Boost this site', '助力本站'),
+  note: T('Boosts fund the charity pool. They never change the score, the grade or the ranking.', '助力进入公益池。助力不改变评分、等级与排名。'),
+  amountLabel: T('Amount (USD)', '金额（美元）'),
+  custom: T('Custom amount (1–1000)', '自定义金额（1–1000）'),
+  invalidAmount: T('Enter an amount between $1 and $1000, at most two decimals.', '请输入 $1–$1000 之间的金额，最多两位小数。'),
+  pay: T('Pay with USDC', 'USDC 支付'),
+  working: T('Creating your order…', '正在创建订单…'),
+  checkout: T('Open checkout', '打开支付页'),
+  codeLabel: T('Binding code', '绑定码'),
+  copy: T('Copy', '复制'),
+  copied: T('Copied ✓', '已复制 ✓'),
+  valid15: T('Valid for 15 minutes — keep this code to check your payment.', '绑定码 15 分钟内有效——请保留以便查询付款。'),
+  waiting: T('Waiting for payment…', '等待支付…'),
+  checking: T('Checking payment status…', '正在查询付款状态…'),
+  paid: T('Received — thank you for the boost.', '已到账，感谢助力。'),
+  expired: T('This order expired before payment. Order again to boost.', '订单已过期，可重新下单助力。'),
+  cancelled: T('This order was cancelled. You can order again.', '订单已取消，可以重新下单。'),
+  review: T('Payment received, under review.', '已收到付款，审核中。'),
+  bindingExpired: T('The binding code expired before payment was seen. Order again to boost.', '绑定码已过期且未查到付款，请重新下单助力。'),
+  notFound: T('Order not found. Order again to boost.', '未找到订单，请重新下单助力。'),
+  close: T('Close', '关闭'),
+  errClosed: T('Boost sales are currently closed.', '助力购买目前已关闭。'),
+  errCap: T('This site has reached its $1,000 boost cap for today.', '该站今日助力已达 $1,000 上限。'),
+  errBilling: T('Payments are temporarily unavailable.', '支付暂不可用。'),
+  errGeneric: T('Could not create the order — try again.', '下单失败——请重试。'),
+  errNetwork: T('Network error — try again.', '网络错误——请重试。'),
+};
+const presets = [1, 5, 10, 25, 50, 100];
+---
+
+<div class="torch-boost" data-torch-boost data-domain={domain} data-copy={JSON.stringify(copy)} hidden>
+  <button class="btn tb-open" type="button" data-torch-open>{copy.open}</button>
+
+  <div class="tb-overlay" data-torch-modal hidden>
+    <div class="tb-backdrop" data-torch-backdrop></div>
+    <div class="tb-dialog" role="dialog" aria-modal="true" aria-labelledby="tb-title">
+      <header class="tb-head">
+        <h2 id="tb-title">{copy.title}</h2>
+        <button class="tb-x" type="button" data-torch-close aria-label={copy.close}>✕</button>
+      </header>
+      <p class="tb-note">{copy.note}</p>
+
+      <div class="tb-presets" role="group" aria-label={copy.amountLabel}>
+        {presets.map((v) => (
+          <button class="chip tb-amt" type="button" data-torch-amt={String(v)} aria-pressed="false">
+            {formatUsd(v)}
+          </button>
+        ))}
+      </div>
+
+      <label class="tb-custom">
+        <span class="tb-custom-label">{copy.custom}</span>
+        <input
+          class="tb-input mono"
+          type="text"
+          inputmode="decimal"
+          autocomplete="off"
+          data-torch-custom
+          placeholder="1–1000"
+        />
+      </label>
+
+      <p class="tb-error" data-torch-error role="alert" hidden></p>
+
+      <div class="tb-order" data-torch-order hidden>
+        <a class="btn tb-checkout" data-torch-checkout target="_blank" rel="noopener">{copy.checkout}</a>
+        <p class="tb-code-row">
+          <span class="tb-code-label">{copy.codeLabel}:</span>
+          <code class="tb-code mono" data-torch-code></code>
+          <button class="tb-copy" type="button" data-torch-copy>{copy.copy}</button>
+        </p>
+        <p class="tb-hint">{copy.valid15}</p>
+        <p class="tb-status" data-torch-status role="status" aria-live="polite">
+          <span class="tb-spinner" aria-hidden="true"></span>
+          <span data-torch-status-text>{copy.waiting}</span>
+        </p>
+      </div>
+
+      <div class="tb-actions">
+        <button class="btn" type="button" data-torch-pay>{copy.pay}</button>
+        <button class="btn btn-ghost" type="button" data-torch-close>{copy.close}</button>
+      </div>
+
+      <div class="tb-done" data-torch-done hidden>
+        <span class="tb-done-mark mono" aria-hidden="true">✓</span>
+        <span data-torch-done-text></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .torch-boost[hidden] {
+    display: none;
+  }
+  .tb-open {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .tb-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    display: grid;
+    place-items: center;
+    padding: 16px;
+  }
+  .tb-overlay[hidden] {
+    display: none;
+  }
+  .tb-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgb(0 0 0 / 55%);
+  }
+  .tb-dialog {
+    position: relative;
+    width: min(420px, 100%);
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+    display: grid;
+    gap: 12px;
+    padding: 18px 20px 20px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: 0 18px 48px rgb(0 0 0 / 35%);
+  }
+  .tb-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .tb-head h2 {
+    margin: 0;
+    font-size: 17px;
+  }
+  .tb-x {
+    flex: none;
+    width: 28px;
+    height: 28px;
+    display: grid;
+    place-items: center;
+    color: var(--text-3);
+    border: 1px solid var(--line);
+    border-radius: var(--r-1);
+    background: transparent;
+  }
+  .tb-x:hover {
+    color: var(--text-1);
+    border-color: var(--brand);
+  }
+  .tb-note {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-2);
+  }
+  .tb-presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .tb-amt[aria-pressed='true'] {
+    border-color: var(--brand);
+    color: var(--text-1);
+  }
+  .tb-custom {
+    display: grid;
+    gap: 6px;
+  }
+  .tb-custom-label {
+    font-size: 12.5px;
+    color: var(--text-2);
+  }
+  .tb-input {
+    width: 100%;
+    padding: 8px 10px;
+    background: var(--bg-ink);
+    border: 1px solid var(--line);
+    border-radius: var(--r-1);
+    color: var(--text-1);
+    font-size: 14px;
+    outline: none;
+    transition: border-color var(--t-micro) var(--ease);
+  }
+  .tb-input:focus-visible {
+    border-color: var(--brand);
+  }
+  .tb-error {
+    margin: 0;
+    font-size: 13px;
+    color: var(--grade-f);
+  }
+  .tb-error[hidden] {
+    display: none;
+  }
+  .tb-order {
+    display: grid;
+    gap: 8px;
+    padding: 12px 14px;
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: var(--r-1);
+  }
+  .tb-order[hidden] {
+    display: none;
+  }
+  .tb-checkout {
+    justify-content: center;
+    text-decoration: none;
+  }
+  .tb-code-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-2);
+  }
+  .tb-code {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    color: var(--text-1);
+  }
+  .tb-copy {
+    font-size: 12px;
+    color: var(--brand-link);
+    text-decoration: underline;
+  }
+  .tb-hint {
+    margin: 0;
+    font-size: 12px;
+    color: var(--text-3);
+  }
+  .tb-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    font-size: 12.5px;
+    color: var(--text-2);
+  }
+  .tb-spinner {
+    width: 12px;
+    height: 12px;
+    flex: none;
+    border: 2px solid color-mix(in srgb, currentColor 35%, transparent);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: tb-spin 0.8s linear infinite;
+  }
+  @keyframes tb-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  .tb-actions {
+    display: flex;
+    gap: 10px;
+  }
+  .tb-actions .btn {
+    flex: 1;
+    justify-content: center;
+  }
+  .tb-done {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 14px;
+    background: var(--bg-surface);
+    border: 1px solid color-mix(in srgb, var(--grade-a) 45%, transparent);
+    border-radius: var(--r-1);
+    font-size: 13.5px;
+    color: var(--text-1);
+  }
+  .tb-done[hidden] {
+    display: none;
+  }
+  .tb-done-mark {
+    display: inline-grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    flex: none;
+    border: 1px solid var(--grade-a);
+    border-radius: 50%;
+    color: var(--grade-a);
+    font-size: 12px;
+  }
+</style>
+
+<script>
+  // Order → checkout → poll → paid. All copy arrives as JSON from the
+  // server-rendered data attribute, so the script itself is language-neutral.
+  import { fetchTorchDetail, formatUsd, isValidAmount, postTorchOrder, fetchTorchStatus } from '../../data/torch.ts';
+
+  const POLL_MS = 5000;
+
+  interface Copy {
+    open: string; title: string; note: string; amountLabel: string; custom: string;
+    invalidAmount: string; pay: string; working: string; checkout: string;
+    codeLabel: string; copy: string; copied: string; valid15: string;
+    waiting: string; checking: string; paid: string; expired: string;
+    cancelled: string; review: string; close: string;
+    bindingExpired: string; notFound: string;
+    errClosed: string; errCap: string; errBilling: string;
+    errGeneric: string; errNetwork: string;
+  }
+
+  for (const root of document.querySelectorAll<HTMLElement>('[data-torch-boost]')) {
+    const domain = root.dataset.domain ?? '';
+    let copy: Copy;
+    try {
+      copy = JSON.parse(root.dataset.copy ?? '{}') as Copy;
+    } catch {
+      root.hidden = true;
+      continue;
+    }
+
+    const modal = root.querySelector<HTMLElement>('[data-torch-modal]');
+    const openBtn = root.querySelector<HTMLButtonElement>('[data-torch-open]');
+    const payBtn = root.querySelector<HTMLButtonElement>('[data-torch-pay]');
+    const custom = root.querySelector<HTMLInputElement>('[data-torch-custom]');
+    const errorEl = root.querySelector<HTMLElement>('[data-torch-error]');
+    const orderBox = root.querySelector<HTMLElement>('[data-torch-order]');
+    const checkout = root.querySelector<HTMLAnchorElement>('[data-torch-checkout]');
+    const codeEl = root.querySelector<HTMLElement>('[data-torch-code]');
+    const copyBtn = root.querySelector<HTMLButtonElement>('[data-torch-copy]');
+    const statusText = root.querySelector<HTMLElement>('[data-torch-status-text]');
+    const doneBox = root.querySelector<HTMLElement>('[data-torch-done]');
+    const doneText = root.querySelector<HTMLElement>('[data-torch-done-text]');
+    const amountBtns = Array.from(root.querySelectorAll<HTMLButtonElement>('[data-torch-amt]'));
+
+    let amount = 10; // default preset
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+    let currentOrder = '';
+    let currentCode = '';
+
+    /* ── visibility: only advertise a shop that is open ─────────────────── */
+    fetchTorchDetail(domain).then((detail) => {
+      if (!detail || !detail.salesOpen) root.hidden = true;
+      else root.hidden = false;
+    });
+    // Stays hidden until the API says sales are open.
+
+    function showError(msg: string) {
+      if (!errorEl) return;
+      errorEl.textContent = msg;
+      errorEl.hidden = false;
+    }
+    function clearError() {
+      if (errorEl) {
+        errorEl.textContent = '';
+        errorEl.hidden = true;
+      }
+    }
+    function setStatus(msg: string, spinning: boolean) {
+      if (statusText) statusText.textContent = msg;
+      const spinner = root.querySelector<HTMLElement>('.tb-spinner');
+      if (spinner) spinner.style.display = spinning ? '' : 'none';
+    }
+    function hideOrder() {
+      if (orderBox) orderBox.hidden = true;
+      if (payBtn) payBtn.disabled = false;
+      if (payBtn) payBtn.textContent = copy.pay;
+    }
+    function showDone(msg: string) {
+      stopPolling();
+      hideOrder();
+      if (doneText) doneText.textContent = msg;
+      if (doneBox) doneBox.hidden = false;
+    }
+
+    /* ── amount selection ───────────────────────────────────────────────── */
+    function selectAmount(value: number, fromInput: boolean) {
+      amount = value;
+      for (const btn of amountBtns) {
+        btn.setAttribute('aria-pressed', String(!fromInput && Number(btn.dataset.torchAmt) === value));
+      }
+      if (custom && !fromInput) custom.value = '';
+      clearError();
+    }
+    for (const btn of amountBtns) {
+      btn.addEventListener('click', () => selectAmount(Number(btn.dataset.torchAmt), false));
+    }
+    custom?.addEventListener('input', () => {
+      const raw = custom.value.trim();
+      if (!raw) return;
+      const value = Number(raw);
+      if (isValidAmount(value)) selectAmount(value, true);
+    });
+
+    function readAmount(): number | null {
+      const raw = custom?.value.trim();
+      if (raw) {
+        const value = Number(raw);
+        if (!isValidAmount(value)) return null;
+        return value;
+      }
+      return isValidAmount(amount) ? amount : null;
+    }
+
+    /* ── badge update after payment (same page) ─────────────────────────── */
+    function creditBadge(paid: number) {
+      for (const badge of document.querySelectorAll<HTMLElement>('[data-torch-badge]')) {
+        if ((badge.dataset.domain ?? '') !== domain) continue;
+        const total = Number(badge.dataset.torchTotal ?? 0) + paid;
+        const count = Number(badge.dataset.torchCount ?? 0) + 1;
+        badge.dataset.torchTotal = String(total);
+        badge.dataset.torchCount = String(count);
+        const out = badge.querySelector<HTMLElement>('[data-torch-badge-text]');
+        const tpl = badge.dataset.torchTplTotal ?? '{amount} · {count} boosts';
+        const rank = badge.dataset.torchRank ?? '';
+        let text = tpl.replace('{amount}', formatUsd(total)).replace('{count}', String(count));
+        if (rank) text += (badge.dataset.torchTplRank ?? ' · #{rank} all time').replace('{rank}', rank);
+        if (out) out.textContent = text;
+        badge.hidden = false;
+      }
+    }
+
+    /* ── polling ────────────────────────────────────────────────────────── */
+    function stopPolling() {
+      if (pollTimer !== null) {
+        clearTimeout(pollTimer);
+        pollTimer = null;
+      }
+    }
+
+    function schedulePoll() {
+      stopPolling();
+      // A closed window never schedules the next tick: an in-flight answer
+      // arriving after close must not resurrect the timer.
+      if (!modal || modal.hidden) return;
+      pollTimer = setTimeout(() => void poll(), POLL_MS);
+    }
+
+    async function poll() {
+      const result = await fetchTorchStatus(currentOrder, currentCode);
+      if (!result.ok) {
+        // A dead claim (expired code, unknown order) ends the flow; the
+        // caller can order again. Everything else is a transient read
+        // failure while the checkout tab is open.
+        if (result.status === 403 || result.status === 404) {
+          stopPolling();
+          hideOrder();
+          setStatus('', false);
+          showError(result.status === 403 ? copy.bindingExpired : copy.notFound);
+          return;
+        }
+        setStatus(copy.checking, true);
+        schedulePoll();
+        return;
+      }
+      const state = result.status.status;
+      if (state === 'paid') {
+        showDone(copy.paid);
+        creditBadge(result.status.amount);
+        return;
+      }
+      if (state === 'expired') {
+        showDone(copy.expired);
+        return;
+      }
+      if (state === 'cancelled') {
+        showDone(copy.cancelled);
+        return;
+      }
+      // pending | review — keep waiting
+      setStatus(state === 'review' ? copy.review : copy.waiting, true);
+      schedulePoll();
+    }
+
+    /* ── open / close ───────────────────────────────────────────────────── */
+    function openModal() {
+      clearError();
+      if (doneBox) doneBox.hidden = true;
+      hideOrder();
+      if (modal) modal.hidden = false;
+      amountBtns[2]?.focus();
+    }
+    function closeModal() {
+      if (modal) modal.hidden = true;
+      stopPolling();
+      openBtn?.focus();
+    }
+
+    openBtn?.addEventListener('click', openModal);
+    for (const btn of root.querySelectorAll<HTMLElement>('[data-torch-close]')) {
+      btn.addEventListener('click', closeModal);
+    }
+    root.querySelector<HTMLElement>('[data-torch-backdrop]')?.addEventListener('click', closeModal);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && modal && !modal.hidden) closeModal();
+    });
+
+    copyBtn?.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(currentCode);
+        copyBtn.textContent = copy.copied;
+        setTimeout(() => { copyBtn.textContent = copy.copy; }, 2000);
+      } catch {
+        /* clipboard blocked — the code is visible on screen anyway */
+      }
+    });
+
+    /* ── order ──────────────────────────────────────────────────────────── */
+    payBtn?.addEventListener('click', async () => {
+      clearError();
+      const value = readAmount();
+      if (value === null) {
+        showError(copy.invalidAmount);
+        return;
+      }
+      payBtn.disabled = true;
+      payBtn.textContent = copy.working;
+      const result = await postTorchOrder({
+        domain,
+        amount: value,
+        requestId: crypto.randomUUID(),
+      });
+      if (!result.order) {
+        payBtn.disabled = false;
+        payBtn.textContent = copy.pay;
+        switch (result.error) {
+          case 'torch_sales_closed':
+            // Fail closed: never advertise a shop that is shut.
+            root.hidden = true;
+            if (modal) modal.hidden = true;
+            break;
+          case 'torch_cap_reached':
+            showError(copy.errCap);
+            break;
+          case 'billing_not_configured':
+          case 'settings_missing':
+            showError(copy.errBilling);
+            break;
+          case 'network':
+            showError(copy.errNetwork);
+            break;
+          case 'invalid_amount':
+          case 'invalid_domain':
+          case 'invalid_request_id':
+            showError(copy.invalidAmount);
+            break;
+          default:
+            showError(result.status >= 500 ? copy.errBilling : copy.errGeneric);
+        }
+        return;
+      }
+      currentOrder = result.order.orderId;
+      currentCode = result.order.bindingCode;
+      if (checkout) checkout.href = result.order.checkoutUrl;
+      if (codeEl) codeEl.textContent = currentCode;
+      if (orderBox) orderBox.hidden = false;
+      if (doneBox) doneBox.hidden = true;
+      payBtn.textContent = copy.pay;
+      payBtn.disabled = false;
+      setStatus(copy.waiting, true);
+      void poll(); // first check immediately, then every 5 s
+    });
+  }
+</script>

@@ -341,6 +341,7 @@ it('the public payload carries no operator, request id or subject', async () => 
     'history',
     'promoWallet',
     'publishedAt',
+    'torch',
   ]);
   assert.deepEqual(payload.beneficiaries, BENEFICIARIES);
   assert.equal(payload.promoWallet, PROMO_WALLET);

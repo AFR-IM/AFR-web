@@ -31,6 +31,7 @@ import type { HtmlEscapedString } from 'hono/utils/html';
 import { requestReserved, reserveRequestStatement } from './admin-audit.ts';
 import { adminAlert, adminField, adminForm, adminNav, adminPanel, adminStat, adminTable } from './admin-ui.ts';
 import type { Db } from './db.ts';
+import { readTorchPool } from './torch.ts';
 
 /** hono's `h` is typed as possibly async; this module never nests async
  * components, so the sync result is asserted once here. */
@@ -102,6 +103,9 @@ export interface PublicCharity {
   fingerprint: string | null;
   publishedAt: string | null;
   history: { address: string; fingerprint: string; published_at: string }[];
+  /** The boost pool block: raised against the $1,000 target, the moment the
+   * target was first reached and the seven-day publication it triggers. */
+  torch: { raised: number; target: number; crossedAt: string | null; publishedUntil: string | null };
 }
 
 /** The write input. `beneficiaries` accepts the array or the JSON array
@@ -368,7 +372,7 @@ export async function readSettings(db: Db): Promise<SettingsSnapshot> {
  * No operator identity, no request id, no other internal field.
  */
 export async function readPublicCharity(db: Db): Promise<PublicCharity> {
-  const snapshot = await readSettings(db);
+  const [snapshot, torch] = await Promise.all([readSettings(db), readTorchPool(db)]);
   return {
     beneficiaries: snapshot.beneficiaries,
     promoWallet: snapshot.promoWallet,
@@ -376,6 +380,7 @@ export async function readPublicCharity(db: Db): Promise<PublicCharity> {
     fingerprint: snapshot.poolFingerprint,
     publishedAt: snapshot.poolPublishedAt,
     history: snapshot.history,
+    torch,
   };
 }
 

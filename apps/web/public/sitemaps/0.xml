@@ -109,6 +109,18 @@
     <lastmod>2026-11-26</lastmod>
   </url>
   <url>
+    <loc>https://afr.im/charity/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/charity/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/charity/"/>
+    <lastmod>2026-11-26</lastmod>
+  </url>
+  <url>
+    <loc>https://afr.im/zh-CN/charity/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/charity/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/charity/"/>
+    <lastmod>2026-11-26</lastmod>
+  </url>
+  <url>
     <loc>https://afr.im/pro/</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://afr.im/pro/"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://afr.im/zh-CN/pro/"/>

@@ -1,0 +1,122 @@
+---
+// PromoCard — the promoted site's own detail page shows its live promotion
+// in a clearly labeled sponsored block. This block never participates in
+// scoring — it is a paid placement, not assessment output.
+//
+// The client fetches /api/v1/promos?domain=…; the server only ever returns
+// the promotion belonging to that exact domain. Hidden until the data
+// arrives, and headline/body are inserted as plain text (never markup).
+
+import { getCatalog, type Locale } from '../../i18n/loader.ts';
+import { uiText } from '../home/fallbacks.ts';
+
+interface Props {
+  domain: string;
+  locale: string;
+}
+
+const { domain, locale } = Astro.props;
+const loc: Locale = locale === 'zh-CN' ? 'zh-CN' : 'en';
+const L = getCatalog(loc);
+const sponsored = uiText(L.ui, 'sponsored', loc);
+const visit = loc === 'zh-CN' ? '访问网站' : 'Visit site';
+---
+
+<aside class="promo-card" data-promo="promo" data-domain={domain} data-locale={loc} hidden aria-label={sponsored}>
+  <span class="promo-badge">{sponsored}</span>
+  <div class="promo-main">
+    <h3 class="promo-headline" data-promo-headline></h3>
+    <p class="promo-body" data-promo-body></p>
+  </div>
+  <a class="btn promo-cta" data-promo-cta href={`https://${domain}`} rel="noopener nofollow sponsored" target="_blank">
+    {visit}
+  </a>
+</aside>
+
+<style>
+  .promo-card {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 18px;
+    background: var(--bg-elevated);
+    border: 1px dashed var(--brand);
+    border-radius: var(--radius);
+    margin-bottom: 16px;
+  }
+  .promo-card[hidden] {
+    display: none;
+  }
+  .promo-badge {
+    flex: none;
+    align-self: flex-start;
+    font-size: 11px;
+    line-height: 1;
+    color: var(--text-2);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 4px 8px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-1);
+    background: var(--bg-surface);
+  }
+  .promo-main {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    gap: 4px;
+    overflow-wrap: anywhere;
+  }
+  .promo-headline {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 15.5px;
+    font-weight: 600;
+    color: var(--text-1);
+  }
+  .promo-body {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--text-2);
+  }
+  .promo-cta {
+    flex: none;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  @media (max-width: 560px) {
+    .promo-card {
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .promo-main {
+      flex: 1 1 100%;
+      order: 3;
+    }
+  }
+</style>
+
+<script>
+  // Live promotion for this exact domain; anything else keeps the block hidden.
+  import { fetchPromo } from '../../data/torch.ts';
+
+  for (const root of document.querySelectorAll<HTMLElement>('[data-promo="promo"]')) {
+    const domain = root.dataset.domain ?? '';
+    fetchPromo(domain).then((promo) => {
+      if (!promo) return; // no live promotion — stay hidden
+      const headline = root.querySelector<HTMLElement>('[data-promo-headline]');
+      const body = root.querySelector<HTMLElement>('[data-promo-body]');
+      const cta = root.querySelector<HTMLAnchorElement>('[data-promo-cta]');
+      // Plain text insertion: a hostile headline can never inject markup.
+      if (headline) headline.textContent = promo.headline;
+      if (body) body.textContent = promo.body;
+      if (cta) {
+        cta.href = `https://${promo.domain}`;
+        cta.setAttribute('rel', 'nofollow sponsored');
+        cta.setAttribute('target', '_blank');
+      }
+      root.hidden = false;
+    });
+  }
+</script>

@@ -120,6 +120,28 @@ export async function getAipayOrder(env: AipayEnv, reference: string, fetchImpl:
 }
 
 /**
+ * The merchant profile of this key: shop name and the ONE receiving address
+ * every order created with it pays to (AIPAY has no per-order recipient).
+ *
+ * Returns null on any failure — the caller decides whether a missing answer
+ * may proceed (fail closed where the published address must equal the wallet
+ * that really receives the money).
+ */
+export async function getAipayMerchantProfile(env: AipayEnv,
+  fetchImpl: typeof fetch = fetch): Promise<{ shopName: string | null; recipientAddress: string | null } | null> {
+  try {
+    const payload = await aipayFetch<Record<string, unknown>>(env, '/v1/merchants/me', {}, fetchImpl);
+    const merchant = (payload.merchant && typeof payload.merchant === 'object'
+      ? payload.merchant : payload) as Record<string, unknown>;
+    const shopName = typeof merchant.shopName === 'string' ? merchant.shopName : null;
+    const recipientAddress = typeof merchant.recipientAddress === 'string' ? merchant.recipientAddress : null;
+    return recipientAddress ? { shopName, recipientAddress } : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Pull pages in order. Checkpoint only after all page writes succeed; if
  * interrupted before checkpointing, replay the page using idempotent writes.
  */
@@ -288,11 +310,21 @@ export async function cancelAipayOrder(env: AipayEnv, reference: string,
   return response.ok;
 }
 
-/** Apply a signed event only after binding it to the stored merchant order and verifying with AIPAY again. */
-export async function applyAipayWebhook(db: Db, raw: Uint8Array, headers: Headers, secret: string,
+/** Apply a signed event only after binding it to the stored merchant order and verifying with AIPAY again.
+ *
+ * `secret` may be an array: an AIPAY account can hold several merchants
+ * (one per receiving wallet) and each has its own webhook secret, but they
+ * all post to the same endpoint. Candidates are tried in order — at most a
+ * handful of HMAC computations over a ≤16 KB body. */
+export async function applyAipayWebhook(db: Db, raw: Uint8Array, headers: Headers, secret: string | string[],
   verifyOrder: (reference: string) => Promise<AipayOrderResponse>, now = Date.now()): Promise<'applied' | 'duplicate' | 'ignored' | 'invalid'> {
-  if (!secret) return 'invalid';
-  const verified = await verifyAipayWebhook(raw, headers, secret, now);
+  const candidates = (Array.isArray(secret) ? secret : [secret]).map((value) => value.trim()).filter(Boolean);
+  if (candidates.length === 0) return 'invalid';
+  let verified: { body: Record<string, unknown>; eventId: string } | null = null;
+  for (const candidate of candidates) {
+    verified = await verifyAipayWebhook(raw, headers, candidate, now);
+    if (verified) break;
+  }
   if (!verified) return 'invalid';
   const { body, eventId } = verified;
   if (body.event !== headers.get('x-aipay-event') || !body.order || typeof body.order !== 'object') return 'invalid';
@@ -407,4 +439,61 @@ export async function runAipayReconcileCron(db: Db, env: AipayEnv, fetchImpl: ty
     }
   }, fetchImpl);
   return result.pages;
+}
+
+/**
+ * The ten-minute confirmation channel for the board orders (torch/promo).
+ *
+ * Those orders live under their own AIPAY merchants — one per receiving
+ * wallet — so the main-key reconcile above never sees them. This poll takes
+ * the locally pending rows of the given purposes, asks each order's own
+ * merchant for its canonical state and applies it through the same state
+ * machine the webhook uses: a lost webhook can never lose a payment, and a
+ * duplicated confirmation can never apply twice (the event key is the
+ * canonical-order hash).
+ *
+ * Bounded per run; one unreachable order never stops the others.
+ */
+export interface BoardPollEnv {
+  torch?: AipayEnv;
+  promo?: AipayEnv;
+}
+
+export async function pollBillingOrders(db: Db, envs: BoardPollEnv,
+  { limit = 20, fetchImpl = fetch, now = Date.now() }: { limit?: number; fetchImpl?: typeof fetch; now?: number } = {},
+): Promise<{ checked: number; applied: number }> {
+  const rows = await db
+    .prepare(
+      `SELECT merchant_order_id, purpose, aipay_reference
+       FROM billing_orders
+       WHERE purpose IN ('torch', 'promo') AND status IN ('creating', 'pending')
+         AND aipay_reference IS NOT NULL
+       ORDER BY created_at ASC LIMIT ?`,
+    )
+    .all<{ merchant_order_id: string; purpose: BillingPurpose; aipay_reference: string }>(
+      Math.max(1, Math.min(50, Math.floor(limit))),
+    );
+  let checked = 0;
+  let applied = 0;
+  for (const row of rows) {
+    const env = row.purpose === 'torch' ? envs.torch : row.purpose === 'promo' ? envs.promo : undefined;
+    if (!env?.AIPAY_API_KEY?.trim()) continue;
+    try {
+      const canonical = await getAipayOrder(env, row.aipay_reference, fetchImpl);
+      checked += 1;
+      const local = await db
+        .prepare(
+          `SELECT merchant_order_id, amount, asset, chain_key, status, aipay_reference, expires_at
+           FROM billing_orders WHERE merchant_order_id = ?`,
+        )
+        .get<Record<string, unknown>>(row.merchant_order_id);
+      if (!local) continue;
+      const hash = await canonicalOrderHash(canonical);
+      const outcome = await recordCanonicalOrder(db, local, canonical, `reconcile:${hash}`, hash, 'reconcile', now);
+      if (outcome === 'applied') applied += 1;
+    } catch (error) {
+      console.warn(`board poll: ${row.merchant_order_id}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  return { checked, applied };
 }

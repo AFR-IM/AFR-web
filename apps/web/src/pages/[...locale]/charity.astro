@@ -1,0 +1,600 @@
+---
+// Charity — /charity and /zh-CN/charity (prerendered static shell).
+//
+// The page renders empty-state copy from the build and fills itself from the
+// live API in the browser: GET /api/v1/charity (settings, pool progress,
+// beneficiaries, addresses) and GET /api/v1/charity/ledger (append-only
+// inflow/outflow ledger). With JS disabled the API links are the fallback.
+
+export const prerender = true;
+
+import Base from '../../layouts/Base.astro';
+import { toLocale, type Locale } from '../../i18n/loader.ts';
+
+export function getStaticPaths() {
+  return [{ params: { locale: undefined } }, { params: { locale: 'zh-CN' } }];
+}
+
+const locale: Locale = toLocale(Astro.params.locale);
+const isZh = locale === 'zh-CN';
+const T = (en: string, zh: string) => (isZh ? zh : en);
+
+const COPY = {
+  title: T('Charity', '公益'),
+  description: T(
+    'How Torch Boost payments become public donations: pool progress, beneficiaries, receiving addresses and the append-only ledger.',
+    '火把助力如何变成公开捐赠：资金池进度、受益人名单、收款地址与只增不改的台账。',
+  ),
+  lede: T(
+    'Every boost paid on a site page feeds the charity pool. This page shows where the money sits, who will receive it, and every transfer on-chain.',
+    '站点页面上的每笔助力都进入公益资金池。本页展示资金所在地、受益人，以及链上的每一笔转账。',
+  ),
+  howTitle: 'How Torch Boost becomes a donation',
+  howTitleZh: '火把助力如何变成捐赠',
+  howSteps: [
+    T('You boost a site — the payment lands in the charity pool, never in the AFR score.', '你助力一个站点——款项进入公益池，绝不进入 AFR 评分。'),
+    T('When the pool reaches $1,000, a donation is triggered automatically.', '资金池累计达到 $1,000 时，自动触发一笔捐赠。'),
+    T('The beneficiary list is published for 7 days before execution — you can verify it here.', '捐赠执行前，受益人名单公示 7 天——可在此核验。'),
+    T('The executed transfer is registered on-chain and listed in the ledger below.', '执行后的转账登记上链，并列入下方台账。'),
+  ],
+  howNote: T(
+    'Boosts are advertising: they never change a score, a grade or the natural ranking.',
+    '助力是广告：绝不改变分数、等级或自然排名。',
+  ),
+  poolTitle: 'Charity pool',
+  poolTitleZh: '公益资金池',
+  poolEmpty: T('The charity pool has not received its first boost yet.', '公益资金池还没有收到第一笔助力。'),
+  beneficiariesTitle: 'Beneficiaries',
+  beneficiariesTitleZh: '受益人名单',
+  beneficiariesEmpty: T('No beneficiary list has been published yet.', '受益人名单尚未发布。'),
+  directionLabel: T('Direction', '用途'),
+  countdownTpl: T('Beneficiary list published — execution in {n} days.', '受益人名单已公示——还有 {n} 天执行。'),
+  countdownSoon: T('Beneficiary list published — execution within a day.', '受益人名单已公示——24 小时内执行。'),
+  addressesTitle: 'Receiving addresses',
+  addressesTitleZh: '收款地址',
+  poolAddressLabel: T('Charity pool address (primary)', '公益池收款地址（主）'),
+  promoAddressLabel: T('Promotion pool address', '推广池收款地址'),
+  fingerprintLabel: T('sha256 fingerprint', 'sha256 指纹'),
+  historyTitle: 'Address history',
+  historyTitleZh: '地址变更历史',
+  historyEmpty: T('No address has been published yet.', '尚未发布任何收款地址。'),
+  historyHeads: [T('Address', '地址'), T('Fingerprint', '指纹'), T('Published', '发布时间')],
+  ledgerTitle: 'Ledger',
+  ledgerTitleZh: '台账',
+  ledgerEmpty: T('The ledger is empty — no boost has been received yet.', '台账为空——尚未收到任何助力。'),
+  ledgerNote: T(
+    'The ledger is append-only and publicly verifiable. If these promises are ever broken, boost sales stop immediately.',
+    '台账只增不改、公开可核。一旦背弃这些承诺，助力将立即停售。',
+  ),
+  kindIn: T('Boost in', '助力入账'),
+  kindOut: T('Donation out', '捐赠出账'),
+  inDomain: T('Site', '站点'),
+  outBeneficiary: T('Beneficiary', '受益人'),
+  amountLabel: T('Amount', '金额'),
+  txLabel: T('Transaction', '交易'),
+  timeLabel: T('Time', '时间'),
+  fundedLabel: T('Funded in', '资金来自'),
+  apiFallback: T(
+    'JavaScript is off — read the raw data instead:',
+    'JavaScript 已关闭——可直接读取原始数据：',
+  ),
+  loadError: T(
+    'The live data could not be loaded right now — the API links below still work.',
+    '实时数据暂时无法加载——下方 API 链接仍可用。',
+  ),
+};
+---
+
+<Base title={`${COPY.title} · AFR.IM`} description={COPY.description}>
+  <div class="container charity" data-charity data-locale={locale}>
+    <header class="ch-head">
+      <h1>{COPY.title}</h1>
+      <p class="ch-lede">{COPY.lede}</p>
+    </header>
+
+    <section class="section" aria-labelledby="ch-how">
+      <div class="sec-head"><h2 id="ch-how">{isZh ? COPY.howTitleZh : COPY.howTitle}</h2></div>
+      <ol class="ch-steps">
+        {COPY.howSteps.map((step) => <li>{step}</li>)}
+      </ol>
+      <p class="ch-note">{COPY.howNote}</p>
+    </section>
+
+    <section class="section" aria-labelledby="ch-pool">
+      <div class="sec-head"><h2 id="ch-pool">{isZh ? COPY.poolTitleZh : COPY.poolTitle}</h2></div>
+      <div class="ch-pool" data-charity-pool hidden>
+        <div class="ch-bar" role="img" data-charity-bar aria-label={COPY.poolTitle}>
+          <span class="ch-fill" data-charity-fill style="width:0%"></span>
+        </div>
+        <p class="ch-pool-num mono" data-charity-pool-num></p>
+        <p class="ch-countdown" data-charity-countdown hidden></p>
+      </div>
+      <p class="ch-empty" data-charity-pool-empty>{COPY.poolEmpty}</p>
+    </section>
+
+    <section class="section" aria-labelledby="ch-beneficiaries">
+      <div class="sec-head"><h2 id="ch-beneficiaries">{isZh ? COPY.beneficiariesTitleZh : COPY.beneficiariesTitle}</h2></div>
+      <ul class="ch-beneficiaries" data-charity-beneficiaries hidden></ul>
+      <p class="ch-empty" data-charity-beneficiaries-empty>{COPY.beneficiariesEmpty}</p>
+    </section>
+
+    <section class="section" aria-labelledby="ch-addresses">
+      <div class="sec-head"><h2 id="ch-addresses">{isZh ? COPY.addressesTitleZh : COPY.addressesTitle}</h2></div>
+      <dl class="ch-addresses" data-charity-addresses hidden>
+        <div class="ch-addr-row">
+          <dt>{COPY.poolAddressLabel}</dt>
+          <dd class="mono" data-charity-pool-addr></dd>
+        </div>
+        <div class="ch-addr-row">
+          <dt>{COPY.promoAddressLabel}</dt>
+          <dd class="mono" data-charity-promo-addr></dd>
+        </div>
+        <div class="ch-addr-row">
+          <dt>{COPY.fingerprintLabel}</dt>
+          <dd class="mono" data-charity-fingerprint></dd>
+        </div>
+      </dl>
+      <p class="ch-empty" data-charity-addresses-empty>{COPY.historyEmpty}</p>
+
+      <h3 class="ch-sub">{isZh ? COPY.historyTitleZh : COPY.historyTitle}</h3>
+      <div class="ch-table-wrap" data-charity-history-wrap hidden>
+        <table class="ch-table">
+          <thead>
+            <tr>{COPY.historyHeads.map((h) => <th>{h}</th>)}</tr>
+          </thead>
+          <tbody data-charity-history></tbody>
+        </table>
+      </div>
+      <p class="ch-empty" data-charity-history-empty hidden></p>
+    </section>
+
+    <section class="section" aria-labelledby="ch-ledger">
+      <div class="sec-head"><h2 id="ch-ledger">{isZh ? COPY.ledgerTitleZh : COPY.ledgerTitle}</h2></div>
+      <p class="ch-ledger-note" data-charity-ledger-note hidden></p>
+      <div class="ch-table-wrap" data-charity-ledger-wrap hidden>
+        <table class="ch-table">
+          <thead>
+            <tr>
+              <th>{COPY.kindIn === 'Boost in' ? 'Kind' : '类型'}</th>
+              <th>{COPY.inDomain}</th>
+              <th>{COPY.amountLabel}</th>
+              <th>{COPY.txLabel}</th>
+              <th>{COPY.timeLabel}</th>
+            </tr>
+          </thead>
+          <tbody data-charity-ledger></tbody>
+        </table>
+      </div>
+      <p class="ch-empty" data-charity-ledger-empty>{COPY.ledgerEmpty}</p>
+      <p class="ch-foot">{COPY.ledgerNote}</p>
+    </section>
+
+    {/* Shown only by <noscript> below: with JavaScript on, the page loads
+        the same two endpoints itself. */}
+    <p class="ch-api mono" data-charity-api hidden>
+      {COPY.apiFallback}
+      <a href="/api/v1/charity">/api/v1/charity</a>
+      {' · '}
+      <a href="/api/v1/charity/ledger">/api/v1/charity/ledger</a>
+    </p>
+    <p class="ch-load-error" data-charity-load-error hidden>{COPY.loadError}</p>
+
+    <noscript>
+      <p class="ch-api mono">
+        {COPY.apiFallback}
+        <a href="/api/v1/charity">/api/v1/charity</a>
+        {' · '}
+        <a href="/api/v1/charity/ledger">/api/v1/charity/ledger</a>
+      </p>
+    </noscript>
+  </div>
+</Base>
+
+<style>
+  .charity {
+    padding-top: 44px;
+    padding-bottom: 64px;
+    max-width: 860px;
+  }
+  .ch-head h1 {
+    margin: 0 0 10px;
+    font-size: clamp(1.9rem, 4vw, 2.6rem);
+    letter-spacing: -0.02em;
+  }
+  .ch-lede {
+    margin: 0;
+    max-width: 640px;
+    font-size: 16px;
+    line-height: 1.7;
+    color: var(--text-2);
+  }
+  .section {
+    margin-top: 44px;
+  }
+  .sec-head {
+    margin-bottom: 14px;
+  }
+  .sec-head h2 {
+    margin: 0;
+    font-size: 20px;
+  }
+  .ch-steps {
+    margin: 0;
+    padding-left: 22px;
+    display: grid;
+    gap: 8px;
+    font-size: 14.5px;
+    line-height: 1.65;
+    color: var(--text-2);
+  }
+  .ch-note {
+    margin: 14px 0 0;
+    font-size: 13.5px;
+    color: var(--text-3);
+  }
+  .ch-empty {
+    margin: 0;
+    font-size: 14px;
+    color: var(--text-3);
+    font-style: italic;
+  }
+  .ch-empty[hidden] {
+    display: none;
+  }
+
+  .ch-pool {
+    display: grid;
+    gap: 10px;
+  }
+  .ch-pool[hidden] {
+    display: none;
+  }
+  .ch-bar {
+    height: 14px;
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: var(--r-1);
+    overflow: hidden;
+  }
+  .ch-fill {
+    display: block;
+    height: 100%;
+    background: var(--brand);
+    transition: width var(--t-standard) var(--ease);
+  }
+  .ch-pool-num {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-1);
+    font-variant-numeric: tabular-nums;
+  }
+  .ch-countdown {
+    margin: 0;
+    font-size: 13.5px;
+    color: var(--text-2);
+  }
+  .ch-countdown[hidden] {
+    display: none;
+  }
+
+  .ch-beneficiaries {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 10px;
+  }
+  .ch-beneficiaries[hidden] {
+    display: none;
+  }
+  .ch-beneficiaries li {
+    padding: 12px 16px;
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    display: grid;
+    gap: 4px;
+  }
+  .ch-ben-name {
+    font-size: 14.5px;
+    font-weight: 700;
+    color: var(--text-1);
+  }
+  .ch-ben-site {
+    font-size: 13px;
+    color: var(--brand-link);
+    overflow-wrap: anywhere;
+  }
+  .ch-ben-dir {
+    font-size: 13px;
+    color: var(--text-2);
+  }
+
+  .ch-addresses {
+    margin: 0;
+    display: grid;
+    gap: 10px;
+  }
+  .ch-addresses[hidden] {
+    display: none;
+  }
+  .ch-addr-row {
+    padding: 12px 16px;
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+  }
+  .ch-addr-row dt {
+    font-size: 12px;
+    color: var(--text-3);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 6px;
+  }
+  .ch-addr-row dd {
+    margin: 0;
+    font-size: 13.5px;
+    color: var(--text-1);
+    overflow-wrap: anywhere;
+  }
+
+  .ch-sub {
+    margin: 26px 0 12px;
+    font-size: 16px;
+  }
+
+  .ch-table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--bg-surface);
+  }
+  .ch-table-wrap[hidden] {
+    display: none;
+  }
+  .ch-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .ch-table th,
+  .ch-table td {
+    padding: 9px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+  .ch-table th {
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-3);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .ch-table tr:last-child td {
+    border-bottom: none;
+  }
+  .ch-table td {
+    color: var(--text-2);
+    overflow-wrap: anywhere;
+  }
+  .ch-table td.mono {
+    font-size: 12.5px;
+  }
+  .ch-table a {
+    color: var(--brand-link);
+  }
+  .ch-kind-in {
+    color: var(--grade-a);
+    font-weight: 700;
+  }
+  .ch-kind-out {
+    color: var(--brand);
+    font-weight: 700;
+  }
+  .ch-ledger-note {
+    margin: 0 0 12px;
+    font-size: 13.5px;
+    color: var(--text-2);
+  }
+  .ch-ledger-note[hidden] {
+    display: none;
+  }
+  .ch-foot {
+    margin: 16px 0 0;
+    font-size: 13.5px;
+    line-height: 1.65;
+    color: var(--text-3);
+  }
+  .ch-api {
+    margin: 34px 0 0;
+    font-size: 12.5px;
+    color: var(--text-3);
+  }
+  .ch-load-error {
+    margin: 12px 0 0;
+    font-size: 13px;
+    color: var(--text-2);
+  }
+  .ch-load-error[hidden] {
+    display: none;
+  }
+</style>
+
+<script>
+  // Fill the static shell from the live API. Every block degrades to its
+  // server-rendered empty state; a failed load only adds a hint line.
+  import { fetchCharity, fetchCharityLedger, formatUsd } from '../../data/torch.ts';
+
+  const root = document.querySelector<HTMLElement>('[data-charity]');
+  if (root) {
+    const isZh = root.dataset.locale === 'zh-CN';
+    const show = (sel: string) => {
+      const el = root.querySelector<HTMLElement>(sel);
+      if (el) el.hidden = false;
+    };
+    const hide = (sel: string) => {
+      const el = root.querySelector<HTMLElement>(sel);
+      if (el) el.hidden = true;
+    };
+    const text = (sel: string, value: string) => {
+      const el = root.querySelector<HTMLElement>(sel);
+      if (el) el.textContent = value;
+    };
+    const esc = (value: string) =>
+      value.replace(/[&<>"']/g, (c) =>
+        c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : c === '"' ? '&quot;' : '&#39;');
+
+    const fmtTime = (iso: string) => {
+      const parsed = new Date(iso);
+      if (Number.isNaN(parsed.getTime())) return iso;
+      return parsed.toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
+    };
+
+    void (async () => {
+      const [charity, ledger] = await Promise.all([fetchCharity(), fetchCharityLedger()]);
+      let loaded = false;
+
+      if (charity) {
+        loaded = true;
+        const { raised, target, publishedUntil } = charity.torch;
+        if (raised > 0) {
+          const pct = Math.min(100, Math.round((raised / target) * 100));
+          const fill = root.querySelector<HTMLElement>('[data-charity-fill]');
+          if (fill) fill.style.width = `${pct}%`;
+          text(
+            '[data-charity-pool-num]',
+            `${formatUsd(raised)} / ${formatUsd(target)} · ${pct}%`,
+          );
+          const bar = root.querySelector<HTMLElement>('[data-charity-bar]');
+          if (bar) bar.setAttribute('aria-label', `${formatUsd(raised)} / ${formatUsd(target)}`);
+          show('[data-charity-pool]');
+          hide('[data-charity-pool-empty]');
+        }
+        if (publishedUntil) {
+          const remainingMs = Date.parse(publishedUntil) - Date.now();
+          if (remainingMs > 0) {
+            const days = Math.ceil(remainingMs / 86_400_000);
+            text(
+              '[data-charity-countdown]',
+              (days >= 2
+                ? (isZh ? '受益人名单已公示——还有 {n} 天执行。' : 'Beneficiary list published — execution in {n} days.')
+                : (isZh ? '受益人名单已公示——24 小时内执行。' : 'Beneficiary list published — execution within a day.')
+              ).replace('{n}', String(days)),
+            );
+            show('[data-charity-countdown]');
+          }
+        }
+
+        if (charity.beneficiaries.length > 0) {
+          const list = root.querySelector<HTMLElement>('[data-charity-beneficiaries]');
+          if (list) {
+            list.innerHTML = charity.beneficiaries
+              .map(
+                (b) =>
+                  `<li>` +
+                  `<span class="ch-ben-name">${esc(b.name)}</span>` +
+                  `<a class="ch-ben-site" href="${/^https?:\/\//.test(b.website) ? esc(b.website) : `https://${esc(b.website)}`}" rel="noopener" target="_blank">${esc(b.website)}</a>` +
+                  `<span class="ch-ben-dir">${esc(b.direction)}</span>` +
+                  `</li>`,
+              )
+              .join('');
+          }
+          show('[data-charity-beneficiaries]');
+          hide('[data-charity-beneficiaries-empty]');
+        }
+
+        if (charity.charityPool || charity.promoWallet) {
+          text('[data-charity-pool-addr]', charity.charityPool || '—');
+          text('[data-charity-promo-addr]', charity.promoWallet || '—');
+          text('[data-charity-fingerprint]', charity.fingerprint || '—');
+          show('[data-charity-addresses]');
+          hide('[data-charity-addresses-empty]');
+        }
+
+        if (charity.history.length > 0) {
+          const body = root.querySelector<HTMLElement>('[data-charity-history]');
+          if (body) {
+            body.innerHTML = charity.history
+              .map(
+                (h) =>
+                  `<tr>` +
+                  `<td class="mono">${esc(h.address)}</td>` +
+                  `<td class="mono">${esc(h.fingerprint)}</td>` +
+                  `<td class="mono">${esc(fmtTime(h.published_at))}</td>` +
+                  `</tr>`,
+              )
+              .join('');
+          }
+          show('[data-charity-history-wrap]');
+          hide('[data-charity-history-empty]');
+        } else if (charity.charityPool || charity.promoWallet) {
+          const empty = root.querySelector<HTMLElement>('[data-charity-history-empty]');
+          if (empty) {
+            empty.textContent = isZh ? '尚无地址变更记录。' : 'No address change has been recorded.';
+            empty.hidden = false;
+          }
+        }
+      }
+
+      if (ledger) {
+        loaded = true;
+        const note = root.querySelector<HTMLElement>('[data-charity-ledger-note]');
+        if (note) {
+          note.textContent = ledger.generatedAt
+            ? (isZh
+              ? `台账生成于 ${fmtTime(ledger.generatedAt)} · 只增不改、公开可核。`
+              : `Ledger generated at ${fmtTime(ledger.generatedAt)} · append-only and publicly verifiable.`)
+            : '';
+          note.hidden = !note.textContent;
+        }
+        if (ledger.entries.length > 0) {
+          const body = root.querySelector<HTMLElement>('[data-charity-ledger]');
+          if (body) {
+            body.innerHTML = ledger.entries
+              .map((e) => {
+                const isIn = e.kind === 'torch_in';
+                const kind = isIn
+                  ? `<span class="ch-kind-in">${isZh ? '助力入账' : 'Boost in'}</span>`
+                  : `<span class="ch-kind-out">${isZh ? '捐赠出账' : 'Donation out'}</span>`;
+                const who = isIn
+                  ? esc(e.domain ?? '—')
+                  : esc(e.beneficiary ?? '—');
+                const tx = /^0x[0-9a-fA-F]{1,128}$/.test(e.txHash)
+                  ? `<a href="https://basescan.org/tx/${esc(e.txHash)}" rel="noopener" target="_blank" class="mono">${esc(e.txHash.slice(0, 14))}…</a>`
+                  : `<span class="mono">${esc(e.txHash)}</span>`;
+                const funded = e.fundedInTx && e.fundedInTx.length
+                  ? `<br/><span class="ch-funded-label">${isZh ? '资金来自' : 'Funded in'}:</span> ` +
+                    e.fundedInTx
+                      .map((h) => `<a href="https://basescan.org/tx/${esc(h)}" rel="noopener" target="_blank" class="mono">${esc(h.slice(0, 14))}…</a>`)
+                      .join(', ')
+                  : '';
+                // Anchor ids: the service publishes `torch-<id>` / `donation-<id>`
+                // as the entry's `anchor` — the cross-reference other rows link to.
+                const fallbackId = `${isIn ? 'torch' : 'donation'}-${String(e.id).replace(/[^A-Za-z0-9_-]/g, '')}`;
+                const anchorId =
+                  /^(torch|donation)-[A-Za-z0-9_-]{1,60}$/.test(e.anchor) ? e.anchor : fallbackId;
+                const idAttr = ` id="${anchorId}"`;
+                return (
+                  `<tr${idAttr}>` +
+                  `<td>${kind}</td>` +
+                  `<td>${who}</td>` +
+                  `<td class="mono">${esc(e.amount)}</td>` +
+                  `<td class="mono">${tx}${funded}</td>` +
+                  `<td class="mono">${esc(fmtTime(e.at))}</td>` +
+                  `</tr>`
+                );
+              })
+              .join('');
+          }
+          show('[data-charity-ledger-wrap]');
+          hide('[data-charity-ledger-empty]');
+        }
+      }
+
+      if (!loaded) show('[data-charity-load-error]');
+    })();
+  }
+</script>

@@ -37,7 +37,7 @@ export const INDEX_FILE = 'sitemap.xml';
 
 /** The top-level routes (the same set the site builds). */
 export const TOP = [
-  '/', '/method', '/categories', '/search', '/submit', '/about', '/bot', '/badges', '/docs', '/pro',
+  '/', '/method', '/categories', '/search', '/submit', '/about', '/bot', '/badges', '/docs', '/charity', '/pro',
 ];
 
 /** 14 first-level categories — same set the catalog ships. */

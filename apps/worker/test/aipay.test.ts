@@ -169,3 +169,31 @@ test('ignores unrelated refs, refuses unsigned or mismatched merchant orders', a
   assert.equal(await applyAipayWebhook(db,new TextEncoder().encode(altered),signed(altered),env.AIPAY_WEBHOOK_SECRET!,async()=>order),'ignored');
   assert.equal((await db.prepare('SELECT status FROM billing_orders').get<{status:string}>())?.status,'pending');
 });
+
+test('accepts an event signed by any configured merchant webhook secret', async () => {
+  const { db, raw } = openSeededDb();
+  const charitySecret = 'charity-hook-secret';
+  const confirmed = { ...order, status: 'confirmed', confirmedAt: Date.now(), txHash: '0x' + 'c'.repeat(64) };
+  const body = JSON.stringify({ event: 'order.confirmed', delivery: { id: 9 }, order: confirmed });
+  const ts = String(Math.floor(Date.now() / 1000));
+  const headersFor = (secret: string) => new Headers({
+    'x-aipay-timestamp': ts,
+    'x-aipay-signature': 'sha256=' + createHmac('sha256', secret).update(`${ts}.${body}`).digest('hex'),
+    'x-aipay-event': 'order.confirmed',
+    'x-aipay-delivery': '9',
+  });
+  raw.prepare(`INSERT INTO billing_orders (merchant_order_id, purpose, subject_id, amount, asset, chain_key,
+      status, aipay_reference, created_at, updated_at)
+    VALUES (?, 'pro', 'example.com', '12', 'USDC', 'base', 'pending', ?, ?, ?)`)
+    .run(order.merchantOrderId, order.reference, new Date().toISOString(), new Date().toISOString());
+  const rawBytes = new TextEncoder().encode(body);
+  const verify = async () => confirmed;
+  const secrets = ['main-hook-secret', charitySecret];
+
+  // The wrong secret first: the candidate loop keeps trying until one fits.
+  assert.equal(await applyAipayWebhook(db, rawBytes, headersFor(charitySecret), secrets, verify), 'applied');
+  assert.equal(await applyAipayWebhook(db, rawBytes, headersFor(charitySecret), secrets, verify), 'duplicate');
+  assert.equal(await applyAipayWebhook(db, rawBytes, headersFor('nope'), secrets, verify), 'invalid');
+  assert.equal(await applyAipayWebhook(db, rawBytes, headersFor(charitySecret), [], verify), 'invalid');
+  assert.equal(await applyAipayWebhook(db, rawBytes, headersFor(charitySecret), charitySecret, verify), 'duplicate');
+});
