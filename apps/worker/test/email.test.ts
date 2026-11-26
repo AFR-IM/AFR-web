@@ -321,18 +321,18 @@ describe('magic tokens', () => {
   it('escapes the token inside the magic link', () => {
     assert.equal(
       magicLinkUrl('https://afr.im', 'abc+def/ghi'),
-      'https://afr.im/api/v1/owners/email/verify?token=abc%2Bdef%2Fghi',
+      'https://afr.im/owner/email/confirm/#token=abc%2Bdef%2Fghi',
     );
   });
 
   it('escapes the token inside the recovery link', () => {
     assert.equal(
       recoveryLinkUrl('https://afr.im', 'abc+def/ghi'),
-      'https://afr.im/api/v1/owners/email/recover/verify?token=abc%2Bdef%2Fghi',
+      'https://afr.im/owner/email/recover/#token=abc%2Bdef%2Fghi',
     );
     assert.equal(
       recoveryLinkUrl('https://afr.im/', 'abc'),
-      'https://afr.im/api/v1/owners/email/recover/verify?token=abc',
+      'https://afr.im/owner/email/recover/#token=abc',
     );
   });
 
@@ -372,13 +372,13 @@ describe('renderRecoveryEmail', () => {
   it('states what the link does and how long it lives', () => {
     const mail = renderRecoveryEmail({
       domain: 'example.com',
-      url: 'https://afr.im/api/v1/owners/email/recover/verify?token=abc',
+      url: 'https://afr.im/owner/email/recover/#token=abc',
     });
     assert.equal(mail.subject, 'Recover the AFR owner token for example.com');
-    assert.match(mail.text, /https:\/\/afr\.im\/api\/v1\/owners\/email\/recover\/verify\?token=abc/);
+    assert.match(mail.text, /https:\/\/afr\.im\/owner\/email\/recover\/#token=abc/);
     assert.match(mail.text, /works once and expires in 24 hours/);
-    assert.match(mail.text, /previous\s+management token stops working/);
-    assert.match(mail.html, /href="https:\/\/afr\.im\/api\/v1\/owners\/email\/recover\/verify\?token=abc"/);
+    assert.match(mail.text, /previous management token stops working/);
+    assert.match(mail.html, /href="https:\/\/afr\.im\/owner\/email\/recover\/#token=abc"/);
     assert.ok(!/<script/i.test(mail.html), 'the HTML mail carries no script');
   });
 });
@@ -906,7 +906,7 @@ describe('POST /api/v1/owners/email', () => {
     const body = JSON.parse(String(init.body)) as { to: string; text: string; subject: string };
     assert.equal(body.to, 'owner@example.com');
     assert.match(body.subject, /example\.com/);
-    assert.match(body.text, /\/api\/v1\/owners\/email\/verify\?token=[0-9a-f]{32}/);
+    assert.match(body.text, /\/owner\/email\/confirm\/#token=[0-9a-f]{32}/);
     const headers = init.headers as Record<string, string>;
     assert.ok(headers['idempotency-key'].startsWith('email-verify:example.com:'));
   });
@@ -968,10 +968,32 @@ describe('POST /api/v1/owners/email', () => {
 });
 
 // ---------------------------------------------------------------------------
-// GET /api/v1/owners/email/verify — the mailbox confirmation
+// /api/v1/owners/email/verify — mailbox confirmation
 // ---------------------------------------------------------------------------
 
-describe('GET /api/v1/owners/email/verify', () => {
+describe('/api/v1/owners/email/verify', () => {
+  it('exchanges a JSON body with the same single-use contract as a legacy link', async () => {
+    const { app, raw } = freshApp();
+    const token = 'ab'.repeat(16);
+    const path = '/api/v1/owners/email/verify';
+    raw.prepare(`INSERT INTO owner_emails (domain, email_cipher, email_hash, verify_token_hash, verify_expires_at)
+      VALUES ('example.com', 'cipher', 'hash', ?, ?)`)
+      .run(await hashToken(`owner-mail-confirmation:v2:${token}`), '2099-01-01T00:00:00.000Z');
+
+    const queryOnly = await post(app, `${path}?token=${token}`, {});
+    assert.equal(queryOnly.status, 400, 'POST reads only the JSON body');
+    assert.equal(raw.prepare('SELECT verified_at FROM owner_emails').get()?.verified_at, null);
+
+    const response = await post(app, path, { token });
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('Cache-Control') ?? '', /no-store/);
+    assert.equal(response.headers.get('Referrer-Policy'), 'no-referrer');
+    const body = await response.json();
+    assert.equal(body.verified, true);
+    assert.equal(body.domain, 'example.com');
+    assert.match(body.manageToken, /^manage-[0-9a-f]{32}$/);
+    assert.equal((await get(app, `${path}?token=${token}`)).status, 400);
+  });
   it('verifies the mailbox, burns the token and hands out the management token', async () => {
     const site = fakeSite({ challenge: null });
     const { app, raw } = freshApp(site.impl);

@@ -317,19 +317,22 @@ export async function hashToken(token: string): Promise<string> {
   return bytesToHex(new Uint8Array(digest));
 }
 
-/** Absolute verification link for a magic token. */
-export function magicLinkUrl(baseUrl: string, token: string): string {
-  const base = baseUrl.replace(/\/+$/, '');
-  return `${base}/api/v1/owners/email/verify?token=${encodeURIComponent(token)}`;
+function ownerEmailLink(baseUrl: string, action: 'confirm' | 'recover', token: string): string {
+  const url = new URL(`/owner/email/${action}/`, baseUrl);
+  // The email scanner's initial HTTP request sees only the landing page path.
+  // The browser only sends the token after the owner presses the page button.
+  url.hash = `token=${encodeURIComponent(token)}`;
+  return url.href;
 }
 
-/** Absolute recovery link for a lost management token.
- *
- * The link lives on its own path: the recovery token is not a mailbox
- * confirmation token and must never unlock that flow. */
+/** Absolute verification link for a magic token. */
+export function magicLinkUrl(baseUrl: string, token: string): string {
+  return ownerEmailLink(baseUrl, 'confirm', token);
+}
+
+/** Absolute recovery link for a lost management token, on a separate page. */
 export function recoveryLinkUrl(baseUrl: string, token: string): string {
-  const base = baseUrl.replace(/\/+$/, '');
-  return `${base}/api/v1/owners/email/recover/verify?token=${encodeURIComponent(token)}`;
+  return ownerEmailLink(baseUrl, 'recover', token);
 }
 
 // ---------------------------------------------------------------------------
@@ -581,7 +584,7 @@ export function renderVerificationEmail(args: {
   const text = [
     `Confirm your AFR owner mailbox for ${args.domain}.`,
     '',
-    `Open this link to finish the setup: ${args.verifyUrl}`,
+    `Open this link, then choose “Confirm email” on the page: ${args.verifyUrl}`,
     '',
     'The link works once and expires in 24 hours. If you did not request it,',
     'ignore this mail — nothing was changed.',
@@ -592,8 +595,8 @@ export function renderVerificationEmail(args: {
     '<html><body style="margin:0;padding:24px;background:#f6f7f9;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#111827;">',
     '<div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:10px;padding:24px;border:1px solid #e5e7eb;">',
     `<h1 style="margin:0 0 16px;font-size:20px;line-height:1.4;">Confirm your AFR owner mailbox for ${escapeHtml(args.domain)}</h1>`,
-    `<p style="margin:0 0 20px;font-size:15px;line-height:1.6;">Open the link below to finish the setup. It works once and expires in 24 hours.</p>`,
-    `<p style="margin:0 0 20px;"><a href="${escapeHtml(args.verifyUrl)}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:6px;">Confirm this mailbox</a></p>`,
+    '<p style="margin:0 0 20px;font-size:15px;line-height:1.6;">Open the link below and choose “Confirm email” on the page. The link works once and expires in 24 hours.</p>',
+    `<p style="margin:0 0 20px;"><a href="${escapeHtml(args.verifyUrl)}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:6px;">Open the confirmation page</a></p>`,
     `<p style="margin:0;color:#6b7280;font-size:13px;line-height:1.5;">If you did not request this, ignore this mail — nothing was changed.</p>`,
     '</div></body></html>',
   ].join('');
@@ -605,8 +608,8 @@ export function renderVerificationEmail(args: {
  *
  * The mail is the second lock of the recovery: it only ever reaches the
  * confirmed address of the domain, so the link proves mailbox control. The
- * body therefore states what the click does (a new management token, the old
- * one stops working) — an owner has to know that before clicking. */
+ * body explains that redeeming the link on the page issues a new management
+ * token and invalidates the previous one. */
 export function renderRecoveryEmail(args: {
   domain: string;
   url: string;
@@ -615,10 +618,10 @@ export function renderRecoveryEmail(args: {
   const text = [
     `Recover the AFR owner token for ${args.domain}.`,
     '',
-    `Open this link to receive a new management token: ${args.url}`,
+    `Open this link, then choose “Recover token” on the page: ${args.url}`,
     '',
-    'The link works once and expires in 24 hours. After the click the previous',
-    'management token stops working and a new one is handed out.',
+    'The link works once and expires in 24 hours. Once you choose “Recover token”,',
+    'the previous management token stops working and you receive a new one.',
     '',
     'If you did not request this, ignore this mail — nothing was changed and',
     'the current management token stays valid.',
@@ -629,8 +632,8 @@ export function renderRecoveryEmail(args: {
     '<html><body style="margin:0;padding:24px;background:#f6f7f9;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#111827;">',
     '<div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:10px;padding:24px;border:1px solid #e5e7eb;">',
     `<h1 style="margin:0 0 16px;font-size:20px;line-height:1.4;">Recover the AFR owner token for ${escapeHtml(args.domain)}</h1>`,
-    '<p style="margin:0 0 20px;font-size:15px;line-height:1.6;">Open the link below to receive a new management token. It works once and expires in 24 hours. After the click the previous management token stops working.</p>',
-    `<p style="margin:0 0 20px;"><a href="${escapeHtml(args.url)}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:6px;">Recover the management token</a></p>`,
+    '<p style="margin:0 0 20px;font-size:15px;line-height:1.6;">Open the link below and choose “Recover token” on the page. The link works once and expires in 24 hours. The previous management token stops working after you choose “Recover token”.</p>',
+    `<p style="margin:0 0 20px;"><a href="${escapeHtml(args.url)}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:6px;">Open the recovery page</a></p>`,
     '<p style="margin:0;color:#6b7280;font-size:13px;line-height:1.5;">If you did not request this, ignore this mail — nothing was changed and the current management token stays valid.</p>',
     '</div></body></html>',
   ].join('');

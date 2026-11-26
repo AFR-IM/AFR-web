@@ -140,6 +140,11 @@ describe('catalog parity', () => {
       'ownerMailErrRecoveryUnavailable', 'ownerMailErrRecoveryToken',
       'ownerMailDeleteTitle', 'ownerMailDeleteDesc', 'ownerMailDeleteConfirm',
       'ownerMailDeleteBusy', 'ownerMailDeleteDone',
+      'ownerEmailLinkConfirm', 'ownerEmailLinkRecover', 'ownerEmailLinkConfirmHelp',
+      'ownerEmailLinkRecoverHelp', 'ownerEmailLinkEnableScript', 'ownerEmailLinkInvalid',
+      'ownerEmailLinkWorking', 'ownerEmailLinkFailed', 'ownerEmailLinkConfirmed',
+      'ownerEmailLinkRecovered', 'ownerEmailLinkStorageUnavailable', 'ownerEmailLinkCopyManually',
+      'ownerEmailLinkOpenPanel',
     ];
     for (const locale of LOCALES) {
       for (const key of required) {

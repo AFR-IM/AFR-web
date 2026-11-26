@@ -80,6 +80,17 @@ test('upgrade removes old confirmation responses; online and offline API navigat
   }
 });
 
+test('owner email pages bypass the Service Worker cache in both locales', async () => {
+  const sw = worker();
+  for (const locale of ['', '/zh-CN']) {
+    for (const action of ['confirm', 'recover']) {
+      const path = `${locale}/owner/email/${action}/`;
+      await (await sw.open(runtime)).put(path, page('stale owner email page'));
+      assert.equal(await sw.run('fetch', path), undefined, 'navigation is handled by the browser');
+    }
+  }
+});
+
 test('public navigation retains offline fallback, but evicts no-store and redirect responses', async () => {
   const sw = worker();
   await sw.run('install');

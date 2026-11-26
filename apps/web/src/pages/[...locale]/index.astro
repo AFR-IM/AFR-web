@@ -13,6 +13,7 @@ import SearchBox from '../../components/home/SearchBox.astro';
 import DomainCard from '../../components/home/DomainCard.astro';
 import CategoryTiles from '../../components/home/CategoryTiles.astro';
 import Leaderboard from '../../components/home/Leaderboard.astro';
+import SupporterStrip from '../../components/home/SupporterStrip.astro';
 import { getCatalog, pathFor, toLocale } from '../../i18n/loader.ts';
 import { loadHome } from '../../data/loader.ts';
 import { GRADES, gradeVar } from '../../utils/grade.ts';
@@ -208,6 +209,11 @@ const COPY = {
       {L.ui.dataUpdated ?? COPY.updated} <time datetime={home.generatedAt}>{generated}</time>
     </p>
   </section>
+
+  <!-- Supporters — the quietest slot: domains, no grade, no card -->
+  <div class="container">
+    <SupporterStrip locale={locale} />
+  </div>
 
   <!-- Grade filter: distribution segments + chips share one URL-synced state -->
   <script is:inline>

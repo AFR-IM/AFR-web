@@ -1,63 +1,52 @@
 ---
-// SponsoredCard — ad slot (positions 1 category-top / 2 search-top).
-// Discipline: standalone block, never mixed into the natural list; permanent
-// "Sponsored" badge in --text-2 small text; the site's REAL GradeRing; Visit
-// carries ?ref=afr-sponsor for click counting; background --bg-elevated with
-// the same radius as natural cards. The wrapper owns the 24px gap + 1px dashed
-// --line that separates the slot from the natural ranking area.
-// Renders nothing when the ad's domain is missing from the site list (a real
-// ring is mandatory) or when the caller passes no ad at all.
-
+// The browser fills this empty row with the API's current grade and score.
+// Keep GradeRing outside <template> so its script also runs for natural cards.
 import GradeRing from '../grade/GradeRing.astro';
+import AdBeacon from './AdBeacon.astro';
 import { getCatalog, type Locale } from '../../i18n/loader.ts';
-import { listSites } from '../../data/loader.ts';
 import { uiText } from './fallbacks.ts';
-import type { AdFixture } from './ads-fixture.ts';
 
-interface Props {
-  ad: AdFixture;
-  locale: Locale;
-  variant?: 'category' | 'search';
-  hidden?: boolean; // search slot starts hidden until the query is non-empty
-}
+type Props = { locale: Locale } & (
+  { slot: 'category-top'; adKey: string } | { slot: 'search-top'; adKey?: never }
+);
 
-const { ad, locale, variant = 'category', hidden = false } = Astro.props;
+const { locale, slot, adKey } = Astro.props;
 const L = getCatalog(locale);
-const site = listSites().find((s) => s.domain === ad.domain);
 const sponsored = uiText(L.ui, 'sponsored', locale);
 const visit = uiText(L.ui, 'visit', locale);
-const headline = locale === 'zh-CN' ? (ad.headlineZh ?? ad.headline) : ad.headline;
-const body = locale === 'zh-CN' ? (ad.bodyZh ?? ad.body) : ad.body;
+const report = locale === 'zh-CN' ? '举报广告' : 'Report ad';
 ---
 
-{site && (
-  <aside
-    class:list={['sponsor-zone', variant]}
-    data-sponsor
-    hidden={hidden}
-    aria-label={sponsored}
-  >
+<aside
+  class:list={['sponsor-zone', { search: slot === 'search-top' }]}
+  data-ad-slot={slot}
+  data-ad-key={adKey}
+  data-ad-locale={locale}
+  data-ad-grade-label={L.ui.grade}
+  data-ad-score-label={L.ui.score}
+  hidden
+  aria-label={sponsored}
+>
+  <div data-ad-items>
     <div class="sponsor">
       <div class="sponsor-left">
-        <GradeRing score={site.score} grade={site.grade} size={48} />
+        <GradeRing score={0} grade="F" size={48} animate={false} />
         <span class="sponsor-badge">{sponsored}</span>
       </div>
       <div class="sponsor-main">
-        <p class="sponsor-domain mono">{site.domain}</p>
-        <h3 class="sponsor-headline">{headline}</h3>
-        <p class="sponsor-text">{body}</p>
+        <p class="sponsor-domain mono" data-ad-domain></p>
+        <h3 class="sponsor-headline" data-ad-headline></h3>
+        <p class="sponsor-text" data-ad-body></p>
       </div>
-      <a
-        class="btn sponsor-visit"
-        href={`https://${site.domain}?ref=afr-sponsor`}
-        target="_blank"
-        rel="noopener noreferrer sponsored"
-      >
-        {visit}
-      </a>
+      <div class="sponsor-actions">
+        <a class="btn" data-ad-visit target="_blank" rel="noopener noreferrer sponsored">{visit}</a>
+        <a class="sponsor-report" data-ad-report target="_blank" rel="noopener noreferrer">{report}</a>
+      </div>
     </div>
-  </aside>
-)}
+  </div>
+</aside>
+
+<AdBeacon />
 
 <style>
   .sponsor-zone {
@@ -95,6 +84,11 @@ const body = locale === 'zh-CN' ? (ad.bodyZh ?? ad.body) : ad.body;
     min-width: 0;
     display: grid;
     gap: 3px;
+    overflow-wrap: anywhere;
+  }
+  /* The API may carry an older rated site's E; it has no current color token. */
+  .sponsor :global(.ring[data-grade='E']) {
+    --ring-color: var(--grade-e, var(--text-2));
   }
   .sponsor-domain {
     margin: 0;
@@ -114,12 +108,21 @@ const body = locale === 'zh-CN' ? (ad.bodyZh ?? ad.body) : ad.body;
     line-height: 1.5;
     color: var(--text-2);
   }
-  .sponsor-visit {
+  .sponsor-actions {
     flex: none;
+    display: grid;
+    justify-items: center;
+    gap: 4px;
+  }
+  .sponsor-report {
+    color: var(--text-2);
+    font-size: 12px;
+    text-decoration: underline;
   }
 
   /* position 2 (search top): same block, narrower row */
   .sponsor-zone.search {
+    margin-top: 24px;
     padding-bottom: 16px;
     margin-bottom: 16px;
   }

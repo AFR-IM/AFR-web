@@ -8,12 +8,24 @@
 // The key itself never touches the database: only its SHA-256 hash is stored,
 // so a database leak does not hand over usable credentials.
 //
-// Every key also carries a daily quota (方案书 §11.4): a free key may call
-// the API 100 times a day, a Pro key 10 000 times. The counter lives in the
-// Worker's KV namespace (one key per key-hash per UTC day) so that many
-// isolates share one budget.
+// Quota has two UTC budgets: daily and monthly. Site keys share both across
+// rotations. Keys without a site have their own budgets.
+//
+// Which budget applies is derived from the *live* Pro entitlement of the
+// key's site, not from the tier stored on the key row: a key issued while
+// the site had Pro drops back to the free budget as soon as the Pro term
+// ends. The stored tier only records what the key was issued with.
+//
+// The counters live in D1 (`api_key_usage`), not in KV: the free KV plan
+// allows 1,000 writes a day, while a Pro key alone may call the API 10,000
+// times a day — the counter would have stopped working long before the
+// budget did. An allowed call writes two rows (the day counter and the month
+// counter). The database checks both limits in the same statement, so rejected
+// calls write nothing. Five Pro keys at their full daily budgets can consume
+// the free D1 daily write allowance.
 
 import type { Db } from './db.ts';
+import { computeProEntitlement } from './entitlements.ts';
 import type { KvLike } from './rate-limit.ts';
 
 export { type KvLike };
@@ -22,15 +34,14 @@ export { type KvLike };
  * cannot collide with the bearer token used by the owner mailbox routes. */
 export const API_KEY_HEADER = 'x-afr-agent-key';
 
-/** Daily request budget per key, by tier. */
+/** Daily request budget by effective tier. */
 export const API_KEY_QUOTA_LIMITS = { free: 100, pro: 10_000 } as const;
+
+/** Monthly request budget by effective tier, including in 31-day months. */
+export const API_KEY_MONTHLY_QUOTA_LIMITS = { free: 3_000, pro: 300_000 } as const;
 
 /** The tiers a key can have. */
 export type ApiKeyTier = keyof typeof API_KEY_QUOTA_LIMITS;
-
-/** How long a daily counter is kept (seconds). Two days: the counter of
- * yesterday must still be readable a little after midnight. */
-export const API_KEY_QUOTA_TTL_SECONDS = 2 * 24 * 60 * 60;
 
 /** SHA-256 of the key, hex encoded — the value stored in `api_keys.key_hash`.
  * WebCrypto only: the module is bundled into the Worker, where node:crypto
@@ -47,7 +58,7 @@ export async function hashApiKey(key: string): Promise<string> {
 
 /** The stored facts of a key. The plaintext key is never part of it. */
 export interface ApiKeyRecord {
-  /** SHA-256 of the key — the identifier in the database and in the quota key. */
+  /** SHA-256 of the key, the identifier in api_keys. */
   keyHash: string;
   /** The site the key belongs to (null for a key without an owner). */
   domain: string | null;
@@ -139,65 +150,242 @@ export async function isValidApiKey(db: Db, key: string | null | undefined): Pro
   }
 }
 
-/** The environment the quota counter needs (the KV namespace). */
+/** The environment the quota check runs in.
+ *
+ * The counters live in the database, so nothing of the environment is read
+ * any more. The type is kept so that existing call sites keep compiling.
+ */
 export interface ApiKeyQuotaEnv {
-  /** The KV namespace holding the daily counters. Missing → no counter. */
+  /** @deprecated Unused: the usage counters live in D1, not in KV. */
   KV?: KvLike;
 }
 
+/** Which budget was exhausted by a rejected call. */
+export type ApiKeyQuotaExhausted = 'daily' | 'monthly';
+
 /** The outcome of one quota check. */
 export interface ApiKeyQuotaDecision {
-  /** Whether the request may proceed. */
+  /** Whether quota permits proceeding. Endpoint authorization is separate. */
   allowed: boolean;
-  /** The daily budget of the key's tier (0 when no key was presented). */
+  /** The daily budget of the key's effective tier (0 when no key was presented). */
   limit: number;
-  /** The number of counted calls today, including this one. */
+  /** Recorded UTC daily usage, including this call if counted. */
   used: number;
-  /** The tier the budget was taken from. */
+  /** The tier the budget was taken from — the *effective* tier, not the tier
+   * the key was issued with. */
   tier: ApiKeyTier | null;
-  /** The hash of the counted key. */
+  /** Hash of the live key, when one was resolved. */
   keyHash: string | null;
+  /** The monthly budget of the key's effective tier (0 when no key was presented). */
+  monthLimit: number;
+  /** Recorded UTC monthly usage, including this call if counted. */
+  monthUsed: number;
+  /** Whether both counters were incremented. False on rejection or store failure. */
+  counted: boolean;
+  /** Domain usage is shared by keys for the same owner; key usage is isolated
+   * to one key when it has no owner domain. */
+  quotaScope: 'domain' | 'key' | null;
+  /** The tier stored on the key row: what the key was issued with. It does not
+   * change when the Pro term of the site ends. */
+  issuedTier: string | null;
+  /** Which budget blocked the call (null when the call was allowed). */
+  exhausted: ApiKeyQuotaExhausted | null;
 }
 
-/** The KV key of one key's counter of one UTC day. */
-export function apiKeyQuotaKey(keyHash: string, now: number | string = Date.now()): string {
-  const day = new Date(typeof now === 'number' ? now : Date.parse(now)).toISOString().slice(0, 10);
-  return `afr-apikey-quota:${keyHash}:${day}`;
+/** The two usage periods one call belongs to. */
+export interface ApiKeyUsagePeriods {
+  /** The UTC day bucket: 'd:YYYY-MM-DD'. */
+  day: string;
+  /** The UTC month bucket: 'm:YYYY-MM'. */
+  month: string;
+}
+
+/** The UTC day and month buckets a call belongs to. */
+export function apiKeyUsagePeriods(now: number | string = Date.now()): ApiKeyUsagePeriods {
+  const millis = typeof now === 'number' ? now : Date.parse(now);
+  const iso = new Date(Number.isFinite(millis) ? millis : Date.now()).toISOString();
+  return { day: `d:${iso.slice(0, 10)}`, month: `m:${iso.slice(0, 7)}` };
 }
 
 /**
- * Count one call of a presented key against its daily budget.
+ * The tier a key is entitled to *right now*.
  *
- * The counter is a KV read-modify-write: it can lose a call in a rare race
- * between two isolates, which is acceptable for a usage budget (it is not a
- * security boundary). Without a KV namespace nothing is counted and the
- * request is allowed — the budget is a fairness mechanism, not an access
- * control.
+ * The tier stored on the key row is what the key was issued with; the budget
+ * follows the live Pro entitlement of the key's site instead. A key issued
+ * while the site had Pro therefore drops back to the free budget the moment
+ * the Pro term ends or is revoked, and a key of a site that gains Pro gets
+ * the Pro budget without being re-issued.
  *
- * An unknown or revoked key is not counted: the endpoint's own authorisation
- * decides about it, the quota never opens a door.
+ * A missing entitlement table (the migration was not applied) or a failing
+ * read yields the free budget: the budget is a fairness mechanism and
+ * failing open keeps the API usable.
+ */
+export async function effectiveApiKeyTier(db: Db, record: ApiKeyRecord,
+  now: number | string = Date.now()): Promise<ApiKeyTier> {
+  const subject = ownerDomain(record.domain);
+  if (!subject) return 'free';
+  try {
+    const state = await computeProEntitlement(db, subject, now);
+    return state.active ? 'pro' : 'free';
+  } catch {
+    return 'free';
+  }
+}
+
+interface UsageRow {
+  period: string;
+  used: number;
+}
+
+function ownerDomain(domain: string | null): string {
+  return (domain ?? '').trim().toLowerCase();
+}
+
+function domainQuotaBucket(domain: string): string {
+  return `domain:${domain}`;
+}
+
+/** UTC usage shared by current and previous keys of this domain. Null means
+ * the counters are unavailable. Read-only, including when the key rotates. */
+export async function readDomainApiKeyUsage(db: Db, domain: string,
+  now: number | string = Date.now()): Promise<{ day: number; month: number } | null> {
+  return readUsage(db, domainQuotaBucket(ownerDomain(domain)), apiKeyUsagePeriods(now));
+}
+
+/** Read the counters for one period pair, returning null on store failure. */
+async function readUsage(db: Db, bucketKey: string, periods: ApiKeyUsagePeriods): Promise<{ day: number; month: number } | null> {
+  let rows: UsageRow[];
+  try {
+    rows = await db
+      .prepare('SELECT period, used FROM api_key_usage WHERE key_hash = ? AND period IN (?, ?)')
+      .all<UsageRow>(bucketKey, periods.day, periods.month);
+  } catch {
+    return null;
+  }
+  let day = 0;
+  let month = 0;
+  for (const row of rows) {
+    const used = Number(row.used);
+    const count = Number.isFinite(used) && used > 0 ? used : 0;
+    if (row.period === periods.day) day = count;
+    else if (row.period === periods.month) month = count;
+  }
+  return { day, month };
+}
+
+/**
+ * Atomically check and increment both counters. The materialized snapshot
+ * ensures both period rows are inserted together or neither is inserted.
+ */
+const COUNT_USAGE_SQL = `
+  WITH current_usage AS MATERIALIZED (
+    SELECT
+      COALESCE((SELECT used FROM api_key_usage WHERE key_hash = ? AND period = ?), 0) AS day_used,
+      COALESCE((SELECT used FROM api_key_usage WHERE key_hash = ? AND period = ?), 0) AS month_used
+  ),
+  periods(period) AS MATERIALIZED (VALUES (?), (?))
+  INSERT INTO api_key_usage (key_hash, period, used, updated_at)
+  SELECT ?, period, 1, ? FROM current_usage CROSS JOIN periods
+  WHERE current_usage.day_used < ? AND current_usage.month_used < ?
+  ON CONFLICT(key_hash, period) DO UPDATE
+    SET used = api_key_usage.used + 1, updated_at = excluded.updated_at
+  RETURNING period, used
+`;
+
+/**
+ * Count a call only when both the day and month budgets have room. Domain
+ * keys share one bucket across rotations; keys without an owner stay per-hash.
+ * A rejected call writes zero rows, and the SQL snapshot makes the boundary
+ * safe under concurrent requests.
  */
 export async function enforceApiKeyQuota(db: Db, env: ApiKeyQuotaEnv | undefined,
   key: string | null | undefined, now: number | string = Date.now()): Promise<ApiKeyQuotaDecision> {
+  void env;
   const record = await resolveApiKey(db, key);
-  if (!record) return { allowed: true, limit: 0, used: 0, tier: null, keyHash: null };
-  const tier: ApiKeyTier = record.tier === 'pro' ? 'pro' : 'free';
+  if (!record) {
+    return {
+      allowed: true,
+      limit: 0,
+      used: 0,
+      tier: null,
+      keyHash: null,
+      monthLimit: 0,
+      monthUsed: 0,
+      counted: false,
+      quotaScope: null,
+      issuedTier: null,
+      exhausted: null,
+    };
+  }
+
+  const tier = await effectiveApiKeyTier(db, record, now);
   const limit = API_KEY_QUOTA_LIMITS[tier];
-  const kv = env?.KV;
-  if (!kv) return { allowed: true, limit, used: 0, tier, keyHash: record.keyHash };
-  const counterKey = apiKeyQuotaKey(record.keyHash, now);
-  const raw = await kv.get(counterKey);
-  const used = raw ? Number.parseInt(raw, 10) || 0 : 0;
-  const next = used + 1;
-  await kv.put(counterKey, String(next), { expirationTtl: API_KEY_QUOTA_TTL_SECONDS });
-  return { allowed: next <= limit, limit, used: next, tier, keyHash: record.keyHash };
+  const monthLimit = API_KEY_MONTHLY_QUOTA_LIMITS[tier];
+  const periods = apiKeyUsagePeriods(now);
+  const domain = ownerDomain(record.domain);
+  const bucketKey = domain ? domainQuotaBucket(domain) : record.keyHash;
+  const millis = typeof now === 'number' ? now : Date.parse(now);
+  const stamp = new Date(Number.isFinite(millis) ? millis : Date.now()).toISOString();
+  const base = {
+    tier,
+    limit,
+    keyHash: record.keyHash,
+    monthLimit,
+    quotaScope: domain ? 'domain' : 'key',
+    issuedTier: record.tier,
+  } as const;
+
+  let countedRows: UsageRow[];
+  try {
+    countedRows = await db.prepare(COUNT_USAGE_SQL).all<UsageRow>(
+      bucketKey, periods.day, bucketKey, periods.month,
+      periods.day, periods.month,
+      bucketKey, stamp,
+      limit, monthLimit,
+    );
+  } catch {
+    return { ...base, allowed: true, used: 0, monthUsed: 0, counted: false, exhausted: null };
+  }
+
+  if (countedRows.length === 2) {
+    let used = 0;
+    let monthUsed = 0;
+    for (const row of countedRows) {
+      if (row.period === periods.day) used = Number(row.used);
+      else if (row.period === periods.month) monthUsed = Number(row.used);
+    }
+    return { ...base, allowed: true, used, monthUsed, counted: true, exhausted: null };
+  }
+
+  const usage = await readUsage(db, bucketKey, periods);
+  if (!usage) {
+    return { ...base, allowed: true, used: 0, monthUsed: 0, counted: false, exhausted: null };
+  }
+  const dailyExceeded = usage.day >= limit;
+  if (!dailyExceeded && usage.month < monthLimit) {
+    return { ...base, allowed: true, used: usage.day, monthUsed: usage.month, counted: false, exhausted: null };
+  }
+  return {
+    ...base,
+    allowed: false,
+    used: usage.day,
+    monthUsed: usage.month,
+    counted: false,
+    exhausted: dailyExceeded ? 'daily' : 'monthly',
+  };
 }
 
-/** Remember that a key was used (the status page shows the last call). */
+/** Record approximate key activity with at most one write per 15 minutes. */
 export async function touchApiKeyUsage(db: Db, keyHash: string, now: number | string = Date.now()): Promise<void> {
-  const stamp = new Date(typeof now === 'number' ? now : Date.parse(now)).toISOString();
+  const parsed = typeof now === 'number' ? now : Date.parse(now);
+  const millis = Number.isFinite(parsed) ? parsed : Date.now();
+  const stamp = new Date(millis).toISOString();
+  const cutoff = new Date(millis - 15 * 60_000).toISOString();
   try {
-    await db.prepare('UPDATE api_keys SET last_used_at = ? WHERE key_hash = ?').run(stamp, keyHash);
+    await db.prepare(`UPDATE api_keys SET last_used_at = ?
+      WHERE key_hash = ? AND revoked_at IS NULL
+        AND (last_used_at IS NULL OR last_used_at <= ?)`)
+      .run(stamp, keyHash, cutoff);
   } catch {
     // The metadata column is optional: a missing one must not fail the call.
   }

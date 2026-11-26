@@ -267,12 +267,12 @@ const en: Catalog = {
     ownerMailChangeSubmit: 'Change the mailbox',
     ownerMailChangeBusy: 'Changing…',
     ownerMailChangeDone:
-      'Confirmation mail sent to the new address. After confirming it, save the new token and paste it below. The old token stops working only after confirmation.',
+      'Confirmation mail sent to the new address. Open the link and select Confirm email to save your new management token. The old token stops working after confirmation.',
     ownerMailErrSameEmail: 'This is already the registered mailbox.',
     ownerMailChecklistTitle: 'What AFR saw on your domain',
     ownerMailSentTitle: 'Confirmation mail sent',
     ownerMailSentBody:
-      'Open the link in the mail. It shows your management token exactly once — save it right away.',
+      'Open the link in the mail and select Confirm email. The page saves your management token in the browser where you confirm.',
     ownerMailErrDelivery: 'The confirmation email could not be sent. Try again later.',
     ownerMailTokenLabel: 'Management token',
     ownerMailTokenHelp:
@@ -307,11 +307,11 @@ const en: Catalog = {
     ownerMailErrNotConfigured: 'The owner-mail feature is not configured on this deployment.',
     ownerMailLostToken: 'I lost my management token',
     ownerMailRecoverDesc:
-      'Recover a lost management token: publish the challenge on your domain again and AFR mails a recovery link to the confirmed address. The old token stops working as soon as the link is used.',
+      'Publish the challenge on your domain again and AFR emails a recovery link to the confirmed address. The old token stops working once you select Recover token on the page.',
     ownerMailRecoverStart: 'Start recovery',
     ownerMailRecoverSentTitle: 'Recovery mail sent',
     ownerMailRecoverSentBody:
-      'Open the link in the mail. It hands out a new management token and the old token stops working immediately. Paste that token below to keep it in this browser.',
+      'Open the link in the mail and select Recover token. The page saves your new management token in the browser where you recover it.',
     ownerMailRecoverTokenLabel: 'Token from the recovery mail',
     ownerMailRecoverTokenUse: 'Redeem this token',
     ownerMailRecoverTokenSaved: 'The new management token is saved in this browser.',
@@ -326,6 +326,21 @@ const en: Catalog = {
     ownerMailDeleteBusy: 'Deleting…',
     ownerMailDeleteDone:
       'The mailbox was deleted — this browser no longer holds a management token.',
+
+    // Owner email links
+    ownerEmailLinkConfirm: 'Confirm email',
+    ownerEmailLinkRecover: 'Recover token',
+    ownerEmailLinkConfirmHelp: 'Select Confirm email to verify the mailbox and save your management token in this browser.',
+    ownerEmailLinkRecoverHelp: 'Select Recover token to replace your management token. The previous token stops working immediately.',
+    ownerEmailLinkEnableScript: 'Enable JavaScript and reopen the original email link to continue.',
+    ownerEmailLinkInvalid: 'This link is incomplete, expired, or already used. Open the original email link or request a new one from your owner panel.',
+    ownerEmailLinkWorking: 'Checking your link…',
+    ownerEmailLinkFailed: 'We could not complete your request. Try again.',
+    ownerEmailLinkConfirmed: 'Email confirmed for',
+    ownerEmailLinkRecovered: 'Management token recovered for',
+    ownerEmailLinkStorageUnavailable: 'This browser could not save your management token. Copy it before leaving this page, then paste it in the owner panel.',
+    ownerEmailLinkCopyManually: 'Token selected. Copy it using your device’s copy command.',
+    ownerEmailLinkOpenPanel: 'Open owner panel',
 
     // P5 method page
     methodTitle: 'The AFR standard',
@@ -702,11 +717,11 @@ const zhCN: Catalog = {
     ownerMailChangeLabel: '新的邮箱地址',
     ownerMailChangeSubmit: '确认更换',
     ownerMailChangeBusy: '正在更换…',
-    ownerMailChangeDone: '确认信已发往新邮箱。确认后请保存新管理令牌，并将其粘贴到下方。旧令牌在确认后才会失效。',
+    ownerMailChangeDone: '确认信已发往新邮箱。打开链接并点击「确认邮箱」即可保存新的管理令牌，旧令牌随即失效。',
     ownerMailErrSameEmail: '这已经是当前登记的邮箱。',
     ownerMailChecklistTitle: 'AFR 在你的域名上看到的情况',
     ownerMailSentTitle: '确认信已寄出',
-    ownerMailSentBody: '打开邮件中的链接。它会一次性显示管理令牌——请立即保存。',
+    ownerMailSentBody: '打开邮件中的链接并点击「确认邮箱」。管理令牌会保存在你完成确认的浏览器中。',
     ownerMailErrDelivery: '确认信未能发送，请稍后重试。',
     ownerMailTokenLabel: '管理令牌',
     ownerMailTokenHelp:
@@ -739,11 +754,11 @@ const zhCN: Catalog = {
     ownerMailErrNotConfigured: '当前部署未配置站主邮箱功能。',
     ownerMailLostToken: '我弄丢了管理令牌',
     ownerMailRecoverDesc:
-      '找回管理令牌：重新在你的域名上发布挑战码，AFR 会把找回链接寄到已确认的邮箱。链接一旦被使用，旧令牌立即失效。',
+      '在你的域名上重新发布挑战码后，AFR 会把找回链接寄到已确认的邮箱。在链接页面点击「找回令牌」后，旧令牌立即失效。',
     ownerMailRecoverStart: '开始找回',
     ownerMailRecoverSentTitle: '找回信已寄出',
     ownerMailRecoverSentBody:
-      '打开邮件里的链接。它会给出新的管理令牌，旧令牌立即失效。把新令牌粘贴到下方即可保存在本机浏览器。',
+      '打开邮件中的链接并点击「找回令牌」。新管理令牌会保存在你完成找回的浏览器中。',
     ownerMailRecoverTokenLabel: '找回信里的令牌',
     ownerMailRecoverTokenUse: '兑换该令牌',
     ownerMailRecoverTokenSaved: '新的管理令牌已保存在本机浏览器。',
@@ -754,6 +769,21 @@ const zhCN: Catalog = {
     ownerMailDeleteConfirm: '确认注销邮箱',
     ownerMailDeleteBusy: '正在删除…',
     ownerMailDeleteDone: '邮箱已注销——本机浏览器不再持有管理令牌。',
+
+    // 站主邮件链接
+    ownerEmailLinkConfirm: '确认邮箱',
+    ownerEmailLinkRecover: '找回令牌',
+    ownerEmailLinkConfirmHelp: '点击「确认邮箱」完成验证，并将管理令牌保存在当前浏览器。',
+    ownerEmailLinkRecoverHelp: '点击「找回令牌」以更换管理令牌，旧令牌将立即失效。',
+    ownerEmailLinkEnableScript: '请启用 JavaScript，然后重新打开邮件中的原始链接。',
+    ownerEmailLinkInvalid: '此链接不完整、已过期或已使用。请打开邮件中的原始链接，或在站主面板申请新链接。',
+    ownerEmailLinkWorking: '正在验证链接…',
+    ownerEmailLinkFailed: '暂时无法完成请求，请重试。',
+    ownerEmailLinkConfirmed: '已确认站主邮箱',
+    ownerEmailLinkRecovered: '已找回管理令牌',
+    ownerEmailLinkStorageUnavailable: '当前浏览器无法保存管理令牌。请在离开本页前复制令牌，再粘贴到站主面板。',
+    ownerEmailLinkCopyManually: '已选中令牌，请用设备的复制功能复制。',
+    ownerEmailLinkOpenPanel: '打开站主面板',
 
     // P5 method page
     methodTitle: 'AFR 标准全文',

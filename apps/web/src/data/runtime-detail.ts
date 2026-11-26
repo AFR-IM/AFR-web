@@ -24,7 +24,8 @@
 //   written (see src/data/detail.ts — the one builder both use).
 
 import type { SiteDetail } from './types.ts';
-import { SITE_PATHS_URL, buildDetail } from './detail.ts';
+import { SITE_PATHS_URL, buildDetail, sanitizeCategoryOverrides } from './detail.ts';
+import type { CategoryOverrideMap } from './detail.ts';
 import DELISTED from './delisted.json';
 
 /** The data repo's raw endpoint (the SSOT layout). */
@@ -32,6 +33,15 @@ export const DATA_REPO_RAW = 'https://raw.githubusercontent.com/AFR-IM/AFR-data/
 
 /** The map the build writes: domain → snapshot date (YYYY/MM/DD). */
 export { SITE_PATHS_URL };
+
+/**
+ * The public path of the manual category labels.
+ *
+ * The build writes it next to the snapshot index; the page reads it so a
+ * rendered detail page carries the same category the API, the badge and
+ * the static build show.
+ */
+export const CATEGORY_OVERRIDES_URL = '/data/category-overrides.json';
 
 /** The minimum Cloudflare runtime shape this module needs. */
 export interface RuntimeLike {
@@ -44,11 +54,24 @@ let pathMap: Record<string, string> | null = null;
 let pathMapPromise: Promise<Record<string, string>> | null = null;
 
 /** The snapshot cache: the same URL for a day, fetched once. */
-const snapshotCache = new Map<string, { at: number; detail?: SiteDetail }>();
+const snapshotCache = new Map<string, { at: number; detail?: SiteDetail; overrides?: CategoryOverrideMap }>();
 const SNAPSHOT_TTL_MS = 10 * 60 * 1000;
 
 /** A slow upstream must not hang a page: give up and serve the fallback. */
 const SNAPSHOT_TIMEOUT_MS = 5000;
+
+/**
+ * The manual category labels are cached per origin and refreshed after this
+ * long — a manual label should reach the page without a redeploy, but not
+ * on every request.
+ */
+const CATEGORY_OVERRIDES_TTL_MS = 10 * 60 * 1000;
+
+/** origin → {at, map}: the labels of that deployment. */
+const categoryOverridesCache = new Map<string, { at: number; map: CategoryOverrideMap }>();
+
+/** origin → the read that is running right now (one read per origin). */
+const categoryOverridesInFlight = new Map<string, Promise<CategoryOverrideMap>>();
 
 /** Fetch a JSON payload, tolerating a missing binding (dev, fixtures). */
 async function fetchJson(url: string, init?: RequestInit): Promise<unknown> {
@@ -102,15 +125,78 @@ export async function loadPathMap(
   return pathMapPromise;
 }
 
+/**
+ * The manual category labels of this deployment: domain → category slug.
+ *
+ * Read through the ASSETS binding when it is there (the asset is part of
+ * the same deployment, so this costs no network request) and over HTTP
+ * otherwise (a preview deployment without the binding). A map that cannot
+ * be read is an empty map: the page then shows the heuristic label, which
+ * is what it showed before the manual labels existed.
+ */
+export async function loadCategoryOverrides(
+  runtime: RuntimeLike | undefined,
+  origin = 'https://afr.im',
+): Promise<CategoryOverrideMap> {
+  const cached = categoryOverridesCache.get(origin);
+  if (cached && Date.now() - cached.at < CATEGORY_OVERRIDES_TTL_MS) return cached.map;
+
+  let pending = categoryOverridesInFlight.get(origin);
+  if (!pending) {
+    pending = readCategoryOverrides(runtime, origin).finally(() => {
+      categoryOverridesInFlight.delete(origin);
+    });
+    categoryOverridesInFlight.set(origin, pending);
+  }
+  const map = await pending.catch(() => ({} as CategoryOverrideMap));
+  categoryOverridesCache.set(origin, { at: Date.now(), map });
+  // One deployment has one origin; the cap only guards against a flood of
+  // stray origins (a preview per branch, a host alias).
+  if (categoryOverridesCache.size > 16) {
+    const oldest = [...categoryOverridesCache.entries()].sort((a, b) => a[1].at - b[1].at)[0];
+    if (oldest) categoryOverridesCache.delete(oldest[0]);
+  }
+  return map;
+}
+
+/** Read the labels once: the asset first, the network second. */
+async function readCategoryOverrides(
+  runtime: RuntimeLike | undefined,
+  origin: string,
+): Promise<CategoryOverrideMap> {
+  const assets = runtime?.env?.ASSETS as
+    | { fetch?: (req: Request) => Promise<Response> }
+    | undefined;
+  if (assets?.fetch) {
+    try {
+      // the binding serves the asset itself — no network hop
+      const res = await assets.fetch(new Request(new URL(CATEGORY_OVERRIDES_URL, origin)));
+      if (res.ok) return sanitizeCategoryOverrides(await res.json());
+    } catch {
+      /* fall through to the network */
+    }
+  }
+  try {
+    const raw = await fetchJson(new URL(CATEGORY_OVERRIDES_URL, origin).toString());
+    return sanitizeCategoryOverrides(raw);
+  } catch {
+    return {};
+  }
+}
+
 /** The snapshot of one domain, from the data repo. */
 async function loadSnapshot(
   domain: string,
   date: string,
   runtime: RuntimeLike | undefined,
+  overrides: CategoryOverrideMap,
 ): Promise<SiteDetail | undefined> {
   const url = `${DATA_REPO_RAW}/scans/${date}/${domain}.json`;
   const hit = snapshotCache.get(url);
-  if (hit && Date.now() - hit.at < SNAPSHOT_TTL_MS) return hit.detail;
+  // A cached detail is only good for the labels it was built with: when the
+  // labels changed, the detail is rebuilt (the labels are the only thing
+  // that can change between two reads of the same snapshot).
+  if (hit && Date.now() - hit.at < SNAPSHOT_TTL_MS && hit.overrides === overrides) return hit.detail;
 
   // The Workers cache is shared by every isolate: the second visitor of a
   // page does not wait for the data repo again.
@@ -121,7 +207,7 @@ async function loadSnapshot(
       const cached = await edge.match(url);
       if (cached) {
         const raw = (await cached.json()) as Parameters<typeof buildDetail>[0];
-        detail = buildDetail(raw, domain, DELISTED as Record<string, { noteEn: string; noteZh: string }>);
+        detail = buildDetail(raw, domain, DELISTED as Record<string, { noteEn: string; noteZh: string }>, overrides);
       }
     } catch {
       detail = undefined;
@@ -130,7 +216,7 @@ async function loadSnapshot(
   if (!detail) {
     try {
       const raw = (await fetchJson(url)) as Parameters<typeof buildDetail>[0];
-      detail = buildDetail(raw, domain, DELISTED as Record<string, { noteEn: string; noteZh: string }>);
+      detail = buildDetail(raw, domain, DELISTED as Record<string, { noteEn: string; noteZh: string }>, overrides);
       if (edge && detail) {
         try {
           await edge.put(url, new Response(JSON.stringify(raw), { headers: { 'content-type': 'application/json' } }));
@@ -142,7 +228,7 @@ async function loadSnapshot(
       detail = undefined;
     }
   }
-  snapshotCache.set(url, { at: Date.now(), detail });
+  snapshotCache.set(url, { at: Date.now(), detail, overrides });
   // Keep the map small — the catalog is large and the entries expire anyway.
   if (snapshotCache.size > 500) {
     const oldest = [...snapshotCache.entries()].sort((a, b) => a[1].at - b[1].at)[0];
@@ -164,8 +250,11 @@ export async function loadRuntimeDetail(
   origin = 'https://afr.im',
 ): Promise<SiteDetail | undefined> {
   if (!domain) return undefined;
-  const map = await loadPathMap(runtime, origin);
+  const [map, overrides] = await Promise.all([
+    loadPathMap(runtime, origin),
+    loadCategoryOverrides(runtime, origin),
+  ]);
   const date = map[domain];
   if (!date) return undefined;
-  return loadSnapshot(domain, date, runtime);
+  return loadSnapshot(domain, date, runtime, overrides);
 }

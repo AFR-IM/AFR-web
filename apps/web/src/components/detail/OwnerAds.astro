@@ -1,0 +1,546 @@
+---
+import { getCatalog, toLocale } from '../../i18n/loader.ts';
+
+interface Props {
+  domain: string;
+  locale: string;
+}
+
+const { domain, locale } = Astro.props;
+const lang = toLocale(locale);
+const t = (en: string, zh: string) => lang === 'zh-CN' ? zh : en;
+const categories = getCatalog(lang).categories;
+const copy = {
+  create: t('Create ad order', '创建广告订单'),
+  creating: t('Creating order…', '正在创建订单…'),
+  retry: t('Retry this application', '重试此申请'),
+  view: t('View this order', '查看此订单'),
+  checking: t('Checking order…', '正在查询订单…'),
+  checkoutUnavailable: t('The payment link is unavailable or has expired. Check this order again before paying.', '付款链接不可用或已过期。请重新查询订单后再付款。'),
+  days: t('days', '天'),
+  total: t('Estimated total', '预计总价'),
+  invalid: t('Check the placement, copy and term limits.', '请检查广告位、文案和购买期限。'),
+  invalidId: t('Enter an ad order number in the form ad-<UUID>.', '请输入 ad-<UUID> 格式的广告订单号。'),
+  storage: t('This browser could not save the application. Enable local storage before ordering.', '本浏览器无法保存申请。请允许本地存储后再下单。'),
+  retryNote: t('The order may already exist. Save its number below. Retrying reuses this application.', '订单可能已创建。请保存下方订单号，重试会沿用本次申请。'),
+  unavailable: t('This placement is no longer offered. You can still check your saved order.', '此广告位已停止销售，你仍可查询已保存的订单。'),
+  readError: t('Could not read the order. Try checking again.', '暂时无法读取订单，请重试查询。'),
+  paid: t('Payment confirmed', '已确认收款'),
+  unpaid: t('Payment not confirmed', '尚未确认收款'),
+  unknown: t('Unknown', '未知'),
+  states: {
+    pending: t('Awaiting payment', '待付款'),
+    paid: t('Paid · awaiting manual review', '已付款 · 待人工审核'),
+    review: t('Under review', '审核中'),
+    scheduled: t('Approved · scheduled', '已通过 · 待排期上线'),
+    active: t('Live', '投放中'),
+    paused: t('Paused', '已暂停'),
+    expired: t('Expired', '已到期'),
+    rejected: t('Rejected', '审核未通过'),
+    cancelled: t('Cancelled', '已取消'),
+  },
+  errors: {
+    ads_sales_closed: t('Ad sales are currently closed.', '广告自助购买目前已关闭。'),
+    unauthorized: t('Confirm or restore your owner mailbox token above.', '请在上方确认站主邮箱或恢复管理令牌。'),
+    disallowed_claim: t('Remove misleading claims such as “officially certified” or “#1”.', '请删除「官方认证」「第一名」等误导性表述。'),
+    invalid_copy: t('Check the headline and body for length and unsupported characters.', '请检查标题与正文长度，并移除不支持的字符。'),
+    invalid_slot_key: t('Choose a category or enter a supported search phrase.', '请选择分类，或填写有效的搜索词。'),
+    order_pending: t('This site already holds a placement for that slot. Check the previous order.', '本站在该广告位已有申请或排期，请查看之前的订单。'),
+    slot_full: t('This placement is full. Try a different category, search phrase or slot.', '该广告位已满，请更换分类、搜索词或广告位。'),
+    slot_unavailable: t('This placement is currently unavailable.', '该广告位目前不可用。'),
+    ineligible_placement: t('This site or placement is not eligible.', '本站或所选广告位不符合投放条件。'),
+    not_found: t('Order not found. Check the order number and the owner token for this site.', '未找到订单，请核对订单号和本站管理令牌。'),
+    billing_not_configured: t('Checkout is temporarily unavailable.', '付款服务暂不可用。'),
+    request_conflict: t('This order differs from the saved application. Check its status first.', '已有订单与保存的申请不一致，请先查询订单状态。'),
+  },
+};
+---
+
+<section
+  id="owner-ads"
+  class="oa"
+  data-owner-ads
+  data-domain={domain}
+  data-locale={lang}
+  data-copy={JSON.stringify(copy)}
+  hidden
+  aria-labelledby="owner-ads-title"
+>
+  <h2 id="owner-ads-title">{t('Advertising', '广告投放')}</h2>
+  <form class="oa-group" data-oa-apply hidden>
+    <fieldset data-oa-fields disabled>
+      <label for="oa-slot">{t('Placement', '广告位')}</label>
+      <select id="oa-slot" data-oa-slot required>
+        <option value="category-top">{t('Category page', '分类页')}</option>
+        <option value="search-top">{t('Search results', '搜索结果页')}</option>
+        <option value="home-supporter">{t('Homepage supporter', '首页支持者')}</option>
+      </select>
+      <label data-oa-category-wrap hidden>
+        {t('Category', '分类')}
+        <select data-oa-category>
+          {Object.entries(categories).map(([slug, category]) => <option value={slug}>{category.name}</option>)}
+        </select>
+      </label>
+      <label data-oa-search-wrap hidden>
+        {t('Exact search phrase', '完整搜索词')}
+        <input type="text" data-oa-search maxlength="192" autocomplete="off" />
+      </label>
+      <p data-oa-home-note hidden>{t('The homepage lists your domain. We use the copy below for review.', '首页展示你的域名，下方文案供审核使用。')}</p>
+      <label for="oa-headline">{t('Headline (up to 40 characters)', '标题（最多 40 字符）')}</label>
+      <input id="oa-headline" data-oa-headline maxlength="80" required />
+      <label for="oa-body">{t('Body (up to 90 characters)', '正文（最多 90 字符）')}</label>
+      <input id="oa-body" data-oa-body maxlength="180" required />
+      <label for="oa-months">{t('Months (30 days each)', '购买月数（每月 30 天）')}</label>
+      <select id="oa-months" data-oa-months required>
+        {Array.from({ length: 12 }, (_, i) => <option value={i + 1}>{i + 1}</option>)}
+      </select>
+    </fieldset>
+    <p class="oa-price" data-oa-price></p>
+    <p>{t('Pay in USDC on Base. Creating an order moves no funds. To pay, open AIPAY checkout and confirm there.', '使用 Base 链上的 USDC。创建订单不会转移资金，需打开 AIPAY 付款页并确认后才会支付。')}</p>
+    <p>{t('Every ad goes through manual review after payment. Refunds are currently unavailable. Buying exposure never changes scores, grades or rankings.', '付款后须人工审核。目前没有退款通道。购买曝光不影响评分、等级或自然排名。')}</p>
+    <div class="oa-actions">
+      <button class="btn" type="submit" data-oa-submit disabled>{copy.create}</button>
+      <button class="btn btn-ghost" type="button" data-oa-new hidden>{t('Start another application', '开始另一笔申请')}</button>
+    </div>
+  </form>
+  <p class="oa-message" data-oa-apply-message role="status"></p>
+
+  <div class="oa-group oa-track" data-oa-track hidden>
+    <p data-oa-locked hidden><a href="#owner-mailbox-title">{copy.errors.unauthorized}</a></p>
+    <form class="oa-group" data-oa-lookup hidden>
+      <label for="oa-order-id">{t('Ad order number', '广告订单号')}</label>
+      <input id="oa-order-id" class="mono" data-oa-order-id type="text" maxlength="39" autocomplete="off" spellcheck="false" required />
+      <div class="oa-actions">
+        <button class="btn btn-ghost" type="submit" data-oa-check>{t('Check order status', '查询订单状态')}</button>
+        <a data-oa-order-link hidden>{t('Order tracking link', '订单查询链接')}</a>
+      </div>
+      <p data-oa-save hidden>{t('Save your order number or tracking link to check the status later.', '请保存订单号或查询链接，以便日后查看状态。')}</p>
+    </form>
+    <dl class="oa-order" data-oa-order hidden aria-live="polite">
+      <dt>{t('Status', '状态')}</dt><dd data-oa-state></dd>
+      <dt>{t('Payment', '付款')}</dt><dd data-oa-paid></dd>
+      <dt>{t('Placement starts', '排期开始')}</dt><dd data-oa-starts></dd>
+      <dt>{t('Placement ends', '排期到期')}</dt><dd data-oa-ends></dd>
+    </dl>
+    <p data-oa-order-message class="oa-message" role="status"></p>
+    <p data-oa-pay-missing hidden>{copy.checkoutUnavailable}</p>
+    <div class="oa-group" data-oa-pay hidden>
+      <p class="oa-price" data-oa-order-amount></p>
+      <p>{t('Payment link expires', '付款链接有效至')} <span data-oa-pay-expires></span></p>
+      <a class="btn" data-oa-checkout target="_blank" rel="noopener noreferrer">{t('Open AIPAY checkout ↗', '打开 AIPAY 付款页 ↗')}</a>
+    </div>
+  </div>
+</section>
+
+<style>
+  .oa {
+    display: grid;
+    gap: 10px;
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 14px;
+    min-width: 0;
+    scroll-margin-top: calc(var(--nav-h) + 20px);
+    color: var(--text-2);
+    font-size: 13px;
+    line-height: 1.55;
+  }
+  .oa h2 { margin: 0; font-size: 15px; color: var(--text-1); }
+  .oa p { margin: 0; }
+  .oa-group, .oa fieldset { display: grid; gap: 6px; }
+  .oa fieldset { min-width: 0; padding: 0; margin: 0; border: 0; }
+  .oa input, .oa select {
+    display: block;
+    width: 100%;
+    padding: 7px 10px;
+    color: var(--text-1);
+    background: var(--bg-ink);
+    border: 1px solid var(--line);
+    border-radius: var(--r-1);
+    font-size: inherit;
+    line-height: inherit;
+  }
+  .oa input:focus-visible, .oa select:focus-visible { outline: 2px solid var(--brand); }
+  .oa a:not(.btn) { color: var(--brand-link); text-decoration: underline; }
+  .oa .btn { justify-self: start; }
+  .oa .btn:disabled { cursor: not-allowed; opacity: .65; }
+  .oa-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+  .oa-track { border-top: 1px solid var(--line); padding-top: 10px; }
+  .oa-price { font-weight: 600; color: var(--text-1); }
+  .oa-order { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; margin: 4px 0; }
+  .oa-order dd { margin: 0; color: var(--text-1); }
+  .oa[hidden], .oa [hidden], .oa-message:empty, .oa-price:empty { display: none; }
+</style>
+
+<script>
+  type Slot = 'category-top' | 'search-top' | 'home-supporter';
+  type Application = { requestId: string; slot: Slot; slot_key: string | null; headline: string; body: string; months: number };
+  type Replay = { input: Application; stage: 'edit' | 'retry' | 'created' };
+  type Offer = { amount: number; term_days: number };
+  type Order = {
+    orderId: string; status: string; paid: boolean; checkoutUrl?: string; expiresAt: string | null;
+    startsAt: string | null; endsAt: string | null; amount: string; asset: string; chainKey: string; termDays: number;
+  };
+
+  const API = 'https://afr.im/api/v1/ads';
+  const SLOTS: readonly Slot[] = ['category-top', 'search-top', 'home-supporter'];
+  const ORDER_QUERY = 'orderId';
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const CONTROL = /[\p{Cc}\p{Cf}\p{Cs}]/u;
+  // These Worker errors are returned before any reservation can be inserted.
+  const PRE_RESERVATION = new Set([
+    'ads_sales_closed', 'unauthorized', 'invalid_copy', 'disallowed_claim', 'invalid_slot_key',
+    'invalid_slot', 'invalid_term', 'unknown_domain', 'ineligible_placement', 'slot_unavailable',
+    'slot_full', 'order_pending',
+  ]);
+
+  const parseId = (value: string | null) => {
+    const id = value?.trim().toLowerCase();
+    return id?.startsWith('ad-') && UUID.test(id.slice(3)) ? id : '';
+  };
+  const merchantId = (input: Application) => `ad-${input.requestId.toLowerCase()}`;
+  const appText = (value: unknown, max: number) => typeof value === 'string' && value.trim() !== '' &&
+    value.length <= max * 2 && [...value].length <= max && !CONTROL.test(value);
+  function isApplication(draft: Partial<Application> | null): draft is Application {
+    if (!draft || typeof draft.requestId !== 'string' || !UUID.test(draft.requestId) ||
+        !SLOTS.includes(draft.slot as Slot) || typeof draft.months !== 'number' ||
+        !Number.isInteger(draft.months) || draft.months < 1 || draft.months > 12 ||
+        !appText(draft.headline, 40) || !appText(draft.body, 90)) return false;
+    const key = draft.slot_key;
+    if (draft.slot === 'home-supporter') return key === null;
+    if (typeof key !== 'string') return false;
+    return draft.slot === 'category-top' ? /^[a-z0-9][a-z0-9-]{0,79}$/.test(key) :
+      key.trim() !== '' && key.length <= 192 && !CONTROL.test(key);
+  }
+
+  function readStorage(key: string): string | null {
+    try { return localStorage.getItem(key); } catch { return null; }
+  }
+  function writeStorage(key: string, value: string): boolean {
+    try { localStorage.setItem(key, value); return true; } catch { return false; }
+  }
+  function jsonRequest(path: string, token = '', data?: object) {
+    return fetch(API + path, {
+      method: data ? 'POST' : 'GET',
+      headers: {
+        accept: 'application/json',
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+        ...(data ? { 'content-type': 'application/json' } : {}),
+      },
+      ...(data ? { body: JSON.stringify(data) } : {}),
+      cache: 'no-store', credentials: 'omit', redirect: 'error', signal: AbortSignal.timeout(20_000),
+    });
+  }
+  function parseOrder(value: Partial<Order> | undefined, id: string): Order | null {
+    return value?.orderId === id && typeof value.paid === 'boolean' &&
+      typeof value.status === 'string' ? value as Order : null;
+  }
+  function checkoutFor(order: Order | null): string {
+    if (order?.status !== 'pending' || order.paid || typeof order.checkoutUrl !== 'string' ||
+        typeof order.expiresAt !== 'string' || !(Date.parse(order.expiresAt) > Date.now()) ||
+        order.asset !== 'USDC' || order.chainKey !== 'base' || typeof order.amount !== 'string' ||
+        !Number.isFinite(Number(order.amount)) || Number(order.amount) <= 0 ||
+        !Number.isInteger(order.termDays) || order.termDays < 30 || order.termDays > 360) return '';
+    try {
+      const url = new URL(order.checkoutUrl);
+      return url.protocol === 'https:' && url.origin === 'https://aipay.im' && !url.username && !url.password ? url.href : '';
+    } catch { return ''; }
+  }
+
+  for (const root of document.querySelectorAll<HTMLElement>('[data-owner-ads]')) {
+    const domain = root.dataset.domain!;
+    const copy = JSON.parse(root.dataset.copy!) as Record<string, string> & { states: Record<string, string>; errors: Record<string, string> };
+    const get = <T extends HTMLElement = HTMLElement>(name: string) => root.querySelector<T>(`[data-oa-${name}]`)!;
+    const apply = get<HTMLFormElement>('apply');
+    const fields = get<HTMLFieldSetElement>('fields');
+    const slot = get<HTMLSelectElement>('slot');
+    const category = get<HTMLSelectElement>('category');
+    const keyword = get<HTMLInputElement>('search');
+    const headline = get<HTMLInputElement>('headline');
+    const body = get<HTMLInputElement>('body');
+    const months = get<HTMLSelectElement>('months');
+    const submit = get<HTMLButtonElement>('submit');
+    const again = get<HTMLButtonElement>('new');
+    const applyMessage = get('apply-message');
+    const lookup = get<HTMLFormElement>('lookup');
+    const orderInput = get<HTMLInputElement>('order-id');
+    const check = get<HTMLButtonElement>('check');
+    const orderLink = get<HTMLAnchorElement>('order-link');
+    const orderMessage = get('order-message');
+    const checkout = get<HTMLAnchorElement>('checkout');
+    const tokenKey = `afr-owner-mail-${domain}`;
+    const replayKey = `afr-owner-ads-application-${domain}`;
+    const orderKey = `afr-owner-ads-order-${domain}`;
+    const dateFormat = new Intl.DateTimeFormat(root.dataset.locale, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' });
+    const number = new Intl.NumberFormat(root.dataset.locale);
+    const money = (amount: number) => `${number.format(amount)} USDC`;
+    const date = (stamp: string | null) => {
+      const at = typeof stamp === 'string' ? Date.parse(stamp) : NaN;
+      return Number.isFinite(at) ? `${dateFormat.format(at)} UTC` : '—';
+    };
+    const offers = new Map<Slot, Offer>();
+    const loadToken = () => readStorage(tokenKey)?.trim() ?? '';
+    let observedToken = loadToken();
+    let deniedToken = '';
+    const token = () => { const value = loadToken(); return value === deniedToken ? '' : value; };
+    let replay = readReplay();
+    let knownId = parseId(new URLSearchParams(location.search).get(ORDER_QUERY)) ||
+      (replay?.stage === 'retry' ? merchantId(replay.input) : '') || parseId(readStorage(orderKey)) ||
+      (replay?.stage === 'created' ? merchantId(replay.input) : '');
+    let order: Order | null = null;
+    let salesOpen = false;
+    let offerVersion = 0;
+    let submitting = false;
+    let reading = false;
+    let anchorPending = location.hash === '#owner-ads';
+
+    function readReplay(): Replay | null {
+      try {
+        const saved = JSON.parse(readStorage(replayKey) ?? 'null');
+        return saved && ['edit', 'retry', 'created'].includes(saved.stage) && isApplication(saved.input) ? saved : null;
+      } catch { return null; }
+    }
+    function fill(input: Application) {
+      slot.value = input.slot;
+      if (input.slot === 'category-top') category.value = input.slot_key ?? '';
+      if (input.slot === 'search-top') keyword.value = input.slot_key ?? '';
+      headline.value = input.headline;
+      body.value = input.body;
+      months.value = String(input.months);
+    }
+    function pickOrder(id: string) {
+      if (id !== knownId) order = null;
+      knownId = id;
+      orderInput.value = id;
+      orderLink.href = `?${ORDER_QUERY}=${encodeURIComponent(id)}#owner-ads`;
+    }
+    function acceptOrder(result: Order, fromApply = false) {
+      pickOrder(result.orderId);
+      order = result;
+      writeStorage(orderKey, result.orderId);
+      // A lookup during an interrupted checkout may see the reservation before
+      // the provider has returned a payment link. That attempt is still retryable.
+      if (replay?.stage === 'retry' && merchantId(replay.input) === result.orderId &&
+          (fromApply || result.status !== 'pending' || checkoutFor(result))) {
+        replay = { ...replay, stage: 'created' };
+        writeStorage(replayKey, JSON.stringify(replay));
+        applyMessage.textContent = '';
+      }
+    }
+
+    function syncApplication(): boolean {
+      // Honor an attempt saved after this tab opened before starting an action.
+      const saved = readReplay();
+      if (!saved || JSON.stringify(saved) === JSON.stringify(replay)) return false;
+      replay = saved;
+      fill(saved.input);
+      if (saved.stage !== 'edit') pickOrder(merchantId(saved.input));
+      applyMessage.textContent = saved.stage === 'retry' ? copy.retryNote : '';
+      render();
+      return true;
+    }
+
+    function render() {
+      const hasToken = !!token();
+      const canApply = salesOpen && hasToken && offers.size > 0;
+      const draft = replay;
+      const retrying = draft?.stage === 'retry';
+      const created = draft?.stage === 'created';
+      const frozen = retrying || created || submitting;
+      if (!frozen && !offers.has(slot.value as Slot) && offers.size) slot.value = offers.keys().next().value!;
+      const offer = offers.get(retrying ? draft.input.slot : slot.value as Slot);
+      for (const option of slot.options) option.disabled = !offers.has(option.value as Slot);
+      get('category-wrap').hidden = slot.value !== 'category-top';
+      get('search-wrap').hidden = slot.value !== 'search-top';
+      get('home-note').hidden = slot.value !== 'home-supporter';
+      category.required = slot.value === 'category-top';
+      keyword.required = slot.value === 'search-top';
+      fields.disabled = !canApply || frozen;
+      apply.hidden = !canApply;
+      submit.disabled = !canApply || submitting || reading || (!created && !offer);
+      submit.textContent = submitting ? copy.creating : created ? copy.view : retrying ? copy.retry : copy.create;
+      again.hidden = !created;
+      again.disabled = submitting || reading;
+      get('price').textContent = canApply && retrying && !offer ? copy.unavailable :
+        canApply && offer && !frozen
+          ? `${money(offer.amount)} / ${offer.term_days} ${copy.days} · ${copy.total}: ${money(offer.amount * Number(months.value))}` : '';
+
+      get('track').hidden = !knownId && !canApply;
+      lookup.hidden = !hasToken;
+      get('locked').hidden = hasToken;
+      orderInput.disabled = submitting || reading;
+      check.disabled = !hasToken || submitting || reading;
+      const matches = !!knownId && parseId(orderInput.value) === knownId;
+      orderLink.hidden = !matches;
+      get('save').hidden = !matches;
+      const current = hasToken && matches ? order : null;
+      get('order').hidden = !current;
+      get('state').textContent = current ? (Object.hasOwn(copy.states, current.status) ? copy.states[current.status] : copy.unknown) : '';
+      get('paid').textContent = current ? (current.paid ? copy.paid : copy.unpaid) : '';
+      get('starts').textContent = date(current?.startsAt ?? null);
+      get('ends').textContent = date(current?.endsAt ?? null);
+      const link = salesOpen && !submitting ? checkoutFor(current) : '';
+      get('pay').hidden = !link;
+      get('pay-missing').hidden = !salesOpen || current?.status !== 'pending' || current.paid || !!link;
+      get('order-amount').textContent = link && current ? `${money(Number(current.amount))} · Base · ${current.termDays} ${copy.days}` : '';
+      get('pay-expires').textContent = link && current ? date(current.expiresAt) : '';
+      if (link) checkout.href = link;
+      else checkout.removeAttribute('href');
+      root.hidden = !canApply && !knownId && !applyMessage.textContent;
+      if (anchorPending && !root.hidden) {
+        anchorPending = false;
+        root.scrollIntoView();
+      }
+    }
+
+    async function loadOffers() {
+      const version = ++offerVersion;
+      salesOpen = false;
+      offers.clear();
+      render();
+      try {
+        const res = await jsonRequest('/offers');
+        if (!res.ok) return;
+        const result = await res.json();
+        if (version !== offerVersion || result?.salesOpen !== true || !Array.isArray(result.items)) return;
+        salesOpen = true;
+        for (const offer of result.items) {
+          if (offer && SLOTS.includes(offer.slot) && (offer.available === true ||
+              (typeof offer.available === 'number' && offer.available > 0)) &&
+              typeof offer.amount === 'number' && Number.isFinite(offer.amount) && offer.amount > 0 && offer.term_days === 30) {
+            offers.set(offer.slot, { amount: offer.amount, term_days: offer.term_days });
+          }
+        }
+      } catch { /* Fail closed if the public offer response is unavailable. */ }
+      finally { render(); }
+    }
+
+    async function checkOrder(id: string) {
+      const owner = token();
+      if (!owner || submitting || reading) return;
+      if (!id) { orderMessage.textContent = copy.invalidId; return; }
+      reading = true;
+      pickOrder(id);
+      order = null;
+      orderMessage.textContent = copy.checking;
+      render();
+      try {
+        const res = await jsonRequest(`/orders/${encodeURIComponent(id)}`, owner);
+        const data = await res.json().catch(() => null);
+        if (loadToken() !== owner) { orderMessage.textContent = ''; return; }
+        const result = res.ok ? parseOrder(data?.order, id) : null;
+        if (result) {
+          acceptOrder(result);
+          orderMessage.textContent = '';
+        } else {
+          orderMessage.textContent = res.status === 404 ? copy.errors.not_found :
+            res.status === 401 ? copy.errors.unauthorized : copy.readError;
+          if (res.status === 401) deniedToken = owner;
+        }
+      } catch { orderMessage.textContent = copy.readError; }
+      finally { reading = false; render(); }
+    }
+
+    orderInput.addEventListener('input', render);
+    lookup.addEventListener('submit', (event) => {
+      event.preventDefault();
+      void checkOrder(parseId(orderInput.value));
+    });
+    function refresh() {
+      if (!token()) { render(); return; }
+      void loadOffers();
+      if (knownId) void checkOrder(knownId);
+    }
+    function restoreAccess(force = false) {
+      const next = loadToken();
+      if (next === observedToken && !force) return;
+      if (next !== observedToken) {
+        observedToken = next;
+        deniedToken = '';
+        order = null;
+        applyMessage.textContent = next && replay?.stage === 'retry' ? copy.retryNote : '';
+      }
+      refresh();
+    }
+    // OwnerMailbox mutates localStorage in the same document. Its verified
+    // state also changes, including when the owner signs out or restores a token.
+    const mailbox = document.querySelector('[data-owner-mailbox] [data-om-state="verified"]');
+    if (mailbox) new MutationObserver(() => restoreAccess()).observe(mailbox, { attributes: true, attributeFilter: ['hidden'] });
+    window.addEventListener('storage', (event) => {
+      if (event.key === tokenKey || event.key === null) restoreAccess();
+    });
+    window.addEventListener('pageshow', (event) => {
+      if (event.persisted) restoreAccess(true);
+    });
+
+    apply.addEventListener('change', render);
+    again.addEventListener('click', () => {
+      if (replay?.stage !== 'created' || submitting || reading || !token() || !salesOpen || syncApplication()) return;
+      if (!writeStorage(replayKey, 'null')) { applyMessage.textContent = copy.storage; return; }
+      replay = null;
+      apply.reset();
+      applyMessage.textContent = '';
+      render();
+      slot.focus();
+    });
+    apply.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const owner = token();
+      if (!owner || !salesOpen || !offers.size || submitting || reading || syncApplication()) return;
+      if (replay?.stage === 'created') { void checkOrder(merchantId(replay.input)); return; }
+      const wasUncertain = replay?.stage === 'retry';
+      const placement = slot.value as Slot;
+      const input: Application = wasUncertain ? replay!.input : {
+        requestId: replay?.input.requestId ?? crypto.randomUUID(),
+        slot: placement, slot_key: placement === 'home-supporter' ? null :
+          placement === 'category-top' ? category.value : keyword.value.trim(),
+        headline: headline.value.trim(), body: body.value.trim(), months: Number(months.value),
+      };
+      if (!offers.has(input.slot) || !isApplication(input)) { applyMessage.textContent = copy.invalid; return; }
+      const retry: Replay = { input, stage: 'retry' };
+      // Persist before sending: even a reload during a timed-out request
+      // must retain its UUID and exact payload.
+      if (!writeStorage(replayKey, JSON.stringify(retry))) { applyMessage.textContent = copy.storage; return; }
+      replay = retry;
+      submitting = true;
+      applyMessage.textContent = '';
+      const id = merchantId(input);
+      render();
+      try {
+        const res = await jsonRequest('/apply', owner, { ...input, domain });
+        const data = await res.json().catch(() => null);
+        const result = res.ok ? parseOrder(data?.order, id) : null;
+        if (result) {
+          acceptOrder(result, true);
+          if (loadToken() !== owner) order = null;
+          orderMessage.textContent = '';
+          return;
+        }
+        const code = res.status === 401 ? 'unauthorized' : data?.error;
+        const definite = !wasUncertain && !res.ok && res.status < 500 && PRE_RESERVATION.has(code);
+        if (definite) {
+          replay = { input, stage: 'edit' };
+          writeStorage(replayKey, JSON.stringify(replay));
+        } else pickOrder(id);
+        if (code === 'ads_sales_closed') { salesOpen = false; ++offerVersion; offers.clear(); }
+        if (code === 'unauthorized') { deniedToken = owner; order = null; }
+        const message = typeof code === 'string' && Object.hasOwn(copy.errors, code) ? copy.errors[code] : '';
+        applyMessage.textContent = definite ? (message || copy.invalid) : [message, copy.retryNote].filter(Boolean).join(' ');
+      } catch {
+        pickOrder(id);
+        applyMessage.textContent = copy.retryNote;
+      } finally { submitting = false; render(); }
+    });
+
+    checkout.addEventListener('click', (event) => {
+      if (salesOpen && token() && parseId(orderInput.value) === knownId && checkoutFor(order)) return;
+      event.preventDefault();
+      render();
+    });
+    if (replay) fill(replay.input);
+    if (replay?.stage === 'retry' && token()) applyMessage.textContent = copy.retryNote;
+    if (knownId) pickOrder(knownId);
+    refresh();
+  }
+</script>

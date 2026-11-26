@@ -31,7 +31,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { brotliCompressSync, constants } from 'node:zlib';
 import { CATEGORY_SLUGS, categorize } from '../src/data/categorize.mjs';
-import { SITE_PATHS_FILE, buildDetail } from '../src/data/detail.ts';
+import { CATEGORY_OVERRIDES_FILE, SITE_PATHS_FILE, buildDetail, resolveCategorySlug } from '../src/data/detail.ts';
+import { fetchCategoryOverrides } from './fetch-category-overrides.mjs';
 import { resolvePageLang, resolvePageMeta, resolvePageTitle } from '../../../packages/scanner/src/page-meta.ts';
 import {
   SEARCH_INDEX_RAW_PER_ENTRY,
@@ -325,6 +326,23 @@ async function main() {
 
   const isPendingSite = (s) => s.afr.state === 'pending' || s.afr.grade === 'Pending';
   const domainOf = (s) => s.afr.domain ?? '';
+
+  // A human label from the console beats the keyword table. The API publishes
+  // only the sites that were labelled by hand; an unreachable endpoint yields
+  // an empty map, so the build falls back to exactly what it shipped before.
+  const overrides = await fetchCategoryOverrides();
+  let overridden = 0;
+  for (const s of sites) {
+    const resolved = resolveCategorySlug(domainOf(s), s.category, overrides);
+    if (resolved !== s.category) {
+      s.category = resolved;
+      overridden += 1;
+    }
+  }
+  if (overridden > 0) {
+    console.log(`categories : ${overridden} site(s) use a manual label from the console`);
+  }
+
   const scored = sites.filter((s) => !isPendingSite(s) && !DELISTED[domainOf(s)]);
   const pending = sites.filter(isPendingSite);
 
@@ -343,7 +361,7 @@ async function main() {
 
   // The detail payload comes from the shared builder (src/data/detail.ts) —
   // the same one the on-demand detail pages use, so the two cannot drift.
-  const detailOf = (s) => buildDetail({ afr: s.afr, signals: { homepage: s.probe } }, domainOf(s), DELISTED);
+  const detailOf = (s) => buildDetail({ afr: s.afr, signals: { homepage: s.probe } }, domainOf(s), DELISTED, overrides);
 
   // ── home payload (scored only) ────────────────────────────────────────────
   const scoredCards = scored.map(cardOf).sort(byScoreDesc);
@@ -490,6 +508,14 @@ async function main() {
   await writeFile(
     path.join(PUBLIC_DATA_DIR, SEARCH_MANIFEST_FILE),
     `${JSON.stringify(shardManifest)}\n`,
+    'utf8',
+  );
+
+  // The manual labels are an asset as well: the on-demand detail page reads
+  // exactly this file, so a rendered page and the built one agree.
+  await writeFile(
+    path.join(PUBLIC_DATA_DIR, CATEGORY_OVERRIDES_FILE),
+    `${JSON.stringify(overrides)}\n`,
     'utf8',
   );
 

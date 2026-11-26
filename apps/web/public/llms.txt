@@ -37,6 +37,7 @@
 - [GET /api/v1/stats](https://afr.im/api/v1/stats): totals, grade distribution, and average score.
 - [GET /api/v1/categories](https://afr.im/api/v1/categories): category tree with per-category site counts.
 - [GET /api/v1/leaderboard](https://afr.im/api/v1/leaderboard): top sites by AFR score descending (never mixes in sponsored placements).
+- [GET /api/v1/ads](https://afr.im/api/v1/ads): live sponsored placements for a slot (`slot`, optional `key`). Advertising only — never part of the natural ranking and never assessment output.
 - [GET /badge/:domain.svg](https://afr.im/badge/example.com.svg): rating badge image for a domain.
 - [POST /mcp](https://afr.im/mcp): MCP (JSON-RPC) with `site_rating`, `search_sites`, `grade_distribution`.
 

@@ -5,6 +5,7 @@
 // database through createApp({ db }).
 
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { cors } from 'hono/cors';
 import type { Context, MiddlewareHandler } from 'hono';
 import type { D1Database, ExecutionContext, KVNamespace, ScheduledController } from '@cloudflare/workers-types';
@@ -13,6 +14,9 @@ import { LAYER_MAX } from '../../../packages/shared/src/index.ts';
 import { AFR_LAYERS, AFR_VERSION } from './method-checks.ts';
 import { badgeSvg } from './badge.ts';
 import { handleAdmin } from './admin.ts';
+import { readScoringRelease } from './admin-scoring.ts';
+import { clickAd, createAdOrder, expireAds, listActiveAds, readAdOffers, readAdOrder, trackAdImpression } from './ads.ts';
+import { handleAdReport } from './ad-report-page.ts';
 import { recordBadgeReferrer, recordCronRun } from './admin-monitor.ts';
 import { readPublicCharity } from './admin-settings.ts';
 import { applyAipayWebhook, getAipayOrder, runAipayReconcileCron, type AipayEnv } from './aipay.ts';
@@ -130,6 +134,8 @@ export interface WorkerEnv extends AdminAccessEnv, AdminLoginEnv, AipayEnv {
   SMTP_REPLY_TO?: string;
   /** Public site base URL used in magic links and report links */
   PUBLIC_SITE_URL?: string;
+  /** Off unless explicitly enabled once self-serve sponsorship is ready. */
+  ADS_SALES_OPEN?: string;
   /** Worker secret: Cloudflare Turnstile siteverify secret (the sitekey is
    * public and lives in the front-end build). Missing → the human check is
    * skipped (fail-open) so local dev keeps working; PRODUCTION MUST set it
@@ -315,20 +321,6 @@ interface EvidenceRow extends Row {
   evidence_ref: string | null;
 }
 
-interface AdRow extends Row {
-  id: number;
-  domain: string | null;
-  slot: string | null;
-  slot_key: string | null;
-  headline: string | null;
-  body: string | null;
-  starts_at: string | null;
-  ends_at: string | null;
-  status: string | null;
-  impressions: number | null;
-  clicks: number | null;
-}
-
 interface CategoryRow extends Row {
   id: number;
   slug: string | null;
@@ -392,22 +384,6 @@ function mapEvidence(row: EvidenceRow) {
     max_points: row.max_points ?? null,
     evidence_type: row.evidence_type ?? null,
     evidence_ref: row.evidence_ref ?? null,
-  };
-}
-
-function mapAd(row: AdRow) {
-  return {
-    id: row.id,
-    domain: row.domain ?? null,
-    slot: row.slot ?? null,
-    slot_key: row.slot_key ?? null,
-    headline: row.headline ?? null,
-    body: row.body ?? null,
-    starts_at: row.starts_at ?? null,
-    ends_at: row.ends_at ?? null,
-    status: row.status ?? null,
-    impressions: row.impressions ?? 0,
-    clicks: row.clicks ?? 0,
   };
 }
 
@@ -1108,7 +1084,6 @@ const EDGE_CACHE_RULES: readonly [RegExp, number][] = [
   [/^\/api\/v1\/stats$/, 60],
   [/^\/api\/v1\/categories$/, 300],
   [/^\/api\/v1\/leaderboard$/, 120],
-  [/^\/api\/v1\/method$/, 3600],
   [/^\/api\/v1\/sites$/, 60],
   [/^\/api\/v1\/sites\/[^/]+$/, 120],
   [/^\/api\/v1\/sites\/[^/]+\/history$/, 300],
@@ -1181,6 +1156,31 @@ const edgeCache: MiddlewareHandler<AppEnv> = async (c, next) => {
   }
 };
 
+const smallBody = bodyLimit({ maxSize: 4096, onError: (c) => c.json({ error: 'payload_too_large' }, 413) });
+
+async function ownerEmailExchangeToken(c: Context<AppEnv>): Promise<string | null> {
+  // Legacy links carry the token in the query string; a landing page posts it
+  // in a JSON body so the one-time value never sits in a URL or a log line.
+  if (c.req.method === 'GET') {
+    const token = (c.req.query('token') ?? '').trim();
+    return token && token.length <= 64 ? token : null;
+  }
+  const type = c.req.header('content-type')?.split(';', 1)[0]?.trim().toLowerCase();
+  if (type !== 'application/json') return null;
+  const body = await c.req.json<{ token?: unknown } | null>().catch(() => null);
+  const token = typeof body?.token === 'string' ? body.token.trim() : '';
+  // Only the shape the server issues; a POST token never reaches the store otherwise.
+  return /^[a-f0-9]{32}$/.test(token) ? token : null;
+}
+
+const adResponseHeaders: MiddlewareHandler<AppEnv> = async (c, next) => {
+  c.header('Cache-Control', 'no-store');
+  c.header('Cloudflare-CDN-Cache-Control', 'no-store');
+  c.header('Referrer-Policy', 'no-referrer');
+  c.header('X-Robots-Tag', 'noindex, nofollow');
+  await next();
+};
+
 export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
 
@@ -1188,10 +1188,6 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
   app.all('/admin', admin);
   app.all('/admin/*', admin);
   app.get('/robots.txt', (c) => c.text('User-agent: *\nDisallow: /admin\n'));
-
-  // T4 read path: edge cache in front of D1, registered before CORS so a hit
-  // can short-circuit without running any handler.
-  app.use('*', edgeCache);
 
   // CORS open for the whole API surface (all JSON endpoints, open CORS).
   // The /badge/* route is an <img> asset and does not need CORS.
@@ -1255,25 +1251,29 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     }
   });
 
-  // The daily budget of a machine key (方案书 §11.4): a free key may call the
-  // API 100 times a day, a Pro key 10 000. The counter lives in KV, so every
-  // isolate shares one budget.
-  //
-  // Only a key that passed its own check is counted: an unknown key is not
-  // this gate's business (the endpoint's own authorisation decides about it),
-  // and a request without a key is never counted here — the per-IP limits of
-  // the endpoints apply to those.
+  // Charge both UTC budgets before serving cached reads. Requests without a
+  // live key still rely on each endpoint's own authorization and limits.
   app.use('/api/v1/*', async (c, next) => {
-    const key = c.req.header(API_KEY_HEADER) ?? null;
+    const key = c.req.header(API_KEY_HEADER);
     if (!key) return next();
     const db = dbOf(c, overrides);
-    const decision = await enforceApiKeyQuota(db, c.env, key);
+    const now = new Date();
+    const decision = await enforceApiKeyQuota(db, c.env, key, now.getTime());
     if (!decision.allowed) {
-      return c.json({ error: 'quota_exceeded', limit: decision.limit }, 429);
+      const nextDay = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
+      const nextMonth = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1);
+      const resetsAt = decision.monthUsed >= decision.monthLimit ? nextMonth : nextDay;
+      const retryAfter = Math.max(1, Math.ceil((resetsAt - now.getTime()) / 1000));
+      return c.json({
+        error: 'quota_exceeded', limit: decision.limit, used: decision.used,
+        monthLimit: decision.monthLimit, monthUsed: decision.monthUsed, period: decision.exhausted,
+        tier: decision.tier, resetsAt: new Date(resetsAt).toISOString(),
+      }, 429, { 'Cache-Control': 'no-store', 'Retry-After': String(retryAfter) });
     }
-    if (decision.keyHash) await touchApiKeyUsage(db, decision.keyHash);
+    if (decision.keyHash) await touchApiKeyUsage(db, decision.keyHash, now.getTime());
     return next();
   });
+  app.use('*', edgeCache);
   app.use('/api/v1/owners/*', async (c, next) => {
     c.header('Cache-Control', 'no-store');
     c.header('Cloudflare-CDN-Cache-Control', 'no-store');
@@ -1504,6 +1504,16 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     return c.json({ categories: roots });
   });
 
+  // GET /api/v1/category-overrides — public editorial labels, without operator data.
+  app.get('/api/v1/category-overrides', async (c) => {
+    c.header('Cache-Control', 'no-store');
+    const rows = await dbOf(c, overrides).prepare(`SELECT s.domain AS domain, cat.slug AS slug FROM sites s
+      JOIN categories cat ON cat.id = s.category_override
+      WHERE s.category_override IS NOT NULL ORDER BY s.domain`)
+      .all<{ domain: string; slug: string }>();
+    return c.json(Object.fromEntries(rows.map((row) => [row.domain, row.slug] as const)));
+  });
+
   // GET /api/v1/charity — the public charity settings (SSOT item 18, domain F).
   // The operator-editable beneficiary list and the two receiving addresses are
   // public by nature: the M10 charity page renders exactly this payload, and
@@ -1558,7 +1568,9 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
   // GET /api/v1/method — machine-readable AFR schema (spec §14-D shape).
   // Weights come from LAYER_MAX and thresholds from GRADE_THRESHOLDS
   // (packages/shared) so the API can never drift from the scoring engine.
-  app.get('/api/v1/method', (c) => {
+  app.get('/api/v1/method', async (c) => {
+    c.header('Cache-Control', 'no-store');
+    c.header('Cloudflare-CDN-Cache-Control', 'no-store');
     const layers = AFR_LAYERS.map((layer) => ({
       id: layer.id,
       name: layer.name,
@@ -1566,8 +1578,16 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
       checks: layer.checks,
     }));
     const { grades, ...scoring } = AFR_METHOD;
+    // The published release note, when an operator has written one. A request
+    // without a database (a pure contract check) simply carries none.
+    let release = null;
+    try {
+      release = await readScoringRelease(dbOf(c, overrides), scoring.engineVersion);
+    } catch {
+      release = null;
+    }
     // Keep the legacy shape for existing clients. Only scoring describes executed rules.
-    return c.json({ standard: 'AFR', version: AFR_VERSION, layers, grades, legacyLayersDeprecated: true, scoring });
+    return c.json({ standard: 'AFR', version: AFR_VERSION, layers, grades, legacyLayersDeprecated: true, scoring, release });
   });
 
   // -------------------------------------------------------------------------
@@ -2069,31 +2089,50 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     return c.json({ ok: true });
   });
 
-  // GET /api/v1/ads?slot=&key= — currently active ads for a slot.
-  // SSOT note: ad delivery SSOT is the data repo /ads/active.json, pulled into
-  // D1 by the d1-sync pipeline; this endpoint serves the synced D1 copy (the
-  // Worker may also read a KV cache of the same file at higher traffic).
+  // Ads are live data. A cached response must not keep a paused or expired placement visible.
+  app.use('/api/v1/ads', adResponseHeaders);
+  app.use('/api/v1/ads/*', adResponseHeaders);
   app.get('/api/v1/ads', async (c) => {
-    const db = dbOf(c, overrides);
-    const slot = c.req.query('slot') ?? '';
-    const key = c.req.query('key') ?? '';
-    const now = new Date().toISOString();
-
-    const where: string[] = ['status = ?', '(starts_at IS NULL OR starts_at <= ?)', '(ends_at IS NULL OR ends_at >= ?)'];
-    const params: SqlParam[] = ['active', now, now];
-    if (slot) {
-      where.push('slot = ?');
-      params.push(slot);
-    }
-    if (key) {
-      where.push('(slot_key IS NULL OR slot_key = ?)');
-      params.push(key);
-    }
-    const rows = await db
-      .prepare(`SELECT * FROM ads WHERE ${where.join(' AND ')} ORDER BY id LIMIT 20`)
-      .all<AdRow>(...params);
-    return c.json({ items: rows.map(mapAd) });
+    const items = await listActiveAds(dbOf(c, overrides), { slot: c.req.query('slot'), key: c.req.query('key') });
+    return c.json({ items });
   });
+  app.get('/api/v1/ads/offers', async (c) => {
+    const salesOpen = c.env?.ADS_SALES_OPEN === 'true'
+      && !!c.env.AIPAY_API_KEY?.trim() && !!c.env.AIPAY_WEBHOOK_SECRET?.trim();
+    return c.json({ salesOpen, items: salesOpen ? await readAdOffers(dbOf(c, overrides)) : [] });
+  });
+  app.post('/api/v1/ads/apply', async (c, next) => {
+    if (c.env?.ADS_SALES_OPEN !== 'true') return c.json({ error: 'ads_sales_closed' }, 403);
+    if (!c.env.AIPAY_API_KEY?.trim() || !c.env.AIPAY_WEBHOOK_SECRET?.trim()) {
+      return c.json({ error: 'billing_not_configured' }, 503);
+    }
+    return next();
+  }, smallBody, async (c) => {
+    const result = await createAdOrder(dbOf(c, overrides), {
+      input: await c.req.json<unknown>().catch(() => null), manageToken: bearerToken(c),
+      env: c.env, fetchImpl: overrides.fetchImpl ?? fetch,
+    });
+    return result.ok ? c.json({ order: result.order }, result.status) : c.json({ error: result.error }, result.status);
+  });
+  app.get('/api/v1/ads/orders/:orderId', async (c) => {
+    const result = await readAdOrder(dbOf(c, overrides), c.req.param('orderId'), bearerToken(c));
+    return result.ok ? c.json({ order: result.order }) : c.json({ error: result.error }, result.status);
+  });
+  app.post('/api/v1/ads/event', smallBody, async (c) => {
+    const input = await c.req.json<{ id?: unknown } | null>().catch(() => null);
+    const id = input?.id;
+    if (typeof id !== 'number' || !Number.isSafeInteger(id) || id < 1) return c.json({ error: 'invalid_ad' }, 400);
+    await trackAdImpression(dbOf(c, overrides), id);
+    return c.body(null, 204);
+  });
+  app.get('/api/v1/ads/go', async (c) => {
+    // Only the approved placement supplies the destination. No caller URL is accepted.
+    const id = c.req.query('id') ?? '';
+    const target = /^[1-9]\d{0,15}$/.test(id) ? await clickAd(dbOf(c, overrides), Number(id)) : null;
+    return target ? c.redirect(target, 302) : c.json({ error: 'not_found' }, 404);
+  });
+  app.get('/api/v1/ads/report', (c) => handleAdReport(c.req.raw, () => dbOf(c, overrides)));
+  app.post('/api/v1/ads/report', smallBody, (c) => handleAdReport(c.req.raw, () => dbOf(c, overrides)));
 
   // -------------------------------------------------------------------------
   // Rescan requests, domain verification, owner claims, view counter
@@ -2810,7 +2849,7 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
   // The token is single-use: a successful verification clears the stored
   // hash, so replaying the link fails. The confirmation also hands out the
   // management token, which every later read/toggle of this mailbox needs.
-  app.get('/api/v1/owners/email/verify', async (c) => {
+  app.on(['GET', 'POST'], '/api/v1/owners/email/verify', smallBody, async (c) => {
     // 20 verifications per IP per hour. The quota is spent on every attempt
     // (like verify/check): a free token-guessing oracle is worth more than
     // the missed quota.
@@ -2826,7 +2865,7 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     }
     await limits.verifyIp.consume(clientIp(c));
 
-    const token = c.req.query('token') ?? '';
+    const token = await ownerEmailExchangeToken(c);
     if (!token) return c.json({ error: 'invalid_or_expired_token' }, 400);
 
     const db = dbOf(c, overrides);
@@ -3068,7 +3107,7 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
   // The link is single-use: one atomic write marks the recovery as spent and
   // rotates the management token of the mailbox, so the old token stops
   // working the moment the new one is handed out.
-  app.get('/api/v1/owners/email/recover/verify', async (c) => {
+  app.on(['GET', 'POST'], '/api/v1/owners/email/recover/verify', smallBody, async (c) => {
     // 20 verifications per IP per hour — the same bucket as the mailbox
     // confirmation. The quota is spent on every attempt: a free
     // token-guessing oracle is worth more than the missed quota.
@@ -3084,7 +3123,7 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     }
     await limits.verifyIp.consume(clientIp(c));
 
-    const token = c.req.query('token') ?? '';
+    const token = await ownerEmailExchangeToken(c);
     if (!token) return c.json({ error: 'invalid_or_expired_token' }, 400);
 
     const db = dbOf(c, overrides);
@@ -3416,18 +3455,6 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     c.json({ error: 'not_implemented', feature: 'verification' }, 501),
   ); // {domain} → forged/tampered badge report
 
-  // Ads domain: application → Stripe Checkout, abuse
-  // reports, and the internal Stripe webhook feeding the review queue.
-  app.post('/api/v1/ads/apply', (c) =>
-    c.json({ error: 'not_implemented', feature: 'ads' }, 501),
-  ); // {domain, slot, headline, body} → Stripe Checkout link
-  app.post('/api/v1/ads/report', (c) =>
-    c.json({ error: 'not_implemented', feature: 'ads' }, 501),
-  ); // ad abuse report
-  app.post('/api/v1/_ads/webhook', (c) =>
-    c.json({ error: 'not_implemented', feature: 'ads' }, 501),
-  ); // Stripe callback → review queue → cron expires ads daily
-
   return app;
 }
 
@@ -3467,6 +3494,7 @@ export default {
           // notifications and stale cooldown rows would otherwise pile up and
           // eat the daily row-write budget.
           const pruned = await pruneMailArtifacts(db);
+          await expireAds(db);
           const removed =
             pruned.challenges + pruned.inboundMail + pruned.inboundActions + pruned.outbox + pruned.cooldown;
           if (removed > 0) {

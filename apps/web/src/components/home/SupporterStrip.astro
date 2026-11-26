@@ -1,0 +1,82 @@
+---
+// SupporterStrip — the homepage supporter slot.
+//
+// The quietest slot: plain text and the domain, no grade ring, no card. A
+// supporter buys visibility, never a grade — the natural ranking is the
+// AFR score and nothing else. The strip sits at the bottom of the page, so
+// it never competes with the listings above it.
+
+import { getCatalog, type Locale } from '../../i18n/loader.ts';
+import AdBeacon from './AdBeacon.astro';
+import { uiText } from './fallbacks.ts';
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const L = getCatalog(locale);
+const label = uiText(L.ui, 'sponsored', locale);
+const report = locale === 'zh-CN' ? '举报广告' : 'Report ad';
+---
+
+<section class="supporter-strip" data-ad-slot="home-supporter" data-ad-locale={locale} hidden aria-label={label}>
+  <p class="supporter-label mono">{label}</p>
+  <ul class="supporter-list" data-ad-items>
+    <li class="supporter">
+      <a class="supporter-domain mono" data-ad-domain data-ad-visit target="_blank" rel="noopener noreferrer sponsored"></a>
+      <a class="supporter-report" data-ad-report target="_blank" rel="noopener noreferrer">{report}</a>
+    </li>
+  </ul>
+</section>
+
+<AdBeacon />
+
+<style>
+  .supporter-strip {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px 18px;
+    margin-top: 44px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+  }
+  .supporter-strip[hidden] {
+    display: none;
+  }
+  .supporter-label {
+    margin: 0;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+  .supporter-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .supporter {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0 8px;
+    align-items: baseline;
+  }
+  .supporter-domain {
+    font-size: 13px;
+    color: var(--text-2);
+    overflow-wrap: anywhere;
+  }
+  .supporter-domain:hover {
+    color: var(--brand);
+  }
+  .supporter-report {
+    font-size: 12px;
+    color: var(--text-2);
+    text-decoration: underline;
+  }
+</style>

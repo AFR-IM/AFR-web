@@ -24,6 +24,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
   { href: '/admin/content', label: 'B 内容与社区' },
   { href: '/admin/commercial', label: 'C 商业化' },
   { href: '/admin/monitor', label: 'D 监控看板' },
+  { href: '/admin/scoring', label: 'E 评分版本' },
   { href: '/admin/settings', label: 'F 设置' },
 ];
 

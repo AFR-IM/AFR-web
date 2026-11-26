@@ -308,13 +308,15 @@
     "/api/v1/charity": {
       "get": {
         "summary": "Charity settings (beneficiary list and the two receiving addresses)",
-        "description": "Public charity settings. The beneficiary list and the two receiving addresses are edited in the administrator console (M9 domain F) and published here; the charity page of M10 renders exactly this payload. The fingerprint is the sha256 of the charity pool address, so a published address can be verified against the audit trail.",
+        "description": "Public charity settings. The beneficiary list and the two receiving addresses are edited in the administrator console and published here; the public charity page renders exactly this payload. The fingerprint is the sha256 of the charity pool address, so a published address can be verified against the audit trail.",
         "responses": {
           "200": {
             "description": "Charity settings",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/CharitySettings" }
+                "schema": {
+                  "$ref": "#/components/schemas/CharitySettings"
+                }
               }
             }
           }
@@ -390,7 +392,7 @@
     "/api/v1/method": {
       "get": {
         "summary": "Machine-readable AFR standard",
-        "description": "Read scoring for the rules implemented by the identified engine version, and grades for thresholds. Top-level layers are legacy compatibility data, not implemented scoring rules.",
+        "description": "Machine-readable AFR standard. `scoring` describes the executed rules; the legacy top-level `layers` field is deprecated. `release` carries the newest published note for the executing engine version (null when none was published).",
         "responses": {
           "200": {
             "description": "AFR standard",
@@ -407,19 +409,25 @@
     },
     "/api/v1/ads": {
       "get": {
-        "summary": "Currently active sponsored placements",
-        "description": "Sponsored placements are served separately from the natural ranking and never change grades or order.",
+        "summary": "Live sponsored placements",
+        "description": "Sponsored placements are served separately from the natural ranking and never change grades or order. Only placements that were paid through the AFR ledger, approved by an operator, owned by an active site with a real score and inside their term are returned. Without slot the answer covers category and homepage placements only; search-top always requires its exact key. The response is never cached.",
         "parameters": [
           {
             "name": "slot",
             "in": "query",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "category-top",
+                "search-top",
+                "home-supporter"
+              ]
             }
           },
           {
             "name": "key",
             "in": "query",
+            "description": "Category slug (category-top) or the search term (search-top). The service normalizes the term (NFKC + case fold) before matching; the homepage slot takes no key.",
             "schema": {
               "type": "string"
             }
@@ -427,7 +435,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Active ads",
+            "description": "Live placements",
             "content": {
               "application/json": {
                 "schema": {
@@ -439,6 +447,315 @@
                         "$ref": "#/components/schemas/Ad"
                       }
                     }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ads/offers": {
+      "get": {
+        "summary": "Sponsorship price list and whether self-serve is open",
+        "description": "Self-serve sponsorship is closed by default; while it is closed the price list is empty. Prices are in USDC on Base for a 30-day term, and every purchase needs operator review before it is served.",
+        "responses": {
+          "200": {
+            "description": "Price list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "salesOpen": {
+                      "type": "boolean"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "slot": {
+                            "type": "string"
+                          },
+                          "amount": {
+                            "type": "integer"
+                          },
+                          "term_days": {
+                            "type": "integer"
+                          },
+                          "capacity": {
+                            "type": "integer"
+                          },
+                          "available": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ads/apply": {
+      "post": {
+        "summary": "Buy a sponsorship (closed unless the operator opened sales)",
+        "description": "Owner-authenticated: the caller must hold the confirmed mailbox management token of the site, sent as Authorization: Bearer <token>. The price, asset, chain and term are chosen by the server. The placement is created in a pending state and is served only after AIPAY confirms the payment and an operator approves it. Reusing the same requestId retries the same order instead of paying twice. Answers 403 ads_sales_closed while self-serve is closed, 409 slot_full / slot_unavailable / order_pending / request_conflict, and 400 disallowed_claim for misleading copy. There is no refund channel today.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "requestId",
+                  "domain",
+                  "slot",
+                  "headline",
+                  "body"
+                ],
+                "properties": {
+                  "requestId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "domain": {
+                    "type": "string"
+                  },
+                  "slot": {
+                    "type": "string",
+                    "enum": [
+                      "category-top",
+                      "search-top",
+                      "home-supporter"
+                    ]
+                  },
+                  "slot_key": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Category slug or search term; omit for the homepage slot."
+                  },
+                  "headline": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "body": {
+                    "type": "string",
+                    "maxLength": 90
+                  },
+                  "months": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 12,
+                    "default": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Order created; order.checkoutUrl is where the buyer pays"
+          },
+          "200": {
+            "description": "The same order, returned again"
+          },
+          "403": {
+            "description": "ads_sales_closed"
+          },
+          "409": {
+            "description": "Capacity or state conflict"
+          }
+        }
+      }
+    },
+    "/api/v1/ads/orders/{orderId}": {
+      "get": {
+        "summary": "State of one sponsorship order (owner only)",
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Order state"
+          },
+          "401": {
+            "description": "unauthorized"
+          },
+          "404": {
+            "description": "not_found"
+          }
+        }
+      }
+    },
+    "/api/v1/ads/event": {
+      "post": {
+        "summary": "Count an impression (once per placement per UTC day, browser-side)",
+        "description": "Best effort: an unapproved or expired placement is not counted, and the endpoint answers 204 either way. Counting is capped per day so anonymous traffic cannot exhaust the database budget.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "id"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Accepted (counted or ignored)"
+          },
+          "400": {
+            "description": "invalid_ad"
+          }
+        }
+      }
+    },
+    "/api/v1/ads/go": {
+      "get": {
+        "summary": "Click counter and redirect to the sponsored site",
+        "description": "The destination comes from the approved placement record, never from the request: no caller-supplied URL is accepted. A missing or unservable placement answers 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Redirect to the sponsored site with ?ref=afr-sponsor"
+          },
+          "404": {
+            "description": "not_found"
+          }
+        }
+      }
+    },
+    "/api/v1/ads/report": {
+      "get": {
+        "summary": "Abuse report form for a sponsored placement",
+        "description": "Plain server-rendered HTML (no script, noindex). A known placement is always reportable: a page cached before a pause is exactly when a report matters.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "lang",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "en",
+                "zh-CN"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The form"
+          },
+          "404": {
+            "description": "Unknown placement"
+          }
+        }
+      },
+      "post": {
+        "summary": "Submit an abuse report",
+        "description": "Accepts form encoding (from the page) or JSON (from a script). Capped at 100 reports per UTC day.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "reason"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "integer"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "enum": [
+                      "misleading",
+                      "spam",
+                      "inappropriate",
+                      "other"
+                    ]
+                  },
+                  "detail": {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "lang": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "{ ok: true }"
+          },
+          "404": {
+            "description": "not_found"
+          },
+          "429": {
+            "description": "report_limit"
+          }
+        }
+      }
+    },
+    "/api/v1/category-overrides": {
+      "get": {
+        "summary": "Editorial category labels (domain to category slug)",
+        "description": "Only the sites whose category a human set in the administrator console. The public site build reads this map so the pages, the badge and the API show one category; sites without a manual label are absent.",
+        "responses": {
+          "200": {
+            "description": "An object of domain to category slug",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
                   }
                 }
               }
@@ -814,45 +1131,119 @@
     "/api/v1/claims": {
       "get": {
         "summary": "Read the latest published owner statement",
-        "parameters": [{ "name": "domain", "in": "query", "schema": { "type": "string" } }],
+        "parameters": [
+          {
+            "name": "domain",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Published statement and its timestamp, or {\"statement\":null}. Pending submissions are private.",
-            "content": { "application/json": { "schema": {
-              "type": "object", "required": ["statement"],
-              "properties": { "statement": { "type": ["string", "null"] }, "publishedAt": { "type": ["string", "null"] } }
-            } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "statement"
+                  ],
+                  "properties": {
+                    "statement": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "publishedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       },
       "post": {
         "summary": "Submit an owner statement for review",
         "description": "The domain must be verified. Authenticate with the current management token of its own confirmed mailbox. An AFR agent key cannot replace the owner token.",
-        "security": [{ "ownerMailboxToken": [] }],
+        "security": [
+          {
+            "ownerMailboxToken": []
+          }
+        ],
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": {
-            "type": "object", "required": ["domain", "statement"],
-            "properties": {
-              "domain": { "type": "string", "example": "example.com" },
-              "statement": { "type": "string", "minLength": 1, "maxLength": 200, "description": "Length after trimming" }
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "domain",
+                  "statement"
+                ],
+                "properties": {
+                  "domain": {
+                    "type": "string",
+                    "example": "example.com"
+                  },
+                  "statement": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "description": "Length after trimming"
+                  }
+                }
+              }
             }
-          } } }
+          }
         },
         "responses": {
           "201": {
             "description": "Pending editorial review. This does not publish the statement.",
-            "content": { "application/json": { "schema": {
-              "type": "object", "required": ["status"], "properties": { "status": { "const": "pending" } }
-            } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status"
+                  ],
+                  "properties": {
+                    "status": {
+                      "const": "pending"
+                    }
+                  }
+                }
+              }
+            }
           },
-          "400": { "description": "invalid_json, invalid_domain or invalid_statement" },
-          "401": { "description": "unauthorized — missing, invalid or wrong-domain management token" },
-          "403": { "description": "not_verified — domain verification required" },
-          "404": { "description": "unknown_domain" },
+          "400": {
+            "description": "invalid_json, invalid_domain or invalid_statement"
+          },
+          "401": {
+            "description": "unauthorized — missing, invalid or wrong-domain management token"
+          },
+          "403": {
+            "description": "not_verified — domain verification required"
+          },
+          "404": {
+            "description": "unknown_domain"
+          },
           "429": {
             "description": "rate_limited — at most five submissions per domain per UTC day",
-            "headers": { "Retry-After": { "schema": { "type": "integer" } } }
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
           }
         }
       }
@@ -1104,8 +1495,12 @@
               }
             }
           },
-          "502": { "$ref": "#/components/responses/OwnerEmailDeliveryFailed" },
-          "503": { "$ref": "#/components/responses/OwnerEmailNotConfigured" },
+          "502": {
+            "$ref": "#/components/responses/OwnerEmailDeliveryFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/OwnerEmailNotConfigured"
+          },
           "429": {
             "description": "Rate limited — 3 registrations per domain per day, 5 per IP per hour",
             "content": {
@@ -1199,7 +1594,9 @@
             "name": "domain",
             "in": "query",
             "required": true,
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "description": "Bare registered domain, e.g. example.com",
             "example": "example.com"
           },
@@ -1207,7 +1604,9 @@
             "name": "Authorization",
             "in": "header",
             "required": true,
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "description": "Bearer token of the confirmed mailbox, e.g. 'Bearer manage-0123456789abcdef0123456789abcdef'"
           }
         ],
@@ -1219,10 +1618,17 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "deleted": { "type": "boolean", "enum": [true] }
+                    "deleted": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
                   }
                 },
-                "example": { "deleted": true }
+                "example": {
+                  "deleted": true
+                }
               }
             }
           },
@@ -1230,8 +1636,12 @@
             "description": "Invalid parameter (invalid_domain)",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/Error" },
-                "example": { "error": "invalid_domain" }
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "invalid_domain"
+                }
               }
             }
           },
@@ -1239,8 +1649,12 @@
             "description": "unauthorized — the management token is missing, wrong or belongs to another domain",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/Error" },
-                "example": { "error": "unauthorized" }
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "unauthorized"
+                }
               }
             }
           }
@@ -1360,8 +1774,12 @@
               }
             }
           },
-          "502": { "$ref": "#/components/responses/OwnerEmailDeliveryFailed" },
-          "503": { "$ref": "#/components/responses/OwnerEmailNotConfigured" },
+          "502": {
+            "$ref": "#/components/responses/OwnerEmailDeliveryFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/OwnerEmailNotConfigured"
+          },
           "429": {
             "description": "Rate limited — 3 mailbox writes per domain per day, 5 per IP per hour",
             "content": {
@@ -1449,7 +1867,9 @@
             "name": "X-AFR-Agent-Key",
             "in": "header",
             "required": false,
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "description": "Agent key issued by AFR. When present and valid — the key's SHA-256 hash is in the api_keys table and not revoked — the human check is skipped and turnstile_token is not required. Self-service issuance is not open yet: ask AFR for a key."
           }
         ],
@@ -1459,7 +1879,11 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["domain", "email", "challenge"],
+                "required": [
+                  "domain",
+                  "email",
+                  "challenge"
+                ],
                 "properties": {
                   "domain": {
                     "type": "string",
@@ -1494,8 +1918,13 @@
             "description": "The recovery mail was sent to the confirmed address",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/OwnerRegistration" },
-                "example": { "status": "sent", "emailed": true }
+                "schema": {
+                  "$ref": "#/components/schemas/OwnerRegistration"
+                },
+                "example": {
+                  "status": "sent",
+                  "emailed": true
+                }
               }
             }
           },
@@ -1503,8 +1932,13 @@
             "description": "Invalid parameter (invalid_domain, invalid_email, invalid_challenge) or a failed human check — { \"error\": \"turnstile_failed\", \"reason\": \"missing_token\" | \"invalid_token\" | \"wrong_action\" | \"verify_failed\" }. Nothing is stored and no rate-limit budget is spent.",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/Error" },
-                "example": { "error": "turnstile_failed", "reason": "missing_token" }
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "turnstile_failed",
+                  "reason": "missing_token"
+                }
               }
             }
           },
@@ -1512,19 +1946,32 @@
             "description": "recovery_not_available (the opaque code of a refused recovery — it never says whether the domain has a mailbox or which address it uses), challenge_not_found (no unused, unexpired challenge for this domain and address) or domain_control_failed (the platform did not see the challenge on the domain; the answer then carries a 'checks' array with one entry per method).",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/Error" },
-                "example": { "error": "recovery_not_available" }
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "recovery_not_available"
+                }
               }
             }
           },
-          "502": { "$ref": "#/components/responses/OwnerEmailDeliveryFailed" },
-          "503": { "$ref": "#/components/responses/OwnerEmailNotConfigured" },
+          "502": {
+            "$ref": "#/components/responses/OwnerEmailDeliveryFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/OwnerEmailNotConfigured"
+          },
           "429": {
             "description": "Rate limited — 3 recoveries per domain per day, 5 per IP per hour",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/Error" },
-                "example": { "error": "rate_limited", "retryAfter": 3600 }
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "rate_limited",
+                  "retryAfter": 3600
+                }
               }
             }
           }
@@ -1540,7 +1987,9 @@
             "name": "token",
             "in": "query",
             "required": true,
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "description": "The single-use recovery token from the mail link",
             "example": "0123456789abcdef0123456789abcdef"
           }
@@ -1550,7 +1999,9 @@
             "description": "The recovery is done and a new management token is handed out — once",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/OwnerVerification" },
+                "schema": {
+                  "$ref": "#/components/schemas/OwnerVerification"
+                },
                 "example": {
                   "verified": true,
                   "domain": "example.com",
@@ -1563,8 +2014,12 @@
             "description": "invalid_or_expired_token — the token is unknown, expired or already spent",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/Error" },
-                "example": { "error": "invalid_or_expired_token" }
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "invalid_or_expired_token"
+                }
               }
             }
           },
@@ -1572,8 +2027,12 @@
             "description": "Rate limited — 20 verifications per IP per hour",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/Error" },
-                "example": { "error": "rate_limited" }
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "rate_limited"
+                }
               }
             }
           }
@@ -2066,58 +2525,48 @@
       },
       "Ad": {
         "type": "object",
+        "description": "A live sponsored placement. Only paid, operator-approved placements of an active site inside their term are served; the grade and score are the site's real ones and are never influenced by payment.",
         "properties": {
           "id": {
             "type": "integer"
           },
           "domain": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string"
           },
           "slot": {
-            "type": [
-              "string",
-              "null"
+            "type": "string",
+            "enum": [
+              "category-top",
+              "search-top",
+              "home-supporter"
             ]
           },
           "slot_key": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Category slug, canonicalized search term, or null for the homepage slot."
           },
           "headline": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string"
           },
           "body": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string"
           },
           "starts_at": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": "string",
             "format": "date-time"
           },
           "ends_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time"
+            "type": "string",
+            "format": "date-time",
+            "description": "The term is half-open: the placement stops being served at this instant."
           },
           "status": {
-            "type": [
-              "string",
-              "null"
+            "type": "string",
+            "enum": [
+              "active"
             ]
           },
           "impressions": {
@@ -2125,30 +2574,80 @@
           },
           "clicks": {
             "type": "integer"
+          },
+          "grade": {
+            "type": "string",
+            "enum": [
+              "A",
+              "B",
+              "C",
+              "D",
+              "E",
+              "F"
+            ]
+          },
+          "score": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
           }
         }
       },
       "Method": {
         "type": "object",
         "properties": {
-          "legacyLayersDeprecated": { "const": true },
+          "legacyLayersDeprecated": {
+            "const": true
+          },
           "scoring": {
             "type": "object",
-            "required": ["engineVersion", "revision", "ratedWhen", "rounding", "robotsFamilies", "layers"],
+            "required": [
+              "engineVersion",
+              "revision",
+              "ratedWhen",
+              "rounding",
+              "robotsFamilies",
+              "layers"
+            ],
             "properties": {
-              "engineVersion": { "type": "string", "example": "afr-1.5.0" },
-              "revision": { "type": "integer", "description": "Documentation revision; independent of engine version" },
-              "ratedWhen": { "$ref": "#/components/schemas/MethodLocalized" },
-              "rounding": { "$ref": "#/components/schemas/MethodLocalized" },
+              "engineVersion": {
+                "type": "string",
+                "example": "afr-1.5.0"
+              },
+              "revision": {
+                "type": "integer",
+                "description": "Documentation revision; independent of engine version"
+              },
+              "ratedWhen": {
+                "$ref": "#/components/schemas/MethodLocalized"
+              },
+              "rounding": {
+                "$ref": "#/components/schemas/MethodLocalized"
+              },
               "robotsFamilies": {
                 "type": "array",
                 "items": {
                   "type": "object",
                   "properties": {
-                    "id": { "enum": ["search", "hybrid", "training"] },
-                    "name": { "$ref": "#/components/schemas/MethodLocalized" },
-                    "points": { "type": "number" },
-                    "userAgents": { "type": "array", "items": { "type": "string" } }
+                    "id": {
+                      "enum": [
+                        "search",
+                        "hybrid",
+                        "training"
+                      ]
+                    },
+                    "name": {
+                      "$ref": "#/components/schemas/MethodLocalized"
+                    },
+                    "points": {
+                      "type": "number"
+                    },
+                    "userAgents": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
                   }
                 }
               },
@@ -2157,19 +2656,42 @@
                 "items": {
                   "type": "object",
                   "properties": {
-                    "id": { "enum": ["L1", "L2", "L3"] },
-                    "name": { "$ref": "#/components/schemas/MethodLocalized" },
-                    "weight": { "type": "number" },
+                    "id": {
+                      "enum": [
+                        "L1",
+                        "L2",
+                        "L3"
+                      ]
+                    },
+                    "name": {
+                      "$ref": "#/components/schemas/MethodLocalized"
+                    },
+                    "weight": {
+                      "type": "number"
+                    },
                     "checks": {
                       "type": "array",
                       "items": {
                         "type": "object",
                         "properties": {
-                          "id": { "type": "string", "description": "Stable engine evidence ID" },
-                          "code": { "type": "string", "example": "B1" },
-                          "points": { "type": "number", "description": "Maximum points" },
-                          "name": { "$ref": "#/components/schemas/MethodLocalized" },
-                          "rule": { "$ref": "#/components/schemas/MethodLocalized" }
+                          "id": {
+                            "type": "string",
+                            "description": "Stable engine evidence ID"
+                          },
+                          "code": {
+                            "type": "string",
+                            "example": "B1"
+                          },
+                          "points": {
+                            "type": "number",
+                            "description": "Maximum points"
+                          },
+                          "name": {
+                            "$ref": "#/components/schemas/MethodLocalized"
+                          },
+                          "rule": {
+                            "$ref": "#/components/schemas/MethodLocalized"
+                          }
                         }
                       }
                     }
@@ -2196,13 +2718,42 @@
             "items": {
               "type": "object"
             }
+          },
+          "release": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Newest published release note for the executing engine version.",
+            "properties": {
+              "engineVersion": {
+                "type": "string"
+              },
+              "notes": {
+                "type": "string"
+              },
+              "publishedAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
           }
         }
       },
       "MethodLocalized": {
         "type": "object",
-        "required": ["en", "zh"],
-        "properties": { "en": { "type": "string" }, "zh": { "type": "string" } }
+        "required": [
+          "en",
+          "zh"
+        ],
+        "properties": {
+          "en": {
+            "type": "string"
+          },
+          "zh": {
+            "type": "string"
+          }
+        }
       },
       "SubmissionResult": {
         "type": "object",
@@ -2319,10 +2870,23 @@
       },
       "OwnerRegistration": {
         "type": "object",
-        "required": ["status", "emailed"],
+        "required": [
+          "status",
+          "emailed"
+        ],
         "properties": {
-          "status": { "type": "string", "enum": ["sent"] },
-          "emailed": { "type": "boolean", "enum": [true] }
+          "status": {
+            "type": "string",
+            "enum": [
+              "sent"
+            ]
+          },
+          "emailed": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          }
         }
       },
       "OwnerVerification": {
@@ -2365,21 +2929,48 @@
       },
       "OwnerMailboxChange": {
         "type": "object",
-        "required": ["status", "emailed"],
+        "required": [
+          "status",
+          "emailed"
+        ],
         "properties": {
-          "status": { "type": "string", "enum": ["sent"] },
-          "emailed": { "type": "boolean", "enum": [true] }
+          "status": {
+            "type": "string",
+            "enum": [
+              "sent"
+            ]
+          },
+          "emailed": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          }
         }
       }
     },
     "responses": {
       "OwnerEmailDeliveryFailed": {
         "description": "The confirmation email could not be sent. Retry later.",
-        "content": { "application/json": { "example": { "error": "email_delivery_failed", "retryable": true } } }
+        "content": {
+          "application/json": {
+            "example": {
+              "error": "email_delivery_failed",
+              "retryable": true
+            }
+          }
+        }
       },
       "OwnerEmailNotConfigured": {
         "description": "Owner email is temporarily unavailable.",
-        "content": { "application/json": { "example": { "error": "email_not_configured", "retryable": true } } }
+        "content": {
+          "application/json": {
+            "example": {
+              "error": "email_not_configured",
+              "retryable": true
+            }
+          }
+        }
       },
       "BadRequest": {
         "description": "Invalid parameter",
@@ -2397,28 +2988,68 @@
       "CharitySettings": {
         "type": "object",
         "properties": {
-          "beneficiaries": { "type": "array", "items": { "$ref": "#/components/schemas/Beneficiary" } },
-          "promoWallet": { "type": "string", "description": "Receiving address of the promotion pool; empty while unset." },
-          "charityPool": { "type": "string", "description": "Receiving address of the charity pool; empty while unset." },
-          "fingerprint": { "type": ["string", "null"], "description": "sha256 of the lower-cased charity pool address; null while the pool was never published." },
-          "publishedAt": { "type": ["string", "null"], "description": "When the current charity pool address was published." },
-          "history": { "type": "array", "items": { "$ref": "#/components/schemas/CharityPublication" } }
+          "beneficiaries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Beneficiary"
+            }
+          },
+          "promoWallet": {
+            "type": "string",
+            "description": "Receiving address of the promotion pool; empty while unset."
+          },
+          "charityPool": {
+            "type": "string",
+            "description": "Receiving address of the charity pool; empty while unset."
+          },
+          "fingerprint": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "sha256 of the lower-cased charity pool address; null while the pool was never published."
+          },
+          "publishedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When the current charity pool address was published."
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CharityPublication"
+            }
+          }
         }
       },
       "Beneficiary": {
         "type": "object",
         "properties": {
-          "name": { "type": "string" },
-          "website": { "type": "string" },
-          "direction": { "type": "string" }
+          "name": {
+            "type": "string"
+          },
+          "website": {
+            "type": "string"
+          },
+          "direction": {
+            "type": "string"
+          }
         }
       },
       "CharityPublication": {
         "type": "object",
         "properties": {
-          "address": { "type": "string" },
-          "fingerprint": { "type": "string" },
-          "published_at": { "type": "string" }
+          "address": {
+            "type": "string"
+          },
+          "fingerprint": {
+            "type": "string"
+          },
+          "published_at": {
+            "type": "string"
+          }
         }
       },
       "NotFound": {

@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 import { createApp } from '../src/index.ts';
+import { AFR_METHOD } from '../../../packages/afr/src/method.ts';
 import { openSeededDb } from './helpers.ts';
 
 const base = 'https://afr.im';
@@ -29,7 +30,7 @@ function form(body: Record<string, string>): URLSearchParams {
   return new URLSearchParams(body);
 }
 
-test('the console renders its four pages for an authenticated operator', async t => {
+test('the console renders its pages for an authenticated operator', async t => {
   const { db, raw } = openSeededDb();
   t.after(() => raw.close());
   const app = createApp({ db });
@@ -59,6 +60,19 @@ test('the console renders its four pages for an authenticated operator', async t
   assert.match(settingsHtml, /PROMO_WALLET/);
   assert.match(settingsHtml, /CHARITY_POOL/);
 
+  const scoring = await get('/admin/scoring');
+  assert.equal(scoring.status, 200);
+  const scoringHtml = await scoring.text();
+  assert.match(scoringHtml, /评分规则版本发布/);
+  assert.match(scoringHtml, /<form method="post" action="\/admin\/scoring">/);
+
+  const commercial = await get('/admin/commercial');
+  assert.equal(commercial.status, 200);
+  const commercialHtml = await commercial.text();
+  assert.match(commercialHtml, /广告位规格/);
+  assert.match(commercialHtml, /广告审核与排期/);
+  assert.match(commercialHtml, /站长自助购买已关闭/);
+
   // The console is never indexed and never cached.
   assert.equal(queue.headers.get('x-robots-tag'), 'noindex, nofollow');
   assert.equal(queue.headers.get('cache-control'), 'no-store');
@@ -73,7 +87,7 @@ test('an unauthenticated request gets no console page at all', async t => {
   const board = await app.request(base + '/admin/', undefined, env);
   assert.equal(board.status, 200);
   assert.match(await board.text(), /管理员登录/);
-  for (const path of ['/admin/content', '/admin/monitor', '/admin/settings', '/admin/queue']) {
+  for (const path of ['/admin/content', '/admin/monitor', '/admin/settings', '/admin/queue', '/admin/scoring', '/admin/commercial']) {
     const response = await app.request(base + path, undefined, env);
     assert.equal(response.status, 401);
   }
@@ -355,4 +369,90 @@ test('a claim row button decides only that claim', async t => {
     { domain: 'a.test', status: 'pending' },
     { domain: 'b.test', status: 'rejected' },
   ]);
+});
+
+test('an operator publishes a scoring release that the public standard carries', async t => {
+  const { db, raw } = openSeededDb();
+  t.after(() => raw.close());
+  const app = createApp({ db });
+  const cookie = await login(app);
+
+  // Before any release the public standard carries none.
+  const before = await (await app.request(base + '/api/v1/method')).json() as { release: unknown };
+  assert.equal(before.release, null);
+
+  const requestId = crypto.randomUUID();
+  const response = await app.request(base + '/admin/scoring', {
+    method: 'POST',
+    headers: { Cookie: cookie, Origin: base },
+    body: form({
+      request_id: requestId,
+      engine_version: AFR_METHOD.engineVersion,
+      notes: 'Clarified the MCP check wording.',
+    }),
+  }, env);
+  assert.equal(response.status, 303);
+  assert.equal(response.headers.get('location'), '/admin/scoring?notice=scoring_published');
+
+  const after = await (await app.request(base + '/api/v1/method')).json() as {
+    release: { engineVersion: string; notes: string } | null;
+  };
+  assert.deepEqual(after.release, {
+    engineVersion: AFR_METHOD.engineVersion,
+    notes: 'Clarified the MCP check wording.',
+    publishedAt: (after.release as { publishedAt: string }).publishedAt,
+  });
+
+  // The publish is an audited console action, attributed to the operator.
+  const audit = await db.prepare(
+    'SELECT action, target, subject FROM admin_audit WHERE request_id = ?',
+  ).get<{ action: string; target: string; subject: string }>(requestId);
+  assert.equal(audit?.action, 'scoring.publish');
+  assert.equal(audit?.target, `scoring:${AFR_METHOD.engineVersion}`);
+  assert.ok(audit?.subject);
+
+  // A replay of the same request id publishes nothing twice.
+  const replay = await app.request(base + '/admin/scoring', {
+    method: 'POST',
+    headers: { Cookie: cookie, Origin: base },
+    body: form({
+      request_id: requestId,
+      engine_version: AFR_METHOD.engineVersion,
+      notes: 'Different wording.',
+    }),
+  }, env);
+  assert.equal(replay.headers.get('location'), '/admin/scoring?notice=replayed');
+  const releases = await db.prepare('SELECT COUNT(*) AS n FROM scoring_releases').get<{ n: number }>();
+  assert.equal(releases?.n, 1, 'a replay must not publish a second release');
+});
+
+test('a sponsorship moderation form is routed to the commercial ledger', async t => {
+  const { db, raw } = openSeededDb();
+  t.after(() => raw.close());
+  const app = createApp({ db });
+  const cookie = await login(app);
+
+  // No placement with that id exists: the console answers with its own error
+  // page (the route is wired), not with a JSON 404 from an unknown path.
+  const response = await app.request(base + '/admin/commercial/ads', {
+    method: 'POST',
+    headers: { Cookie: cookie, Origin: base },
+    body: form({
+      request_id: crypto.randomUUID(),
+      id: '999999',
+      decision: 'approve',
+      starts_at: '2099-01-01T00:00:00.000Z',
+      note: 'not a real placement',
+    }),
+  }, env);
+  assert.equal(response.status, 400);
+  assert.match(String(response.headers.get('content-type')), /text\/html/);
+  const html = await response.text();
+  assert.match(html, /广告操作未执行/);
+  assert.match(html, /返回/, 'the console answers with a page, not JSON');
+
+  // And nothing was written: no audit row, no placement.
+  const audit = await db.prepare("SELECT COUNT(*) AS n FROM admin_audit WHERE action LIKE 'ads.%'").get<{ n: number }>();
+  assert.equal(audit?.n, 0);
+  assert.equal(raw.prepare('SELECT COUNT(*) AS n FROM ads WHERE id = 999999').get<{ n: number }>()?.n, 0);
 });

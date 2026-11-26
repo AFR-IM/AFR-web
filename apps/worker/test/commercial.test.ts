@@ -16,11 +16,10 @@ import { createHmac } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { test, type TestContext } from 'node:test';
-import { API_KEY_QUOTA_LIMITS, apiKeyQuotaKey, hashApiKey } from '../src/api-key.ts';
+import { API_KEY_QUOTA_LIMITS, apiKeyUsagePeriods, hashApiKey, readDomainApiKeyUsage } from '../src/api-key.ts';
 import { hashToken } from '../src/email.ts';
 import { DEFAULT_PRO_TERM_DAYS } from '../src/entitlements.ts';
 import { createApp } from '../src/index.ts';
-import type { KvLike } from '../src/rate-limit.ts';
 import { openSeededDb, SCHEMA_SQL } from './helpers.ts';
 
 const WEBHOOK_SECRET = 'test-hook-secret';
@@ -38,12 +37,16 @@ const DAY_MS = 86_400_000;
 interface Fixture {
   app: ReturnType<typeof createApp>;
   raw: ReturnType<typeof openSeededDb>['raw'];
+  db: ReturnType<typeof openSeededDb>['db'];
   token: string;
 }
 
 async function fixture(t: TestContext, extraDomains: string[] = []): Promise<Fixture> {
   const { db, raw } = openSeededDb();
   t.after(() => raw.close());
+  // The counters of the machine keys live in the database (the migration has
+  // to be applied before the quota can be counted at all).
+  raw.exec(readFileSync(new URL('../migrations/api-key-quota.sql', import.meta.url), 'utf8'));
   const insert = raw.prepare(
     `INSERT INTO owner_emails
        (domain, email_cipher, email_hash, manage_token_hash, verified_at, created_at, updated_at)
@@ -51,7 +54,7 @@ async function fixture(t: TestContext, extraDomains: string[] = []): Promise<Fix
   );
   insert.run('example.com', await hashToken(MANAGE_TOKEN));
   for (const domain of extraDomains) insert.run(domain, await hashToken(`token-${domain}`));
-  return { app: createApp({ db }), raw, token: MANAGE_TOKEN };
+  return { app: createApp({ db }), db, raw, token: MANAGE_TOKEN };
 }
 
 interface SeenRequest {
@@ -175,20 +178,6 @@ function signedWebhook(merchantOrderId: string, now = Date.now()): { body: strin
 function postWebhook(app: Fixture['app'], merchantOrderId: string): Promise<Response> {
   const { body, headers } = signedWebhook(merchantOrderId);
   return app.request('/api/v1/_aipay/webhook', { method: 'POST', headers, body }, ENV);
-}
-
-/** A KV namespace that keeps its counters in memory. */
-function fakeKv(): KvLike & { store: Map<string, string> } {
-  const store = new Map<string, string>();
-  return {
-    store,
-    async get(key: string) {
-      return store.get(key) ?? null;
-    },
-    async put(key: string, value: string) {
-      store.set(key, value);
-    },
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -572,16 +561,45 @@ test('a key of a paying site is a Pro key', async (t) => {
 // The migration
 // ---------------------------------------------------------------------------
 
+/** Remove every advertising view and trigger: the shape before that ledger.
+ *
+ * SQLite validates every view when the schema changes, so a view that reads
+ * another view has to go first: several passes converge on the full set. */
+function dropAdObjects(raw: DatabaseSync): void {
+  // Dependents first: SQLite validates every view whenever the schema changes,
+  // so a view that reads another view has to disappear before its source does.
+  const views = [
+    'approved_ad_placements',
+    'ad_slot_holds',
+    'admin_ad_moderate',
+    'ad_checkout_state',
+    'ad_checkout_apply',
+    'ad_offers',
+  ];
+  for (const name of views) raw.exec(`DROP VIEW IF EXISTS ${name}`);
+  for (const name of ['admin_ad_moderate_insert', 'ad_track_event_insert', 'ad_checkout_apply_insert']) {
+    raw.exec(`DROP TRIGGER IF EXISTS ${name}`);
+  }
+}
+
+/** The shape of a database that predates the commercial launch and the ads ledger. */
+function downgradeToPreLaunch(raw: DatabaseSync): void {
+  dropAdObjects(raw);
+  raw.exec('DROP VIEW IF EXISTS admin_pro_revoke');
+  raw.exec('DROP TRIGGER IF EXISTS admin_pro_revoke_insert');
+  raw.exec('DROP VIEW IF EXISTS admin_api_key_revoke');
+  raw.exec('DROP TRIGGER IF EXISTS admin_api_key_revoke_insert');
+  raw.exec('ALTER TABLE billing_orders DROP COLUMN term_days');
+  raw.exec('DROP INDEX IF EXISTS idx_api_keys_domain');
+  raw.exec('ALTER TABLE api_keys DROP COLUMN domain');
+  raw.exec('ALTER TABLE api_keys DROP COLUMN last_used_at');
+}
+
 test('the commercial migration adds the columns and the write paths to an old database', async (t) => {
   const raw = new DatabaseSync(':memory:');
   t.after(() => raw.close());
   raw.exec(SCHEMA_SQL);
-  // The database as it was before the migration.
-  raw.exec('ALTER TABLE billing_orders DROP COLUMN term_days');
-  raw.exec('DROP INDEX IF EXISTS idx_api_keys_domain');
-  raw.exec('DROP TRIGGER IF EXISTS admin_api_key_revoke_insert');
-  raw.exec('ALTER TABLE api_keys DROP COLUMN domain');
-  raw.exec('ALTER TABLE api_keys DROP COLUMN last_used_at');
+  downgradeToPreLaunch(raw);
   raw.exec(readFileSync(new URL('../migrations/commercial.sql', import.meta.url), 'utf8'));
 
   const columns = (table: string) =>
@@ -595,55 +613,77 @@ test('the commercial migration adds the columns and the write paths to an old da
        ('admin_pro_revoke', 'admin_api_key_revoke', 'admin_pro_revoke_insert', 'admin_api_key_revoke_insert')`,
   ).all<{ name: string; type: string }>();
   assert.equal(objects.length, 4);
+
+  // The advertising ledger applies on top of the same old database, twice.
+  const ads = readFileSync(new URL('../migrations/ads.sql', import.meta.url), 'utf8');
+  raw.exec(ads);
+  raw.exec(ads);
+  const adsViews = raw.prepare(
+    `SELECT name FROM sqlite_master WHERE type = 'view' AND name IN
+       ('ad_offers', 'ad_checkout_state', 'approved_ad_placements', 'ad_slot_holds', 'ad_checkout_apply')`,
+  ).all<{ name: string }>();
+  assert.equal(adsViews.length, 5);
+  assert.ok(columns('ads').includes('ends_at'));
 });
 
-test('schema.sql and the migration carry the same write paths', () => {
-  const migration = readFileSync(new URL('../migrations/commercial.sql', import.meta.url), 'utf8');
-  const marker = 'CREATE VIEW IF NOT EXISTS admin_pro_revoke';
-  const section = (sql: string) => sql.slice(sql.indexOf(marker)).replace(/\s+/g, ' ').trim();
-  assert.ok(SCHEMA_SQL.includes(marker), 'schema.sql carries the commercial write paths');
-  assert.equal(section(SCHEMA_SQL), section(migration));
+test('schema.sql and the migration create the same commercial write paths', () => {
+  // Compare what a database actually holds rather than the source text: the
+  // two files may carry different comments and still build the same objects.
+  const names = ['admin_pro_revoke', 'admin_api_key_revoke', 'admin_pro_revoke_insert', 'admin_api_key_revoke_insert'];
+  const sqlOf = (db: DatabaseSync) =>
+    db.prepare(`SELECT name, type, sql FROM sqlite_master WHERE name IN (${names.map(() => '?').join(',')}) ORDER BY name`)
+      .all(...names) as { name: string; type: string; sql: string }[];
+
+  const fromSchema = new DatabaseSync(':memory:');
+  const fromMigration = new DatabaseSync(':memory:');
+  try {
+    fromSchema.exec(SCHEMA_SQL);
+    fromMigration.exec(SCHEMA_SQL);
+    downgradeToPreLaunch(fromMigration);
+    fromMigration.exec(readFileSync(new URL('../migrations/commercial.sql', import.meta.url), 'utf8'));
+    assert.deepEqual(sqlOf(fromSchema), sqlOf(fromMigration));
+    assert.equal(sqlOf(fromSchema).length, 4);
+  } finally {
+    fromSchema.close();
+    fromMigration.close();
+  }
 });
 
 // ---------------------------------------------------------------------------
 // The daily quota of a machine key
 // ---------------------------------------------------------------------------
 
-test('a machine key authorises a public endpoint and respects its daily budget', async (t) => {
-  const { app } = await fixture(t);
+test('a machine key authorises public submissions and rotation preserves its daily quota', async (t) => {
+  const { app, db, raw } = await fixture(t);
   mockAipay(t, () => assert.fail('no payment provider call expected'));
-  const kv = fakeKv();
-  const env = { ...ENV, KV: kv };
-
-  const issued = await app.request('/api/v1/pro/api-key', {
+  const issue = () => app.request('/api/v1/pro/api-key', {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${MANAGE_TOKEN}` },
     body: JSON.stringify({ domain: 'example.com' }),
-  }, env);
+  }, ENV);
+
+  const issued = await issue();
+  assert.equal(issued.status, 201);
   const { key } = await issued.json() as { key: string };
-
-  // The key replaces the human check of the public submit endpoint.
-  const submit = await app.request('/api/v1/submissions', {
+  const submit = (apiKey: string, domain: string) => app.request('/api/v1/submissions', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-afr-agent-key': key },
-    body: JSON.stringify({ domain: 'new-site.example', note: 'from an agent' }),
-  }, env);
-  assert.equal(submit.status, 201);
+    headers: { 'content-type': 'application/json', 'x-afr-agent-key': apiKey },
+    body: JSON.stringify({ domain }),
+  }, ENV);
 
-  // The counter of the day holds the calls of this key.
-  const counterKey = apiKeyQuotaKey(await hashApiKey(key));
-  assert.equal(kv.store.get(counterKey), '1');
+  assert.equal((await submit(key, 'new-site.example')).status, 201);
+  assert.deepEqual(await readDomainApiKeyUsage(db, 'example.com'), { day: 1, month: 1 });
 
-  // The budget of a free key is 100 calls a day.
-  kv.store.set(counterKey, String(API_KEY_QUOTA_LIMITS.free));
-  const over = await app.request('/api/v1/submissions', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-afr-agent-key': key },
-    body: JSON.stringify({ domain: 'another-site.example' }),
-  }, env);
+  const day = apiKeyUsagePeriods().day;
+  raw.prepare('UPDATE api_key_usage SET used = ? WHERE key_hash = ? AND period = ?')
+    .run(API_KEY_QUOTA_LIMITS.free, 'domain:example.com', day);
+  const rotated = await issue();
+  assert.equal(rotated.status, 201);
+  const { key: nextKey } = await rotated.json() as { key: string };
+  const over = await submit(nextKey, 'another-site.example');
   assert.equal(over.status, 429);
-  assert.deepEqual(await over.json(), { error: 'quota_exceeded', limit: API_KEY_QUOTA_LIMITS.free });
-
-  // A request without a key is never counted against a key.
-  assert.equal(kv.store.has(apiKeyQuotaKey(await hashApiKey('unknown-key'))), false);
+  const quota = await over.json() as { error: string; limit: number };
+  assert.equal(quota.error, 'quota_exceeded');
+  assert.equal(quota.limit, API_KEY_QUOTA_LIMITS.free);
+  assert.deepEqual(await readDomainApiKeyUsage(db, 'example.com'), { day: 100, month: 1 });
 });

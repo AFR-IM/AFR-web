@@ -19,6 +19,8 @@ import {
   revokeProForDomain,
 } from './admin-commercial.ts';
 import { readMonitorBoard, renderMonitorBoard } from './admin-monitor.ts';
+import { listScoringReleases, publishScoringRelease, renderScoringBoard } from './admin-scoring.ts';
+import { ADS_ADMIN_PATH, moderateAd, readAdsBoard, renderAdsBoard } from './ads.ts';
 import {
   parseBeneficiaryForm,
   readSettings,
@@ -62,6 +64,8 @@ const NOTICES: Record<string, string> = {
   ticket_closed: '纠错工单已关闭。',
   pro_revoked: 'Pro 期限已撤销。',
   apikey_revoked: '机器密钥已吊销。',
+  ad_moderated: '广告状态已更新。',
+  scoring_published: '评分版本说明已发布。',
   settings_updated: '设置已保存。',
   replayed: '这个请求已经执行过了，重复提交被忽略。',
 };
@@ -167,7 +171,7 @@ function claimIdsOf(form: URLSearchParams): number[] | null {
   return ids;
 }
 
-export async function handleAdmin(request: Request, env: AdminAccessEnv & AdminLoginEnv, getDb: () => Db): Promise<Response> {
+export async function handleAdmin(request: Request, env: AdminAccessEnv & AdminLoginEnv & { ADS_SALES_OPEN?: string }, getDb: () => Db): Promise<Response> {
   try {
     const url = new URL(request.url);
     const isBoard = url.pathname === '/admin' || url.pathname === '/admin/';
@@ -235,9 +239,17 @@ export async function handleAdmin(request: Request, env: AdminAccessEnv & AdminL
         return page('内容与社区', h`${notice ? adminAlert('ok', notice) : ''}${renderContentBoard(board)}`);
       }
       if (url.pathname === '/admin/commercial') {
-        const board = await readCommercialBoard(db);
+        const [board, ads] = await Promise.all([readCommercialBoard(db), readAdsBoard(db)]);
         const notice = NOTICES[(url.searchParams.get('notice') ?? '').trim()];
-        return page('商业化', h`${notice ? adminAlert('ok', notice) : ''}${renderCommercialBoard(board)}`);
+        return page('商业化', h`${notice ? adminAlert('ok', notice) : ''}${renderCommercialBoard(board)}
+          <p class="muted">站长自助购买${env.ADS_SALES_OPEN === 'true' ? '已启用' : '已关闭'}。</p>
+          ${renderAdsBoard(ads, actor.canWrite)}`);
+      }
+      if (url.pathname === '/admin/scoring') {
+        const notice = NOTICES[(url.searchParams.get('notice') ?? '').trim()];
+        return page('评分规则版本', renderScoringBoard(
+          await listScoringReleases(db), notice ? { kind: 'ok', text: notice } : undefined, actor.canWrite,
+        ));
       }
       if (url.pathname === '/admin/monitor') {
         const board = await readMonitorBoard(db);
@@ -372,6 +384,24 @@ export async function handleAdmin(request: Request, env: AdminAccessEnv & AdminL
         return errorPage('吊销未执行', '密钥不存在，或它属于另一个站点。', '/admin/commercial');
       }
       return back('/admin/commercial', result.result === 'replayed' ? 'replayed' : 'apikey_revoked');
+    }
+
+    if (url.pathname === ADS_ADMIN_PATH) {
+      const result = await moderateAd(db, {
+        requestId, subject: actor.subject, id: Number(form.get('id')),
+        decision: form.get('decision') ?? '', startsAt: form.get('starts_at')?.trim(), note: form.get('note'),
+      });
+      if (result.result === 'conflict') return errorPage('广告操作未执行', result.error, '/admin/commercial');
+      return back('/admin/commercial', result.result === 'replayed' ? 'replayed' : 'ad_moderated');
+    }
+
+    if (url.pathname === '/admin/scoring') {
+      const result = await publishScoringRelease(db, {
+        requestId, subject: actor.subject,
+        engineVersion: form.get('engine_version') ?? '', notes: form.get('notes') ?? '',
+      });
+      if (result.result === 'conflict') return errorPage('发布未执行', result.error, '/admin/scoring');
+      return back('/admin/scoring', result.result === 'replayed' ? 'replayed' : 'scoring_published');
     }
 
     if (url.pathname === '/admin/settings') {

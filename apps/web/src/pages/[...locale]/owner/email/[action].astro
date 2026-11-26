@@ -1,0 +1,113 @@
+---
+import { getCatalog, pathFor, toLocale } from '../../../../i18n/loader.ts';
+import '../../../../styles/tokens.css';
+import exchangeScript from '../../../../utils/owner-email-exchange.js?raw';
+
+export const prerender = false;
+
+const { action, locale: routeLocale } = Astro.params;
+const valid = (action === 'confirm' || action === 'recover') &&
+  (routeLocale === undefined || routeLocale === 'zh-CN');
+// Email uses the unprefixed URL. Use the browser's preferred language there.
+const preferredLanguage = Astro.request.headers.get('Accept-Language')?.split(/[,;]/, 1)[0]?.trim();
+const locale = toLocale(routeLocale ?? preferredLanguage);
+const { ui } = getCatalog(locale);
+const recover = action === 'recover';
+const title = recover ? ui.ownerEmailLinkRecover : ui.ownerEmailLinkConfirm;
+const headers = Astro.response.headers;
+headers.set('Cache-Control', 'private, no-store');
+headers.set('Cloudflare-CDN-Cache-Control', 'no-store');
+headers.set('Referrer-Policy', 'no-referrer');
+headers.set('X-Robots-Tag', 'noindex, nofollow');
+headers.set('Content-Security-Policy', "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
+if (!valid) Astro.response.status = 404;
+---
+
+<!doctype html>
+<html lang={locale}>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="referrer" content="no-referrer" />
+    <link rel="icon" href="data:," />
+    <title>{valid ? title : ui.notFound} · AFR.IM</title>
+  </head>
+  <body>
+    {valid ? (
+      <main
+        data-owner-email-exchange
+        data-action={action}
+        data-owner-path={pathFor(locale, '/owner/')}
+        data-invalid={ui.ownerEmailLinkInvalid}
+        data-working={ui.ownerEmailLinkWorking}
+        data-rate-limited={ui.ownerMailErrRateLimited}
+        data-failed={ui.ownerEmailLinkFailed}
+        data-saved={ui.ownerMailTokenSaved}
+        data-storage-unavailable={ui.ownerEmailLinkStorageUnavailable}
+        data-copied={ui.copied}
+        data-copy-manually={ui.ownerEmailLinkCopyManually}
+      >
+        <h1 data-heading tabindex="-1">{title}</h1>
+        <p data-intro>{recover ? ui.ownerEmailLinkRecoverHelp : ui.ownerEmailLinkConfirmHelp}</p>
+        <noscript><p>{ui.ownerEmailLinkEnableScript}</p></noscript>
+        <button type="button" data-redeem hidden>{title}</button>
+        <p role="status" data-status></p>
+        <p data-result hidden>{recover ? ui.ownerEmailLinkRecovered : ui.ownerEmailLinkConfirmed} <strong data-domain></strong></p>
+        <div data-copy-fallback hidden>
+          <label for="manage-token">{ui.ownerMailTokenLabel}</label>
+          <input id="manage-token" type="text" autocomplete="off" readonly spellcheck="false" data-manage-token />
+          <button type="button" data-copy>{ui.copy}</button>
+          <p role="status" data-copy-status></p>
+        </div>
+        <a data-owner-link hidden>{ui.ownerEmailLinkOpenPanel}</a>
+      </main>
+    ) : <main><h1>{ui.notFound}</h1></main>}
+    {valid && <script is:inline set:html={exchangeScript}></script>}
+  </body>
+</html>
+
+<style is:inline>
+  :root { color-scheme: light dark; }
+  body {
+    margin: 0;
+    padding: clamp(1rem, 6vw, 3rem);
+    color: var(--text-1);
+    background: var(--bg-ink);
+    font: 1rem/1.6 system-ui, sans-serif;
+  }
+  main {
+    width: min(100%, 35rem);
+    box-sizing: border-box;
+    margin: 0 auto;
+    padding: clamp(1.25rem, 5vw, 2.25rem);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--bg-surface);
+  }
+  h1 { margin: 0; font-size: clamp(1.45rem, 4vw, 2rem); line-height: 1.25; }
+  p { overflow-wrap: anywhere; }
+  button, input { font: inherit; border-radius: var(--r-2); }
+  input {
+    box-sizing: border-box;
+    display: block;
+    width: 100%;
+    padding: .55rem;
+    margin: .4rem 0 .7rem;
+    background: var(--bg-ink);
+    color: var(--text-1);
+    border: 1px solid var(--line);
+  }
+  button {
+    padding: .6rem .9rem;
+    background: var(--brand);
+    color: #0b1220;
+    border: 1px solid transparent;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:disabled { opacity: .65; cursor: wait; }
+  a { color: var(--brand-link); font-weight: 600; }
+  :focus-visible { outline: 2px solid var(--brand-link); outline-offset: 3px; }
+  [role="status"]:empty { margin: 0; }
+</style>

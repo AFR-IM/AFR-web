@@ -188,7 +188,7 @@ async function onboardOwner(
   assert.equal(res.status, 200, `registration failed: ${res.status}`);
   const mail = site.mails.at(-1);
   assert.ok(mail, 'the confirmation mail was sent');
-  const token = /\/api\/v1\/owners\/email\/verify\?token=([0-9a-f]{32})/.exec(mail.text)?.[1];
+  const token = /\/owner\/email\/confirm\/#token=([0-9a-f]{32})/.exec(mail.text)?.[1];
   assert.ok(token, 'the confirmation link is delivered in the email');
   const verified = await get(app, `/api/v1/owners/email/verify?token=${token}`, ip);
   assert.equal(verified.status, 200);
@@ -217,7 +217,7 @@ async function requestRecovery(
   assert.equal(res.status, 200, `recovery failed: ${res.status}`);
   const mail = site.mails.at(-1);
   assert.ok(mail, 'the recovery mail was sent');
-  const token = /\/api\/v1\/owners\/email\/recover\/verify\?token=([0-9a-f]{32})/.exec(mail.text)?.[1];
+  const token = /\/owner\/email\/recover\/#token=([0-9a-f]{32})/.exec(mail.text)?.[1];
   assert.ok(token, 'the recovery link is delivered in the mail');
   return token;
 }
@@ -345,7 +345,7 @@ describe('POST /api/v1/owners/email/recover', () => {
     assert.ok(mail, 'the recovery mail was sent');
     assert.equal(mail.to, 'owner@example.com');
     assert.match(mail.subject, /example\.com/);
-    assert.match(mail.text, /\/api\/v1\/owners\/email\/recover\/verify\?token=[0-9a-f]{32}/);
+    assert.match(mail.text, /\/owner\/email\/recover\/#token=[0-9a-f]{32}/);
     assert.ok(mail.idempotencyKey.startsWith('owner-recovery:example.com:'));
 
     // the database holds the hash only
@@ -358,7 +358,7 @@ describe('POST /api/v1/owners/email/recover', () => {
     assert.equal(row.used_at, null, 'the recovery is unused');
     assert.ok(Date.parse(row.expires_at) > Date.now(), 'the recovery expires in the future');
     assert.ok(!JSON.stringify(row).includes('owner@example.com'), 'no plaintext address is stored');
-    const token = /recover\/verify\?token=([0-9a-f]{32})/.exec(mail.text)?.[1] ?? '';
+    const token = /\/owner\/email\/recover\/#token=([0-9a-f]{32})/.exec(mail.text)?.[1] ?? '';
     assert.ok(token);
     assert.notEqual(row.token_hash, token, 'the token itself is not stored');
   });
@@ -382,13 +382,16 @@ describe('GET /api/v1/owners/email/recover/verify', () => {
     );
     const token = await requestRecovery(app, site, 'example.com', 'owner@example.com', ip);
 
-    const verified = await get(
+    const verified = await post(
       app,
-      `/api/v1/owners/email/recover/verify?token=${token}`,
+      '/api/v1/owners/email/recover/verify',
+      { token },
       ip,
       envWith({ EMAIL_ENC_KEY: SECRET }),
     );
     assert.equal(verified.status, 200);
+    assert.match(verified.headers.get('Cache-Control') ?? '', /no-store/);
+    assert.equal(verified.headers.get('Referrer-Policy'), 'no-referrer');
     const body = (await verified.json()) as { verified: boolean; domain: string; manageToken: string };
     assert.equal(body.verified, true);
     assert.equal(body.domain, 'example.com');

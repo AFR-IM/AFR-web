@@ -19,7 +19,6 @@ import SponsoredCard from '../../../components/home/SponsoredCard.astro';
 import { getCatalog, pathFor, toLocale } from '../../../i18n/loader.ts';
 import { listCategories, loadCategory } from '../../../data/loader.ts';
 import { GRADES, GRADE_VAR, gradeVar } from '../../../utils/grade.ts';
-import { resolvableAds } from '../../../components/home/ads-fixture.ts';
 import { sitesLabel, uiText } from '../../../components/home/fallbacks.ts';
 
 export function getStaticPaths() {
@@ -59,8 +58,6 @@ const langs = [
   ...new Set(sites.map((s) => s.lang).filter((v): v is string => Boolean(v))),
 ].sort();
 
-const [ad] = resolvableAds(); // slot position 1 (category-top)
-
 const countTpl = uiText(L.ui, 'siteCount', locale);
 const countText = sitesLabel(L.ui, locale, count);
 const sortOptions = [
@@ -95,7 +92,7 @@ const categoryIndex = JSON.stringify(sites.map(({ domain, title, score, grade, s
       </p>
     </header>
 
-    {ad && <SponsoredCard ad={ad} locale={locale} variant="category" />}
+    <SponsoredCard slot="category-top" adKey={slug} locale={locale} />
 
     {hasSites ? (
       <div class="cat-body">
