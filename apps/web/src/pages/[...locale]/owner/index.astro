@@ -1,0 +1,483 @@
+---
+// The multi-domain panel — one page for every site whose owner mailbox is
+// the same address. There is no account system: the panel expands a
+// management token (the one in this browser, or one pasted here) to every
+// domain confirmed under the same mailbox address
+// (GET /api/v1/owners/domains). Read-only: acting on a domain still opens
+// that domain's own workspace with that domain's own token.
+//
+// Static page, client-side data — the catalog must not cost assets.
+
+export const prerender = true;
+
+import Base from '../../../layouts/Base.astro';
+import { pathFor, toLocale, type Locale } from '../../../i18n/loader.ts';
+
+export function getStaticPaths() {
+  return [{ params: { locale: undefined } }, { params: { locale: 'zh-CN' } }];
+}
+
+const locale: Locale = toLocale(Astro.params.locale);
+const isZh = locale === 'zh-CN';
+const T = (en: string, zh: string) => (isZh ? zh : en);
+const href = (p: string) => pathFor(locale, p);
+const base = isZh ? '/zh-CN' : '';
+
+const P = {
+  title: T('Your sites', '你的站点'),
+  lede: T(
+    'Every site confirmed under your owner mailbox, in one list. AFR has no accounts: each site keeps its own management token, and this panel only reads what those tokens already prove.',
+    '同一站主邮箱名下已确认的站点，集中在一个列表里。AFR 没有账号体系：每站保留自己的管理令牌，这个面板只读取这些令牌已经证明的东西。',
+  ),
+  howTitle: T('How it works', '使用方式'),
+  how: [
+    T(
+      'Open any of your sites’ owner workspace in this browser — the confirmed mailbox leaves a management token here, and the panel finds every site under the same address.',
+      '先在本浏览器打开任意一个站点的站主工作区——确认邮箱时留下的管理令牌会存在这里，面板据此找到同一名下的全部站点。',
+    ),
+    T(
+      'No token here yet? Paste a management token below. It is kept only in this browser.',
+      '本机还没有令牌？在下方粘贴一个管理令牌。它只保存在这台浏览器里。',
+    ),
+    T(
+      'Each row links to that site’s own workspace; a site without a local token can still be opened and bound again through its mailbox flow.',
+      '每一行都通向该站点自己的工作区；本机没有令牌的站点也可以打开，走邮箱流程重新绑定。',
+    ),
+  ],
+  inputLabel: T('Management token', '管理令牌'),
+  inputPlaceholder: T('manage-…', 'manage-…'),
+  useText: T('Open panel', '打开面板'),
+  usingText: T('Reading…', '读取中……'),
+  staleText: T(
+    'Stored tokens no longer work — re-confirm the mailbox on one of your sites.',
+    '本机保存的令牌已失效——请在任一站点重新确认站主邮箱。',
+  ),
+  emptyText: T(
+      'No management token on this device yet — open one of your sites’ owner workspace first, or paste a token above.',
+      '本机还没有管理令牌——先打开一个你站点的站主工作区，或在上方粘贴令牌。',
+    ),
+  loadError: T('Could not read that token — check it and try again.', '无法读取该令牌——请检查后重试。'),
+  colSite: T('Site', '站点'),
+  colGrade: T('Rating', '评级'),
+  colPro: T('Pro', 'Pro'),
+  colNotify: T('Alerts', '通知'),
+  proOn: T('active', '已开通'),
+  proOff: T('—', '—'),
+  notifyOn: T('on', '开'),
+  notifyOff: T('muted', '关'),
+  openText: T('Open workspace', '打开工作区'),
+  bindText: T('Bind this site', '绑定此站'),
+  delistedText: T('retired', '已下线'),
+  statusError: T('Some sites could not be read.', '部分站点未能读取。'),
+};
+---
+
+<Base title={P.title} description={P.lede}>
+  <div class="container panel" data-owner-panel data-base={base}
+    data-label-use={P.useText} data-msg-using={P.usingText}
+    data-msg-empty={P.emptyText} data-msg-error={P.loadError}
+    data-col-site={P.colSite} data-col-grade={P.colGrade}
+    data-col-pro={P.colPro} data-col-notify={P.colNotify}
+    data-pro-on={P.proOn} data-pro-off={P.proOff}
+    data-notify-on={P.notifyOn} data-notify-off={P.notifyOff}
+    data-open={P.openText} data-bind={P.bindText}
+    data-delisted={P.delistedText} data-status-error={P.statusError}
+    data-msg-stale={P.staleText}>
+    <header class="hero">
+      <p class="eyebrow mono">AFR.IM</p>
+      <h1>{P.title}</h1>
+      <p class="lede">{P.lede}</p>
+    </header>
+
+    <section class="sec">
+      <h2>{P.howTitle}</h2>
+      <ul class="list">
+        {P.how.map((item) => <li>{item}</li>)}
+      </ul>
+      <form class="token-row" data-token-form>
+        <label class="tok-label" for="owner-token">{P.inputLabel}</label>
+        <div class="tok-input-row">
+          <input class="tok-input mono" id="owner-token" name="token" type="password"
+            autocomplete="off" spellcheck="false" placeholder={P.inputPlaceholder}
+            aria-describedby="tok-status"></input>
+          <button class="btn" type="submit" data-token-submit>{P.useText}</button>
+        </div>
+      </form>
+      <p class="status" id="tok-status" data-panel-status role="status" aria-live="polite"></p>
+    </section>
+
+    <section class="sec">
+      <div class="table-wrap" data-panel-table hidden>
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">{P.colSite}</th>
+              <th scope="col" class="num">{P.colGrade}</th>
+              <th scope="col">{P.colPro}</th>
+              <th scope="col">{P.colNotify}</th>
+              <th scope="col"></th>
+            </tr>
+          </thead>
+          <tbody data-panel-body></tbody>
+        </table>
+      </div>
+      <p class="empty" data-panel-empty>{P.emptyText}</p>
+    </section>
+  </div>
+</Base>
+
+<style>
+  .panel {
+    padding-top: 32px;
+    padding-bottom: 24px;
+    max-width: 820px;
+  }
+  .hero {
+    margin-bottom: 20px;
+  }
+  .eyebrow {
+    margin: 0 0 8px;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--brand);
+  }
+  .hero h1 {
+    font-size: clamp(26px, 4vw, 36px);
+    margin-bottom: 10px;
+  }
+  .lede {
+    margin: 0;
+    font-size: 15px;
+    line-height: 1.75;
+    color: var(--text-2);
+    max-width: 72ch;
+  }
+  .sec {
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 22px 24px;
+    margin-bottom: 18px;
+  }
+  .sec h2 {
+    font-size: 18px;
+    margin-bottom: 10px;
+  }
+  .list {
+    margin: 0 0 16px;
+    padding-left: 18px;
+    display: grid;
+    gap: 8px;
+    color: var(--text-2);
+    font-size: 13.5px;
+    line-height: 1.7;
+    max-width: 80ch;
+  }
+  .token-row {
+    display: grid;
+    gap: 6px;
+  }
+  .tok-label {
+    font-size: 12.5px;
+    color: var(--text-2);
+  }
+  .tok-input-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .tok-input {
+    flex: 1 1 260px;
+    min-width: 0;
+    padding: 9px 12px;
+    background: var(--bg-ink);
+    border: 1px solid var(--line);
+    border-radius: var(--r-1);
+    color: var(--text-1);
+    font-size: 13px;
+    outline: none;
+  }
+  .tok-input:focus-visible {
+    border-color: var(--brand);
+  }
+  .status {
+    margin: 10px 0 0;
+    min-height: 1.2em;
+    font-size: 12.5px;
+    color: var(--text-3);
+  }
+  .status:empty {
+    display: none;
+  }
+  .status[data-tone='error'] {
+    color: var(--grade-f);
+  }
+  .table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--line);
+    border-radius: var(--r-1);
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  th,
+  td {
+    padding: 9px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  th {
+    background: var(--bg-ink);
+    color: var(--text-3);
+    font-weight: 500;
+    font-size: 11.5px;
+  }
+  tr:last-child td {
+    border-bottom: 0;
+  }
+  td.num,
+  th.num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .site-cell {
+    display: grid;
+    gap: 2px;
+  }
+  .site-cell .dom {
+    font-weight: 600;
+    color: var(--text-1);
+  }
+  .site-cell .ttl {
+    font-size: 11.5px;
+    color: var(--text-3);
+    max-width: 30ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .badge {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    border: 1px solid var(--line);
+    color: var(--text-3);
+  }
+  .badge.on {
+    color: var(--grade-a);
+    border-color: color-mix(in srgb, var(--grade-a) 45%, transparent);
+  }
+  .retired {
+    color: var(--text-3);
+    font-style: italic;
+    font-size: 11.5px;
+  }
+  .empty {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-3);
+    line-height: 1.7;
+  }
+  @media (max-width: 767px) {
+    .sec {
+      padding: 18px 16px;
+    }
+  }
+</style>
+
+<script>
+  // The panel reads management tokens this browser already holds
+  // (`afr-owner-mail-<domain>`), expands each through GET /api/v1/owners/domains
+  // and merges the answers: one mailbox address → many sites. A pasted token
+  // is stored under the domain it proves (its `primary`) so the row links
+  // work afterwards. Everything is textContent — a title is data, never markup.
+  const STORAGE_PREFIX = 'afr-owner-mail-';
+
+  interface PanelRow {
+    domain: string;
+    title: string | null;
+    grade: string | null;
+    score: number | null;
+    status: string;
+    notify: boolean;
+    pro: { active: boolean };
+  }
+
+  const page = document.querySelector<HTMLElement>('[data-owner-panel]');
+  if (page) {
+    const attr = (name: string) => page.getAttribute(name) ?? '';
+    const statusEl = page.querySelector<HTMLElement>('[data-panel-status]');
+    const tableWrap = page.querySelector<HTMLElement>('[data-panel-table]');
+    const tbody = page.querySelector<HTMLElement>('[data-panel-body]');
+    const emptyEl = page.querySelector<HTMLElement>('[data-panel-empty]');
+    const form = page.querySelector<HTMLFormElement>('[data-token-form]');
+    const input = page.querySelector<HTMLInputElement>('input[name="token"]');
+    const submit = page.querySelector<HTMLButtonElement>('[data-token-submit]');
+
+    const rows = new Map<string, PanelRow>();
+    let loading = false;
+
+    function say(msg: string, tone?: string) {
+      if (!statusEl) return;
+      statusEl.textContent = msg;
+      if (tone) statusEl.dataset.tone = tone;
+      else delete statusEl.dataset.tone;
+    }
+
+    function localTokens(): string[] {
+      const tokens: string[] = [];
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (!key || !key.startsWith(STORAGE_PREFIX)) continue;
+          const value = localStorage.getItem(key);
+          if (value) tokens.push(value);
+        }
+      } catch { /* storage blocked */ }
+      return tokens;
+    }
+
+    function hasLocalToken(domain: string): boolean {
+      try {
+        return Boolean(localStorage.getItem(STORAGE_PREFIX + domain));
+      } catch {
+        return false;
+      }
+    }
+
+    async function loadToken(token: string, remember: boolean): Promise<boolean> {
+      try {
+        const res = await fetch('/api/v1/owners/domains', {
+          headers: { accept: 'application/json', authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return false;
+        const body = (await res.json()) as { primary?: string; domains?: PanelRow[] } | null;
+        if (!body || !Array.isArray(body.domains)) return false;
+        if (remember && body.primary) {
+          try { localStorage.setItem(STORAGE_PREFIX + body.primary, token); } catch { /* storage blocked */ }
+        }
+        for (const row of body.domains) {
+          if (row && typeof row.domain === 'string') rows.set(row.domain, row);
+        }
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    function render() {
+      if (!tbody || !tableWrap) return;
+      tbody.textContent = '';
+      if (rows.size === 0) {
+        tableWrap.hidden = true;
+        if (emptyEl) emptyEl.hidden = false;
+        return;
+      }
+      if (emptyEl) emptyEl.hidden = true;
+      tableWrap.hidden = false;
+
+      const sorted = [...rows.values()].sort((a, b) => a.domain.localeCompare(b.domain));
+      for (const row of sorted) {
+        const tr = document.createElement('tr');
+
+        const site = document.createElement('td');
+        const cell = document.createElement('span');
+        cell.className = 'site-cell';
+        const dom = document.createElement('span');
+        dom.className = 'dom mono';
+        dom.textContent = row.domain;
+        cell.appendChild(dom);
+        if (row.title) {
+          const ttl = document.createElement('span');
+          ttl.className = 'ttl';
+          ttl.textContent = row.title;
+          cell.appendChild(ttl);
+        }
+        if (row.status === 'delisted') {
+          const retired = document.createElement('span');
+          retired.className = 'retired';
+          retired.textContent = attr('data-delisted');
+          cell.appendChild(retired);
+        }
+        site.appendChild(cell);
+        tr.appendChild(site);
+
+        const grade = document.createElement('td');
+        grade.className = 'num mono';
+        grade.textContent =
+          row.grade && row.score !== null && row.score !== undefined
+            ? `${row.grade} · ${row.score}`
+            : (row.grade ?? '—');
+        tr.appendChild(grade);
+
+        const pro = document.createElement('td');
+        const proBadge = document.createElement('span');
+        proBadge.className = 'badge' + (row.pro && row.pro.active ? ' on' : '');
+        proBadge.textContent = row.pro && row.pro.active ? attr('data-pro-on') : attr('data-pro-off');
+        pro.appendChild(proBadge);
+        tr.appendChild(pro);
+
+        const notify = document.createElement('td');
+        const notifyBadge = document.createElement('span');
+        notifyBadge.className = 'badge' + (row.notify ? ' on' : '');
+        notifyBadge.textContent = row.notify ? attr('data-notify-on') : attr('data-notify-off');
+        notify.appendChild(notifyBadge);
+        tr.appendChild(notify);
+
+        const action = document.createElement('td');
+        const link = document.createElement('a');
+        link.className = 'btn btn-ghost';
+        link.textContent = hasLocalToken(row.domain) ? attr('data-open') : attr('data-bind');
+        link.href = `${attr('data-base')}/owner/${row.domain}/`;
+        action.appendChild(link);
+        tr.appendChild(action);
+
+        tbody.appendChild(tr);
+      }
+    }
+
+    async function loadAll(manualError: string | null) {
+      if (loading) return;
+      loading = true;
+      if (submit) submit.disabled = true;
+      say(attr('data-msg-using'));
+      const tokens = localTokens();
+      for (const token of tokens) {
+        await loadToken(token, false);
+      }
+      loading = false;
+      if (submit) submit.disabled = false;
+      render();
+      if (manualError) say(manualError, 'error');
+      else if (rows.size === 0 && tokens.length > 0) say(attr('data-msg-stale'), 'error');
+      else say('');
+    }
+
+    form?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const token = (input?.value ?? '').trim();
+      if (!token) {
+        say(attr('data-msg-error'), 'error');
+        return;
+      }
+      if (input) input.value = '';
+      say(attr('data-msg-using'));
+      void loadToken(token, true)
+        .then((ok) => {
+          if (!ok) {
+            say(attr('data-msg-error'), 'error');
+            return;
+          }
+          void loadAll(null);
+        })
+        .catch(() => say(attr('data-msg-error'), 'error'));
+    });
+
+    // First paint: whatever this browser already holds.
+    void loadAll(null);
+  }
+</script>

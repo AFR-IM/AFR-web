@@ -1,7 +1,10 @@
 ---
 // RescanButton — detail-page right column re-scan control with its own state
 // machine, wired to the
-// real API: POST /api/v1/rescan {domain} (one re-scan per domain per 30 minutes).
+// real API: POST /api/v1/rescan {domain}. Free callers share the
+// one-per-domain-per-30-minutes budget; a visitor holding this site's
+// management token with an active Pro term rides the priority path
+// (server: cooldown tiers skipped, queue priority 1).
 //   queued  → disabled + spinner + "queued · ~N min", then a 15s poll of
 //             GET /api/v1/sites/:domain (max 6 min) until scannedAt/score
 //             change → header timestamp refresh + "updated ✓" + one reload
@@ -36,6 +39,7 @@ const throttleTpl = uiText(L.ui, 'rescanThrottle', loc);
 const unknownText = uiText(L.ui, 'rescanUnknown', loc);
 const errorText = uiText(L.ui, 'rescanError', loc);
 const quotaText = uiText(L.ui, 'rescanQuota', loc);
+const priorityText = T('Pro priority · drained first', 'Pro 优先 · 已排入队首');
 ---
 
 <div class="rescan-wrap">
@@ -55,6 +59,7 @@ const quotaText = uiText(L.ui, 'rescanQuota', loc);
     data-unknown={unknownText}
     data-error={errorText}
     data-quota={quotaText}
+    data-priority={priorityText}
   >
     <span class="spinner" aria-hidden="true"></span>
     <span class="txt">{label}</span>
@@ -261,9 +266,17 @@ const quotaText = uiText(L.ui, 'rescanQuota', loc);
       setBusy(attr('data-label'));
       say(attr('data-polling'));
 
+      /* The management token (when this browser holds one) unlocks the
+       * Pro priority path server-side; without it the request is the
+       * ordinary free one. */
+      let token = '';
+      try { token = localStorage.getItem(`afr-owner-mail-${domain}`) ?? ''; } catch { /* storage blocked */ }
+      const headers: Record<string, string> = { 'content-type': 'application/json', accept: 'application/json' };
+      if (token) headers.authorization = `Bearer ${token}`;
+
       fetch('/api/v1/rescan', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        headers,
         body: JSON.stringify({ domain }),
       })
         .then((r) => readJson(r).then((body) => ({ r, body })))
@@ -273,7 +286,11 @@ const quotaText = uiText(L.ui, 'rescanQuota', loc);
             const eta = isFinite(etaRaw) && etaRaw > 0 ? etaRaw : 180;
             const mins = Math.max(1, Math.round(eta / 60));
             setBusy(attr('data-tpl-queued').replace('{n}', String(mins)));
-            say(attr('data-polling'));
+            say(
+              Number(body && body.priority) === 1
+                ? `${attr('data-priority')} · ${attr('data-polling')}`
+                : attr('data-polling'),
+            );
             polls = 0;
             pollTimer = window.setInterval(poll, POLL_MS);
             return;

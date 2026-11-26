@@ -27,6 +27,12 @@ export const SITE_PATHS_URL = '/data/site-paths.json';
 /** The map the build writes: the manual category labels (domain → slug). */
 export const CATEGORY_OVERRIDES_FILE = 'category-overrides.json';
 
+/** The map the build writes: published owner statements (domain → text). */
+export const CLAIMS_FILE = 'claims.json';
+
+/** The public path of that map (the Worker reads it here). */
+export const CLAIMS_URL = '/data/claims.json';
+
 /**
  * What a category slug must look like to be used as a category key.
  *
@@ -38,6 +44,34 @@ export const CATEGORY_SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 /** The manual category labels: domain → category slug. */
 export type CategoryOverrideMap = Record<string, string>;
+
+/** Published owner statements: domain → statement text. */
+export type ClaimMap = Record<string, string>;
+
+/** A domain key may appear in a payload: bare host, conservative shape. */
+const CLAIM_DOMAIN_PATTERN = /^[a-z0-9]([a-z0-9.-]{0,118}[a-z0-9])?$/;
+
+/**
+ * Keep the usable entries of a raw claims payload.
+ *
+ * The payload comes from an HTTP endpoint, so it is treated as data: only
+ * safe domain keys with a bounded statement survive. The bound is the Pro
+ * statement ceiling — a longer entry is dropped rather than truncated,
+ * because a cut-off statement is not the statement that was reviewed.
+ */
+export function sanitizeClaims(raw: unknown): ClaimMap {
+  const out: ClaimMap = {};
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof key !== 'string' || typeof value !== 'string') continue;
+    const domain = key.trim().toLowerCase();
+    const statement = value.trim();
+    if (!domain || !CLAIM_DOMAIN_PATTERN.test(domain)) continue;
+    if (statement.length < 1 || statement.length > 600) continue;
+    out[domain] = statement;
+  }
+  return out;
+}
 
 /** The snapshot shape this builder reads (the data repo's JSON). */
 export interface SnapshotLike {
@@ -117,6 +151,7 @@ export function buildDetail(
   fallbackDomain: string,
   delisted?: DelistedMap,
   overrides?: CategoryOverrideMap,
+  claims?: ClaimMap,
 ): SiteDetail | undefined {
   const afr = snapshot?.afr;
   if (!afr || typeof afr.score !== 'number' || !Array.isArray(afr.layers)) return undefined;
@@ -163,6 +198,7 @@ export function buildDetail(
     ...(lang ? { lang } : {}),
     scannedAt: detail.scannedAt,
     ...(delisted?.[domain] ? { delistedNote: delisted[domain] } : {}),
+    ...(claims?.[domain] ? { claim: claims[domain] } : {}),
     engineVersion: detail.engineVersion,
     scannerVersion: detail.scannerVersion,
     layers: detail.layers,

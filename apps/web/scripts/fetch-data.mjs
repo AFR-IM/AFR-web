@@ -31,8 +31,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { brotliCompressSync, constants } from 'node:zlib';
 import { CATEGORY_SLUGS, categorize } from '../src/data/categorize.mjs';
-import { CATEGORY_OVERRIDES_FILE, SITE_PATHS_FILE, buildDetail, resolveCategorySlug } from '../src/data/detail.ts';
+import { CATEGORY_OVERRIDES_FILE, CLAIMS_FILE, SITE_PATHS_FILE, buildDetail, resolveCategorySlug } from '../src/data/detail.ts';
 import { fetchCategoryOverrides } from './fetch-category-overrides.mjs';
+import { fetchPublishedClaims } from './fetch-claims.mjs';
 import { resolvePageLang, resolvePageMeta, resolvePageTitle } from '../../../packages/scanner/src/page-meta.ts';
 import {
   SEARCH_INDEX_RAW_PER_ENTRY,
@@ -54,6 +55,11 @@ const WEB_DIR = path.resolve(SCRIPT_DIR, '..'); // apps/web
 const GENERATED_DIR = path.join(WEB_DIR, 'src', 'data', 'generated');
 const DETAILS_DIR = path.join(GENERATED_DIR, 'details');
 const PUBLIC_DATA_DIR = path.join(WEB_DIR, 'public', 'data');
+// The published copy of the retirement list (src/data/delisted.json). The
+// Worker's directory reconcile fetches exactly this file, so the
+// "no longer listed" owner mail and the retirement note on the page can
+// never disagree.
+const DELISTED_FILE = 'delisted.json';
 
 const LEADERBOARD_SIZE = 50;
 const LATEST_SIZE = 24;
@@ -331,6 +337,7 @@ async function main() {
   // only the sites that were labelled by hand; an unreachable endpoint yields
   // an empty map, so the build falls back to exactly what it shipped before.
   const overrides = await fetchCategoryOverrides();
+  const claims = await fetchPublishedClaims();
   let overridden = 0;
   for (const s of sites) {
     const resolved = resolveCategorySlug(domainOf(s), s.category, overrides);
@@ -361,7 +368,7 @@ async function main() {
 
   // The detail payload comes from the shared builder (src/data/detail.ts) —
   // the same one the on-demand detail pages use, so the two cannot drift.
-  const detailOf = (s) => buildDetail({ afr: s.afr, signals: { homepage: s.probe } }, domainOf(s), DELISTED, overrides);
+  const detailOf = (s) => buildDetail({ afr: s.afr, signals: { homepage: s.probe } }, domainOf(s), DELISTED, overrides, claims);
 
   // ── home payload (scored only) ────────────────────────────────────────────
   const scoredCards = scored.map(cardOf).sort(byScoreDesc);
@@ -519,11 +526,28 @@ async function main() {
     'utf8',
   );
 
+  // The published owner statements, same rule: the on-demand page reads
+  // this file, so a statement the moderation queue published shows up on
+  // both the built report and the rendered one.
+  await writeFile(
+    path.join(PUBLIC_DATA_DIR, CLAIMS_FILE),
+    `${JSON.stringify(claims)}\n`,
+    'utf8',
+  );
+
   // The snapshot index of the on-demand detail pages: domain → the date
   // directory that holds its newest snapshot (see src/data/runtime-detail.ts).
   await writeFile(
     path.join(PUBLIC_DATA_DIR, SITE_PATHS_FILE),
     `${JSON.stringify(sitePaths)}\n`,
+    'utf8',
+  );
+
+  // The retirement list, published as data as well: the Worker reconciles
+  // the directory state against this exact file (additions/removals alerts).
+  await writeFile(
+    path.join(PUBLIC_DATA_DIR, DELISTED_FILE),
+    `${JSON.stringify(DELISTED)}\n`,
     'utf8',
   );
 

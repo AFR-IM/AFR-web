@@ -348,6 +348,26 @@ describe('GET /api/v1/queue', () => {
     assert.ok(!domains.includes('done.example'));
     assert.ok(!domains.includes('rejected.example'));
   });
+
+  it('drains priority rows (Pro rescans) before older free rows', async () => {
+    const { db, raw } = openSeededDb();
+    const app = createApp({ db, scanLimits: freshScanLimits() });
+    const insert = raw.prepare(
+      `INSERT INTO submissions (domain, submitter_note, source, status, created_at, priority)
+       VALUES (?, NULL, 'rescan', 'queued', ?, ?)`,
+    );
+    const base = Date.parse('2026-11-01T00:00:00.000Z');
+    insert.run('old-free.test', new Date(base).toISOString(), 0);
+    insert.run('newer-free.test', new Date(base + 60_000).toISOString(), 0);
+    insert.run('pro-new.test', new Date(base + 120_000).toISOString(), 1);
+
+    const body = (await (await app.request('/api/v1/queue')).json()) as { items: { domain: string }[] };
+    assert.deepEqual(
+      body.items.map((i) => i.domain),
+      ['pro-new.test', 'old-free.test', 'newer-free.test'],
+      'priority wins over age; age still orders the rest',
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------

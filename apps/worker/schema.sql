@@ -90,8 +90,12 @@ CREATE TABLE IF NOT EXISTS submissions (
   source TEXT,                           -- tranco/public/owner/on_demand
   status TEXT,                           -- queued/scanning/scanned/done/rejected
   created_at TEXT,
-  done_at TEXT                           -- set by POST /api/v1/queue/:domain/done
+  done_at TEXT,                          -- set by POST /api/v1/queue/:domain/done
+  priority INTEGER NOT NULL DEFAULT 0    -- 1 = an active-Pro owner's rescan: the
+                                         -- queue endpoint drains higher first
 );
+-- existing DBs (column added later):
+--   wrangler d1 execute aiapp --command "ALTER TABLE submissions ADD COLUMN priority INTEGER NOT NULL DEFAULT 0" --remote
 
 -- Site statements (appeal / context note)
 CREATE TABLE IF NOT EXISTS claims (
@@ -326,6 +330,7 @@ CREATE TABLE IF NOT EXISTS notify_outbox (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   domain TEXT NOT NULL,
   event_key TEXT NOT NULL UNIQUE,    -- idempotency key: domain|snapshot_path|grade|score
+  event_type TEXT NOT NULL DEFAULT 'score_change', -- score_change | added | removed
   grade TEXT,
   score_total INTEGER,
   prev_grade TEXT,
@@ -339,6 +344,7 @@ CREATE TABLE IF NOT EXISTS notify_outbox (
 );
 -- existing DBs (table already created):
 --   wrangler d1 execute aiapp --command "ALTER TABLE notify_outbox ADD COLUMN next_attempt_at TEXT" --remote
+--   wrangler d1 execute aiapp --command "ALTER TABLE notify_outbox ADD COLUMN event_type TEXT NOT NULL DEFAULT 'score_change'" --remote
 CREATE INDEX IF NOT EXISTS idx_notify_outbox_status ON notify_outbox(status, id);
 
 -- ---------------------------------------------------------------------------

@@ -189,6 +189,34 @@ describe('POST /api/v1/claims', () => {
     const other = await post(app, { domain: 'other.dev', statement: 'Different domain' }, await mailbox('other.dev'));
     assert.equal(other.status, 201);
   });
+
+  it('raises the statement ceiling to 600 for an active Pro term', async () => {
+    const { app, raw } = await freshApp();
+    const at = new Date().toISOString();
+    raw
+      .prepare(
+        `INSERT INTO pro_entitlement_events
+           (source_merchant_order_id, subject_id, kind, term_days, occurred_at, created_at)
+         VALUES ('ap_pro_claims_fixture', 'example.com', 'grant', 30, ?, ?)`,
+      )
+      .run(at, at);
+
+    // past the free ceiling, inside the Pro ceiling
+    const long = await post(app, { domain: 'example.com', statement: 'x'.repeat(600) });
+    assert.equal(long.status, 201);
+    assert.deepEqual(await long.json(), { status: 'pending' }, 'the answer shape never changed');
+
+    const over = await post(app, { domain: 'example.com', statement: 'x'.repeat(601) });
+    assert.equal(over.status, 400);
+    const parsed = await over.json();
+    assert.equal(parsed.error, 'invalid_statement');
+    assert.match(parsed.message, /1-600/);
+    assert.equal(
+      (raw.prepare(`SELECT COUNT(*) AS n FROM claims`).get() as { n: number }).n,
+      1,
+      'only the accepted statement was stored',
+    );
+  });
 });
 
 describe('GET /api/v1/claims', () => {

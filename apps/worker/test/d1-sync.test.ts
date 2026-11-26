@@ -263,6 +263,25 @@ describe('syncDate', () => {
     assert.equal(site.score_total, 50, 'scores must be refreshed');
   });
 
+  it('keeps a delisted site delisted on upsert (only the reconcile lifts it)', async () => {
+    const { db, raw } = openSeededDb();
+    raw.prepare("UPDATE sites SET status = 'delisted' WHERE domain = 'example.com'").run();
+
+    const snapshot = makeSnapshot(55, 'B');
+    snapshot.afr.domain = 'example.com';
+    snapshot.signals.domain = 'example.com';
+    const path = `scans/${DATE}/example.com.json`;
+    const { impl } = fakeFetch({ files: { [path]: snapshot } });
+
+    await syncDate(DATE, { db, fetchImpl: impl });
+    const site = raw.prepare('SELECT status, score_total FROM sites WHERE domain = ?').get('example.com') as {
+      status: string;
+      score_total: number;
+    };
+    assert.equal(site.status, 'delisted', 'a snapshot can never resurrect a retired site');
+    assert.equal(site.score_total, 55, 'the score itself still refreshes');
+  });
+
   it('records per-file fetch errors without aborting the run', async () => {
     const { db } = openSeededDb();
     const brokenPath = `scans/${DATE}/broken.example.json`;

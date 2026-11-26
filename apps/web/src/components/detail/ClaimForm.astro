@@ -1,5 +1,6 @@
 ---
-// ClaimForm — verified owner statement form (≤200 chars), right column. Rendered
+// ClaimForm — verified owner statement form (≤200 chars, ≤600 with an active
+// Pro term), right column. Rendered
 // only when the site is verified or already carries a published claim (the
 // published text itself keeps rendering through ClaimBlock — read path
 // untouched). Submit → POST /api/v1/claims:
@@ -7,7 +8,8 @@
 //   401 → prompt to confirm the mailbox or restore its management token
 //   403 → inline hint + link that scrolls to the VerifyPanel
 //   400 / 5xx / network → inline error, form stays usable
-// Live n/200 counter; aria-live status; no alert/toast.
+// Live n/limit counter (the ceiling follows the Pro term); aria-live status;
+// no alert/toast.
 
 import { getCatalog, toLocale, type Locale } from '../../i18n/loader.ts';
 import { uiText } from '../home/fallbacks.ts';
@@ -236,6 +238,16 @@ const unauthorizedText = T(
 
     const attr = (name: string) => form.getAttribute(name) ?? '';
 
+    /* The statement ceiling follows the paid term: 200 for everyone, 600
+     * with an active Pro. The server enforces it either way — this only
+     * keeps the counter and the textarea honest while typing. */
+    let limit = 200;
+    function paintLimit(next: number) {
+      limit = next;
+      if (input) input.maxLength = next;
+      paintCount();
+    }
+
     function say(msg: string, tone?: string) {
       if (!status) return;
       status.textContent = msg;
@@ -255,13 +267,30 @@ const unauthorizedText = T(
     function paintCount() {
       if (!count || !input) return;
       const n = input.value.length;
-      count.textContent = `${n}/200`;
-      if (n >= 200) count.dataset.full = '1';
+      count.textContent = `${n}/${limit}`;
+      if (n >= limit) count.dataset.full = '1';
       else delete count.dataset.full;
     }
 
     input?.addEventListener('input', paintCount);
     paintCount();
+
+    /* Pro owners get the longer statement: ask the Pro status once, with
+     * the same management token the submit uses. Any failure keeps the
+     * free limit — the server is the authority regardless. */
+    try {
+      const existingToken = localStorage.getItem(`afr-owner-mail-${domain}`) ?? '';
+      if (existingToken) {
+        fetch(`/api/v1/pro/status?domain=${encodeURIComponent(domain)}`, {
+          headers: { accept: 'application/json', authorization: `Bearer ${existingToken}` },
+        })
+          .then((r) => (r.ok ? r.json().catch(() => null) : null))
+          .then((body) => {
+            if (body && body.pro && body.pro.active === true) paintLimit(600);
+          })
+          .catch(() => { /* keep the free limit */ });
+      }
+    } catch { /* storage blocked — keep the free limit */ }
 
     form.addEventListener('submit', (e) => {
       e.preventDefault();

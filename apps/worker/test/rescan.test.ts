@@ -14,6 +14,7 @@ import {
   type WorkerEnv
 } from '../src/index.ts';
 import { RateLimiter, DAY_MS, memoryStore } from '../src/rate-limit.ts';
+import { hashToken } from '../src/email.ts';
 import { SCAN_DOMAIN_WINDOW_MS } from '../src/index.ts';
 import { openSeededDb } from './helpers.ts';
 
@@ -290,5 +291,94 @@ describe('POST /api/v1/rescan', () => {
       true,
       'rescans must not consume the search-scan global budget',
     );
+  });
+
+  it('gives an active Pro owner the priority path (cooldown tiers skipped, priority 1)', async () => {
+    const { impl } = fakeFetch();
+    const { app, raw } = freshApp(impl); // device tier: 1 per 30 minutes
+    const token = 'pro-owner-token';
+    raw
+      .prepare(
+        `INSERT INTO owner_emails
+           (domain, email_cipher, email_hash, manage_token_hash, verified_at, created_at, updated_at)
+         VALUES ('example.com', 'cipher', 'hash', ?, '2026-11-20', '2026-11-20', '2026-11-20')`,
+      )
+      .run(await hashToken(token));
+    const at = new Date().toISOString();
+    raw
+      .prepare(
+        `INSERT INTO pro_entitlement_events
+           (source_merchant_order_id, subject_id, kind, term_days, occurred_at, created_at)
+         VALUES ('ap_pro_rescan_fixture', 'example.com', 'grant', 30, ?, ?)`,
+      )
+      .run(at, at);
+
+    const post = () =>
+      app.request(
+        '/api/v1/rescan',
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-forwarded-for': '203.0.113.30',
+            authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ domain: 'example.com' }),
+        },
+        envWith({ GITHUB_DISPATCH_TOKEN: 'test-token' }),
+      );
+
+    const first = await post();
+    assert.equal(first.status, 200);
+    assert.equal((await first.json()).priority, 1);
+    // the device cooldown would block a second request inside 30 minutes —
+    // the Pro path skips it (the IP-day budget still applies)
+    const second = await post();
+    assert.equal(second.status, 200);
+    assert.equal((await second.json()).priority, 1);
+
+    const rows = raw
+      .prepare(`SELECT priority FROM submissions WHERE source = 'rescan'`)
+      .all() as { priority: number }[];
+    assert.equal(rows.length, 2);
+    assert.ok(
+      rows.every((row) => row.priority === 1),
+      'both rows are queued as priority',
+    );
+  });
+
+  it('keeps a mailbox without a Pro term on the free path (priority 0, cooldown holds)', async () => {
+    const { impl } = fakeFetch();
+    const { app, raw } = freshApp(impl);
+    const token = 'free-owner-token';
+    raw
+      .prepare(
+        `INSERT INTO owner_emails
+           (domain, email_cipher, email_hash, manage_token_hash, verified_at, created_at, updated_at)
+         VALUES ('example.com', 'cipher', 'hash', ?, '2026-11-20', '2026-11-20', '2026-11-20')`,
+      )
+      .run(await hashToken(token));
+
+    const post = () =>
+      app.request(
+        '/api/v1/rescan',
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-forwarded-for': '203.0.113.31',
+            authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ domain: 'example.com' }),
+        },
+        envWith({ GITHUB_DISPATCH_TOKEN: 'test-token' }),
+      );
+
+    const first = await post();
+    assert.equal(first.status, 200);
+    assert.equal((await first.json()).priority, 0);
+    const second = await post();
+    assert.equal(second.status, 429, 'the device cooldown still holds for a free owner');
+    assert.equal(rescanRows(raw), 1);
   });
 });

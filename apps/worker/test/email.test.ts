@@ -1375,6 +1375,44 @@ describe('drainNotifyOutbox', () => {
     assert.equal(calls.length, 1, 'no second mail for the same event');
   });
 
+  it('routes a directory event to its own subject (added/removed)', async () => {
+    const { db, raw } = openSeededDb();
+    await seedOwner(raw, 'example.com');
+    const at = new Date().toISOString();
+    raw
+      .prepare(
+        `INSERT INTO notify_outbox
+           (domain, event_key, event_type, status, attempts, created_at)
+         VALUES ('example.com', 'example.com|removed|fixture', 'removed', 'pending', 0, ?)`,
+      )
+      .run(at);
+
+    const { calls, impl } = fakeResend();
+    const result = await drainNotifyOutbox(
+      db,
+      { secretB64: SECRET, resendApiKey: API_KEY, from: 'AFR <notifications@afr.im>', baseUrl: 'https://afr.im' },
+      impl,
+    );
+    assert.deepEqual(result, { sent: 1, failed: 0, skipped: 0 });
+
+    const body = JSON.parse(String((calls[0].init as RequestInit).body)) as {
+      to: string;
+      subject: string;
+      text: string;
+    };
+    assert.equal(body.to, 'owner@example.com');
+    assert.match(body.subject, /AFR listing update: example\.com is no longer listed/);
+    assert.match(body.text, /retirement note/);
+    assert.match(body.text, /part of AFR Pro/);
+
+    const row = raw.prepare('SELECT status, sent_at FROM notify_outbox WHERE id = 1').get() as {
+      status: string;
+      sent_at: string | null;
+    };
+    assert.equal(row.status, 'sent');
+    assert.ok(row.sent_at);
+  });
+
   it('skips an event whose owner opted out in the meantime', async () => {
     const { db, raw } = openSeededDb();
     await seedOwner(raw, 'example.com');

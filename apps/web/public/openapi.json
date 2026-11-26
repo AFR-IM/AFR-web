@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AFR.IM API",
-    "version": "1.5.0",
+    "version": "1.6.0",
     "description": "Public, key-free read API for the AFR.IM AI-Friendliness Rating (AFR) directory. All JSON endpoints send Access-Control-Allow-Origin: *. Ratings are snapshots computed from public, reproducible evidence — see GET /api/v1/method for the machine-readable standard."
   },
   "servers": [
@@ -1226,10 +1226,39 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "priority",
+                    "etaSeconds",
+                    "nextAllowedAt"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "queued"
+                      ]
+                    },
+                    "priority": {
+                      "type": "integer",
+                      "enum": [
+                        0,
+                        1
+                      ],
+                      "description": "1 = the caller presented this domain's management token with an active Pro term: the entry is drained first by GET /api/v1/queue and the per-caller cooldown tiers do not apply."
+                    },
+                    "etaSeconds": {
+                      "type": "integer"
+                    },
+                    "nextAllowedAt": {
+                      "type": "string"
+                    }
+                  }
                 },
                 "example": {
                   "status": "queued",
+                  "priority": 1,
                   "etaSeconds": 180,
                   "nextAllowedAt": "2026-11-18T09:00:00.000Z"
                 }
@@ -1447,7 +1476,7 @@
     "/api/v1/queue": {
       "get": {
         "summary": "List pending submissions",
-        "description": "Public and key-free. Up to 50 oldest queued entries. If a domain you submitted appears here it is waiting its turn - queued is not lost.",
+        "description": "Public and key-free. Up to 50 oldest queued entries. If a domain you submitted appears here it is waiting its turn - queued is not lost. Order: priority first (an active-Pro owner's rescan), then oldest first.",
         "responses": {
           "200": {
             "description": "Pending queue",
@@ -1540,8 +1569,8 @@
                   "statement": {
                     "type": "string",
                     "minLength": 1,
-                    "maxLength": 200,
-                    "description": "Length after trimming"
+                    "maxLength": 600,
+                    "description": "Length after trimming. 200 for the free tier, 600 with an active Pro term."
                   }
                 }
               }
@@ -1585,6 +1614,29 @@
               "Retry-After": {
                 "schema": {
                   "type": "integer"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/claims/published": {
+      "get": {
+        "summary": "Read every published owner statement",
+        "description": "domain → statement for every published statement (later rows win). The site build reads this once per build and publishes it as /data/claims.json, so the report page shows exactly the moderated text. Pending submissions are private.",
+        "responses": {
+          "200": {
+            "description": "The published statements as a map; an empty object when none exist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string",
+                    "maxLength": 600
+                  },
+                  "description": "Published owner statements by domain."
                 }
               }
             }
@@ -2520,6 +2572,253 @@
                 },
                 "example": {
                   "error": "unauthorized"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/owners/domains": {
+      "get": {
+        "summary": "List every domain of the owner mailbox (multi-domain panel)",
+        "description": "The presented management token expands to every domain confirmed under the same mailbox address. Read-only: acting on a domain still requires that domain's own token.",
+        "security": [
+          {
+            "ownerMailboxToken": []
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Missing, unknown or unconfirmed management token."
+          },
+          "200": {
+            "description": "The domains of this mailbox address with their rating facts and Pro state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "primary",
+                    "domains"
+                  ],
+                  "properties": {
+                    "primary": {
+                      "type": "string",
+                      "description": "The domain the presented token belongs to."
+                    },
+                    "domains": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "domain",
+                          "notify",
+                          "pro"
+                        ],
+                        "properties": {
+                          "domain": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "grade": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "score": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "notify": {
+                            "type": "boolean"
+                          },
+                          "pro": {
+                            "type": "object",
+                            "required": [
+                              "active",
+                              "expiresAt"
+                            ],
+                            "properties": {
+                              "active": {
+                                "type": "boolean"
+                              },
+                              "expiresAt": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/compare": {
+      "get": {
+        "summary": "Compare the owner site with its category (Pro)",
+        "description": "The owner's site inside its effective category: the top of the category when the owner sits inside it, the owner's neighbourhood otherwise. Requires this domain's management token and an active Pro term.",
+        "security": [
+          {
+            "ownerMailboxToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "domain",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "example.com"
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "invalid_domain"
+          },
+          "401": {
+            "description": "unauthorized — the token does not own this domain."
+          },
+          "403": {
+            "description": "pro_required — no active Pro term for this domain."
+          },
+          "404": {
+            "description": "unknown_domain"
+          },
+          "200": {
+            "description": "The category window with the owner row marked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "domain",
+                    "you",
+                    "peers"
+                  ],
+                  "properties": {
+                    "domain": {
+                      "type": "string"
+                    },
+                    "category": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "integer"
+                        },
+                        "slug": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "nameEn": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "nameZh": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      }
+                    },
+                    "you": {
+                      "type": "object",
+                      "required": [
+                        "grade",
+                        "score",
+                        "rank",
+                        "total"
+                      ],
+                      "properties": {
+                        "grade": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "score": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "rank": {
+                          "type": "integer",
+                          "description": "1-based position in the category; 0 = no comparable score yet."
+                        },
+                        "total": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "peers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "domain",
+                          "grade",
+                          "score",
+                          "you"
+                        ],
+                        "properties": {
+                          "domain": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "grade": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "score": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          },
+                          "you": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }

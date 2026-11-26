@@ -202,6 +202,15 @@ const endpoints: Endpoint[] = [
   },
   {
     method: 'GET',
+    path: '/api/v1/claims/published',
+    desc: T(
+      'Every published owner statement as a map (domain → statement). The site build reads it once per build and publishes it as /data/claims.json, so the report page shows exactly the moderated text.',
+      '全部已发布站方声明的映射（域名 → 声明）。站点构建每次构建读取一次并发布为 /data/claims.json，报告页展示的即审核通过的原文。',
+    ),
+    example: `{ "example.com": "We publish llms.txt and a public API." }`,
+  },
+  {
+    method: 'GET',
     path: '/api/v1/mail/status',
     desc: T(
       'Which outbound mail channels are configured, plus the daily outbound quota. Only whether a variable is set is reported — never a key, host or address. Public health check.',
@@ -340,6 +349,20 @@ const endpoints: Endpoint[] = [
               "lastUsedAt": null, "tier": "pro" } }`,
   },
   {
+    method: 'GET',
+    path: '/api/v1/compare',
+    desc: T(
+      'The competitor comparison (Pro): the owner’s site inside its category with the top of the category or the owner’s neighbourhood, the owner row marked. Requires the management token of the domain and an active Pro term (403 pro_required otherwise).',
+      '竞品对比（Pro）：你的站点在所属分类中的位置，附分类头部或你周边的邻域，你的行会高亮。需该域名的管理令牌与生效中的 Pro（否则 403 pro_required）。',
+    ),
+    params: 'domain · Authorization: Bearer <manageToken>',
+    example: `{ "domain": "example.com",
+  "category": { "id": 2, "slug": "dev-tools", "nameEn": "Developer Tools" },
+  "you": { "grade": "A", "score": 92, "rank": 2, "total": 3 },
+  "peers": [{ "domain": "strong.test", "grade": "B", "score": 95, "you": false },
+            { "domain": "example.com", "grade": "A", "score": 92, "you": true }] }`,
+  },
+  {
     method: 'POST',
     path: '/api/v1/billing/pro/orders',
     desc: T(
@@ -403,6 +426,19 @@ const endpoints: Endpoint[] = [
       '开关某域名的评分变化邮件。请求体：{ "domain": "example.com", "notify": false }，同样带 Authorization: Bearer manage-… 头。已确认的邮箱不会被其他登记覆盖（409 mailbox_already_verified）。',
     ),
     example: `{ "domain": "example.com", "notify": false }`,
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/owners/domains',
+    desc: T(
+      'The multi-domain panel: the presented management token expands to every domain confirmed under the same mailbox address, with each domain’s rating, alert toggle and Pro state. Read-only — acting on a domain still needs that domain’s own token.',
+      '多域名面板：用当前管理令牌展开同一站主邮箱名下已确认的全部域名，附各站评级、通知开关与 Pro 状态。只读——操作某站仍需该站自己的令牌。',
+    ),
+    params: 'Authorization: Bearer <manageToken>',
+    example: `{ "primary": "example.com",
+  "domains": [{ "domain": "example.com", "title": "Example",
+    "grade": "A", "score": 92, "status": "active", "notify": true,
+    "pro": { "active": true, "expiresAt": "2026-12-20T00:00:00.000Z" } }] }`,
   },
   {
     method: 'POST',

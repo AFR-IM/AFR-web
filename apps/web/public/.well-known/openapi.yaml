@@ -3,10 +3,11 @@
 openapi: 3.1.0
 info:
   title: AFR.IM API
-  version: 1.5.0
-  description: 'Public, key-free read API for the AFR.IM AI-Friendliness Rating (AFR) directory. All JSON
-    endpoints send Access-Control-Allow-Origin: *. Ratings are snapshots computed from public, reproducible
-    evidence — see GET /api/v1/method for the machine-readable standard. This file mirrors https://afr.im/openapi.json.'
+  version: 1.6.0
+  description: 'Public, key-free read API for the AFR.IM AI-Friendliness Rating (AFR)
+    directory. All JSON endpoints send Access-Control-Allow-Origin: *. Ratings are
+    snapshots computed from public, reproducible evidence — see GET /api/v1/method
+    for the machine-readable standard.'
 servers:
 - url: https://afr.im
   description: Production
@@ -14,7 +15,8 @@ paths:
   /api/v1/sites:
     get:
       summary: List rated sites
-      description: Paginated directory listing. Pending (unratable) sites are excluded from natural results.
+      description: Paginated directory listing. Pending (unratable) sites are excluded
+        from natural results.
       parameters:
       - name: category
         in: query
@@ -46,7 +48,8 @@ paths:
           - rank
           - new
           default: score
-        description: score = AFR score DESC (default), rank = source rank, new = newest first
+        description: score = AFR score DESC (default), rank = source rank, new = newest
+          first
       - name: page
         in: query
         schema:
@@ -166,9 +169,9 @@ paths:
   /api/v1/sites/{domain}/views:
     get:
       summary: Detail-page view counter
-      description: Read-only counter { "domain", "views", "today" }. A valid domain that was never counted
-        reports zeros. The counter itself is written by a 1×1 pixel (GET or POST /api/v1/pv), which always
-        answers 204.
+      description: Read-only counter { "domain", "views", "today" }. A valid domain
+        that was never counted reports zeros. The counter itself is written by a 1×1
+        pixel (GET or POST /api/v1/pv), which always answers 204.
       parameters:
       - name: domain
         in: path
@@ -249,10 +252,11 @@ paths:
   /api/v1/charity:
     get:
       summary: Charity settings (beneficiary list and the two receiving addresses)
-      description: 'Public charity settings: the beneficiary list and the two receiving addresses are
-        edited in the administrator console and published here — this is the data contract for the charity
-        surface; the public page is not published yet. The fingerprint is the sha256 of the charity pool
-        address, so a published address can be verified against the audit trail.'
+      description: 'Public charity settings: the beneficiary list and the two receiving
+        addresses are edited in the administrator console and published here — this
+        is the data contract for the charity surface; the public page is not published
+        yet. The fingerprint is the sha256 of the charity pool address, so a published
+        address can be verified against the audit trail.'
       responses:
         '200':
           description: Charity settings
@@ -306,9 +310,10 @@ paths:
   /api/v1/method:
     get:
       summary: Machine-readable AFR standard
-      description: Machine-readable AFR standard. `scoring` describes the executed rules; the legacy top-level
-        `layers` field is deprecated. `release` carries the newest published note for the executing engine
-        version (null when none was published).
+      description: Machine-readable AFR standard. `scoring` describes the executed
+        rules; the legacy top-level `layers` field is deprecated. `release` carries
+        the newest published note for the executing engine version (null when none
+        was published).
       responses:
         '200':
           description: AFR standard
@@ -319,11 +324,13 @@ paths:
   /mcp:
     post:
       summary: MCP endpoint (JSON-RPC 2.0)
-      description: 'Stateless Model Context Protocol transport: POST one JSON-RPC 2.0 message (initialize,
-        tools/list, tools/call) and read one response — no SSE stream and no session state. Tools: site_rating,
-        search_sites and grade_distribution, all read-only over the same data as the directory API. Rate
-        limit: 60 requests per IP per minute (429 { "error": "rate_limited", "retryAfter": … }). GET and
-        the other verbs answer 405 { "error": "method_not_allowed", "allow": "POST" }.'
+      description: 'Stateless Model Context Protocol transport: POST one JSON-RPC
+        2.0 message (initialize, tools/list, tools/call) and read one response — no
+        SSE stream and no session state. Tools: site_rating, search_sites and grade_distribution,
+        all read-only over the same data as the directory API. Rate limit: 60 requests
+        per IP per minute (429 { "error": "rate_limited", "retryAfter": … }). GET
+        and the other verbs answer 405 { "error": "method_not_allowed", "allow": "POST"
+        }.'
       requestBody:
         required: true
         content:
@@ -353,8 +360,8 @@ paths:
                   domain: github.com
       responses:
         '200':
-          description: JSON-RPC response (result or error). Unknown domains are a tool-level error, not
-            a protocol error.
+          description: JSON-RPC response (result or error). Unknown domains are a
+            tool-level error, not a protocol error.
           content:
             application/json:
               schema:
@@ -367,8 +374,8 @@ paths:
                   - type: text
                     text: '{"domain":"github.com","grade":"A"}'
         '202':
-          description: Empty body with no-cache headers — the transport accepted the message but has no
-            result to return.
+          description: Empty body with no-cache headers — the transport accepted the
+            message but has no result to return.
         '405':
           description: method_not_allowed — only POST is offered (no SSE stream).
           content:
@@ -390,11 +397,12 @@ paths:
   /api/v1/ads:
     get:
       summary: Live sponsored placements
-      description: Sponsored placements are served separately from the natural ranking and never change
-        grades or order. Only placements that were paid through the AFR ledger, approved by an operator,
-        owned by an active site with a real score and inside their term are returned. Without slot the
-        answer covers category and homepage placements only; search-top always requires its exact key.
-        The response is never cached.
+      description: Sponsored placements are served separately from the natural ranking
+        and never change grades or order. Only placements that were paid through the
+        AFR ledger, approved by an operator, owned by an active site with a real score
+        and inside their term are returned. Without slot the answer covers category
+        and homepage placements only; search-top always requires its exact key. The
+        response is never cached.
       parameters:
       - name: slot
         in: query
@@ -406,8 +414,9 @@ paths:
           - home-supporter
       - name: key
         in: query
-        description: Category slug (category-top) or the search term (search-top). The service normalizes
-          the term (NFKC + case fold) before matching; the homepage slot takes no key.
+        description: Category slug (category-top) or the search term (search-top).
+          The service normalizes the term (NFKC + case fold) before matching; the
+          homepage slot takes no key.
         schema:
           type: string
       responses:
@@ -425,9 +434,9 @@ paths:
   /api/v1/ads/offers:
     get:
       summary: Sponsorship price list and whether self-serve is open
-      description: Self-serve sponsorship is closed by default; while it is closed the price list is empty.
-        Prices are in USDC on Base for a 30-day term, and every purchase needs operator review before
-        it is served.
+      description: Self-serve sponsorship is closed by default; while it is closed
+        the price list is empty. Prices are in USDC on Base for a 30-day term, and
+        every purchase needs operator review before it is served.
       responses:
         '200':
           description: Price list
@@ -456,13 +465,14 @@ paths:
   /api/v1/ads/apply:
     post:
       summary: Buy a sponsorship (closed unless the operator opened sales)
-      description: 'Owner-authenticated: the caller must hold the confirmed mailbox management token of
-        the site, sent as Authorization: Bearer <token>. The price, asset, chain and term are chosen by
-        the server. The placement is created in a pending state and is served only after AIPAY confirms
-        the payment and an operator approves it. Reusing the same requestId retries the same order instead
-        of paying twice. Answers 403 ads_sales_closed while self-serve is closed, 409 slot_full / slot_unavailable
-        / order_pending / request_conflict, and 400 disallowed_claim for misleading copy. There is no
-        refund channel today.'
+      description: 'Owner-authenticated: the caller must hold the confirmed mailbox
+        management token of the site, sent as Authorization: Bearer <token>. The price,
+        asset, chain and term are chosen by the server. The placement is created in
+        a pending state and is served only after AIPAY confirms the payment and an
+        operator approves it. Reusing the same requestId retries the same order instead
+        of paying twice. Answers 403 ads_sales_closed while self-serve is closed,
+        409 slot_full / slot_unavailable / order_pending / request_conflict, and 400
+        disallowed_claim for misleading copy. There is no refund channel today.'
       requestBody:
         required: true
         content:
@@ -491,7 +501,8 @@ paths:
                   type:
                   - string
                   - 'null'
-                  description: Category slug or search term; omit for the homepage slot.
+                  description: Category slug or search term; omit for the homepage
+                    slot.
                 headline:
                   type: string
                   maxLength: 40
@@ -531,8 +542,9 @@ paths:
   /api/v1/ads/event:
     post:
       summary: Count an impression (once per placement per UTC day, browser-side)
-      description: 'Best effort: an unapproved or expired placement is not counted, and the endpoint answers
-        204 either way. Counting is capped per day so anonymous traffic cannot exhaust the database budget.'
+      description: 'Best effort: an unapproved or expired placement is not counted,
+        and the endpoint answers 204 either way. Counting is capped per day so anonymous
+        traffic cannot exhaust the database budget.'
       requestBody:
         required: true
         content:
@@ -552,8 +564,9 @@ paths:
   /api/v1/ads/go:
     get:
       summary: Click counter and redirect to the sponsored site
-      description: 'The destination comes from the approved placement record, never from the request:
-        no caller-supplied URL is accepted. A missing or unservable placement answers 404.'
+      description: 'The destination comes from the approved placement record, never
+        from the request: no caller-supplied URL is accepted. A missing or unservable
+        placement answers 404.'
       parameters:
       - name: id
         in: query
@@ -568,8 +581,9 @@ paths:
   /api/v1/ads/report:
     get:
       summary: Abuse report form for a sponsored placement
-      description: 'Plain server-rendered HTML (no script, noindex). A known placement is always reportable:
-        a page cached before a pause is exactly when a report matters.'
+      description: 'Plain server-rendered HTML (no script, noindex). A known placement
+        is always reportable: a page cached before a pause is exactly when a report
+        matters.'
       parameters:
       - name: id
         in: query
@@ -590,8 +604,8 @@ paths:
           description: Unknown placement
     post:
       summary: Submit an abuse report
-      description: Accepts form encoding (from the page) or JSON (from a script). Capped at 100 reports
-        per UTC day.
+      description: Accepts form encoding (from the page) or JSON (from a script).
+        Capped at 100 reports per UTC day.
       requestBody:
         required: true
         content:
@@ -626,9 +640,9 @@ paths:
   /api/v1/category-overrides:
     get:
       summary: Editorial category labels (domain to category slug)
-      description: Only the sites whose category a human set in the administrator console. The public
-        site build reads this map so the pages, the badge and the API show one category; sites without
-        a manual label are absent.
+      description: Only the sites whose category a human set in the administrator
+        console. The public site build reads this map so the pages, the badge and
+        the API show one category; sites without a manual label are absent.
       responses:
         '200':
           description: An object of domain to category slug
@@ -641,30 +655,34 @@ paths:
   /api/v1/submissions:
     post:
       summary: Request a scan of a site
-      description: 'Fully automatic inclusion. Registered domains only (eTLD+1 heuristic): subdomains
-        like blog.example.com are rejected with error subdomain_not_allowed, www is stripped. Already-listed
-        domains return status ''exists'' (open the detail page); already-queued domains return status
-        ''queued'' (idempotent, no quota burned). New submissions are queued AND immediately dispatch
-        the scan workflow, so a typical listing is searchable within ~10 minutes (etaSeconds covers scan
-        + rebuild); if dispatch is deferred the next daily scan (02:00 UTC) collects it. Rate-limited
-        to 5 new submissions per IP per day. New entries carry etaSeconds 600 (scan plus rebuild) and
-        dispatch ''scheduled'' | ''ok'' | ''deferred''; the idempotent ''exists''/''queued'' responses
-        omit dispatch. The request is gated by a human check: the body field ''turnstile_token'' carries
-        a Cloudflare Turnstile token minted by the widget on the AFR submit form (action ''afr_submit'').
-        Without a valid token the endpoint answers 400 { "error": "turnstile_failed", "reason": "missing_token"
-        | "invalid_token" | "wrong_action" | "verify_failed" } and nothing is queued. AI agents and scripts
-        that cannot run a browser widget may send the ''X-AFR-Agent-Key'' request header instead: a key
-        issued by AFR and not revoked skips the human check (site owners issue one from their owner panel;
-        others ask AFR).'
+      description: 'Fully automatic inclusion. Registered domains only (eTLD+1 heuristic):
+        subdomains like blog.example.com are rejected with error subdomain_not_allowed,
+        www is stripped. Already-listed domains return status ''exists'' (open the
+        detail page); already-queued domains return status ''queued'' (idempotent,
+        no quota burned). New submissions are queued AND immediately dispatch the
+        scan workflow, so a typical listing is searchable within ~10 minutes (etaSeconds
+        covers scan + rebuild); if dispatch is deferred the next daily scan (02:00
+        UTC) collects it. Rate-limited to 5 new submissions per IP per day. New entries
+        carry etaSeconds 600 (scan plus rebuild) and dispatch ''scheduled'' | ''ok''
+        | ''deferred''; the idempotent ''exists''/''queued'' responses omit dispatch.
+        The request is gated by a human check: the body field ''turnstile_token''
+        carries a Cloudflare Turnstile token minted by the widget on the AFR submit
+        form (action ''afr_submit''). Without a valid token the endpoint answers 400
+        { "error": "turnstile_failed", "reason": "missing_token" | "invalid_token"
+        | "wrong_action" | "verify_failed" } and nothing is queued. AI agents and
+        scripts that cannot run a browser widget may send the ''X-AFR-Agent-Key''
+        request header instead: a key issued by AFR and not revoked skips the human
+        check (site owners issue one from their owner panel; others ask AFR).'
       parameters:
       - name: X-AFR-Agent-Key
         in: header
         required: false
         schema:
           type: string
-        description: 'Agent key issued by AFR. When present and valid — the key''s SHA-256 hash is in
-          the api_keys table and not revoked — the human check is skipped and turnstile_token is not required.
-          Self-service issuance is not open yet: ask AFR for a key.'
+        description: 'Agent key issued by AFR. When present and valid — the key''s
+          SHA-256 hash is in the api_keys table and not revoked — the human check
+          is skipped and turnstile_token is not required. Self-service issuance is
+          not open yet: ask AFR for a key.'
       requestBody:
         required: true
         content:
@@ -676,25 +694,28 @@ paths:
               properties:
                 domain:
                   type: string
-                  description: Bare registered domain, e.g. example.com (subdomains rejected)
+                  description: Bare registered domain, e.g. example.com (subdomains
+                    rejected)
                 note:
                   type: string
                   maxLength: 500
                   description: Optional note for the reviewers
                 turnstile_token:
                   type: string
-                  description: 'Human-verification token: a Cloudflare Turnstile token (action ''afr_submit'')
-                    minted by the widget on the AFR submit form. Optional in the schema, required in practice
-                    — a request without a valid token is answered 400 turnstile_failed — unless the caller
-                    sends a valid ''X-AFR-Agent-Key'' header, which skips the human check.'
+                  description: 'Human-verification token: a Cloudflare Turnstile token
+                    (action ''afr_submit'') minted by the widget on the AFR submit
+                    form. Optional in the schema, required in practice — a request
+                    without a valid token is answered 400 turnstile_failed — unless
+                    the caller sends a valid ''X-AFR-Agent-Key'' header, which skips
+                    the human check.'
             example:
               domain: example.com
               note: We ship a public llms.txt and API.
               turnstile_token: 0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d
       responses:
         '200':
-          description: Already listed (status='exists') or already queued (status='queued') — idempotent,
-            no quota consumed
+          description: Already listed (status='exists') or already queued (status='queued')
+            — idempotent, no quota consumed
           content:
             application/json:
               schema:
@@ -717,11 +738,13 @@ paths:
                 etaSeconds: 600
                 dispatch: scheduled
         '400':
-          description: 'Invalid parameter (invalid_domain, subdomain_not_allowed, invalid_note) or a failed
-            human check. A failed human check answers { "error": "turnstile_failed", "reason": "missing_token"
-            | "invalid_token" | "wrong_action" | "verify_failed" } — reason ''missing_token'' means the
-            body carried no turnstile_token, ''wrong_action'' means the token was minted for another AFR
-            form. Nothing is queued and no rate-limit budget is spent.'
+          description: 'Invalid parameter (invalid_domain, subdomain_not_allowed,
+            invalid_note) or a failed human check. A failed human check answers {
+            "error": "turnstile_failed", "reason": "missing_token" | "invalid_token"
+            | "wrong_action" | "verify_failed" } — reason ''missing_token'' means
+            the body carried no turnstile_token, ''wrong_action'' means the token
+            was minted for another AFR form. Nothing is queued and no rate-limit budget
+            is spent.'
           content:
             application/json:
               schema:
@@ -739,7 +762,8 @@ paths:
                     - invalid_token
                     - wrong_action
                     - verify_failed
-                    description: 'Only present when error is turnstile_failed: why the human check failed.'
+                    description: 'Only present when error is turnstile_failed: why
+                      the human check failed.'
               example:
                 error: turnstile_failed
                 reason: missing_token
@@ -756,8 +780,8 @@ paths:
   /badge/{domain}.svg:
     get:
       summary: Rating badge image for a domain
-      description: SVG badge with ring, grade letter, and score. Cached for one hour. Unknown domains
-        get a neutral gray badge.
+      description: SVG badge with ring, grade letter, and score. Cached for one hour.
+        Unknown domains get a neutral gray badge.
       parameters:
       - name: domain
         in: path
@@ -775,17 +799,20 @@ paths:
   /api/v1/search-scan:
     post:
       summary: Request an on-demand scan of a domain
-      description: 'Interactive-session variant of a submission: looser quota tiers (10 per IP per day,
-        1 per domain per 30-minute window, 50 globally per day). Already-listed domains return status
-        ''exists'' and already-queued domains return status ''queued'' with no quota burned - both omit
-        the dispatch field. The scan workflow is dispatched in the background, so the response never waits
-        for GitHub: ''scheduled'' means triggered, ''deferred'' means the nightly run will pick it up
-        (still queued, not lost). The same human check as the submission endpoint applies: the body field
-        ''turnstile_token'' carries a Cloudflare Turnstile token minted by the widget on the AFR search
-        page (action ''afr_search_scan''), and a missing or invalid token is answered 400 { "error": "turnstile_failed",
-        "reason": "missing_token" | "invalid_token" | "wrong_action" | "verify_failed" }. AI agents and
-        scripts that cannot run a browser widget may send the ''X-AFR-Agent-Key'' request header instead:
-        a key issued by AFR and not revoked skips the human check (site owners issue one from their owner
+      description: 'Interactive-session variant of a submission: looser quota tiers
+        (10 per IP per day, 1 per domain per 30-minute window, 50 globally per day).
+        Already-listed domains return status ''exists'' and already-queued domains
+        return status ''queued'' with no quota burned - both omit the dispatch field.
+        The scan workflow is dispatched in the background, so the response never waits
+        for GitHub: ''scheduled'' means triggered, ''deferred'' means the nightly
+        run will pick it up (still queued, not lost). The same human check as the
+        submission endpoint applies: the body field ''turnstile_token'' carries a
+        Cloudflare Turnstile token minted by the widget on the AFR search page (action
+        ''afr_search_scan''), and a missing or invalid token is answered 400 { "error":
+        "turnstile_failed", "reason": "missing_token" | "invalid_token" | "wrong_action"
+        | "verify_failed" }. AI agents and scripts that cannot run a browser widget
+        may send the ''X-AFR-Agent-Key'' request header instead: a key issued by AFR
+        and not revoked skips the human check (site owners issue one from their owner
         panel; others ask AFR).'
       parameters:
       - name: X-AFR-Agent-Key
@@ -793,9 +820,10 @@ paths:
         required: false
         schema:
           type: string
-        description: 'Agent key issued by AFR. When present and valid — the key''s SHA-256 hash is in
-          the api_keys table and not revoked — the human check is skipped and turnstile_token is not required.
-          Self-service issuance is not open yet: ask AFR for a key.'
+        description: 'Agent key issued by AFR. When present and valid — the key''s
+          SHA-256 hash is in the api_keys table and not revoked — the human check
+          is skipped and turnstile_token is not required. Self-service issuance is
+          not open yet: ask AFR for a key.'
       requestBody:
         required: true
         content:
@@ -810,10 +838,12 @@ paths:
                   description: Bare registered domain, e.g. example.com
                 turnstile_token:
                   type: string
-                  description: 'Human-verification token: a Cloudflare Turnstile token (action ''afr_search_scan'')
-                    minted by the widget on the AFR search page. Optional in the schema, required in practice
-                    — a request without a valid token is answered 400 turnstile_failed — unless the caller
-                    sends a valid ''X-AFR-Agent-Key'' header, which skips the human check.'
+                  description: 'Human-verification token: a Cloudflare Turnstile token
+                    (action ''afr_search_scan'') minted by the widget on the AFR search
+                    page. Optional in the schema, required in practice — a request
+                    without a valid token is answered 400 turnstile_failed — unless
+                    the caller sends a valid ''X-AFR-Agent-Key'' header, which skips
+                    the human check.'
             example:
               domain: example.com
               turnstile_token: 0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d
@@ -830,10 +860,11 @@ paths:
                 etaSeconds: 180
                 dispatch: scheduled
         '400':
-          description: 'Invalid parameter (invalid_domain, subdomain_not_allowed) or a failed human check.
-            A failed human check answers { "error": "turnstile_failed", "reason": "missing_token" | "invalid_token"
-            | "wrong_action" | "verify_failed" } — reason ''missing_token'' means the body carried no
-            turnstile_token, ''wrong_action'' means the token was minted for another AFR form. Nothing
+          description: 'Invalid parameter (invalid_domain, subdomain_not_allowed)
+            or a failed human check. A failed human check answers { "error": "turnstile_failed",
+            "reason": "missing_token" | "invalid_token" | "wrong_action" | "verify_failed"
+            } — reason ''missing_token'' means the body carried no turnstile_token,
+            ''wrong_action'' means the token was minted for another AFR form. Nothing
             is queued and no rate-limit budget is spent.'
           content:
             application/json:
@@ -852,7 +883,8 @@ paths:
                     - invalid_token
                     - wrong_action
                     - verify_failed
-                    description: 'Only present when error is turnstile_failed: why the human check failed.'
+                    description: 'Only present when error is turnstile_failed: why
+                      the human check failed.'
               example:
                 error: turnstile_failed
                 reason: missing_token
@@ -868,9 +900,10 @@ paths:
   /api/v1/rescan:
     post:
       summary: Re-scan a site that is already rated
-      description: Use after the owner changes robots.txt, adds llms.txt, or fixes the homepage. 30-minute
-        per-domain window; the response carries nextAllowedAt, the earliest legitimate retry time. The
-        scan is dispatched in the background and the response omits the dispatch field.
+      description: Use after the owner changes robots.txt, adds llms.txt, or fixes
+        the homepage. 30-minute per-domain window; the response carries nextAllowedAt,
+        the earliest legitimate retry time. The scan is dispatched in the background
+        and the response omits the dispatch field.
       requestBody:
         required: true
         content:
@@ -891,8 +924,31 @@ paths:
             application/json:
               schema:
                 type: object
+                required:
+                - status
+                - priority
+                - etaSeconds
+                - nextAllowedAt
+                properties:
+                  status:
+                    type: string
+                    enum:
+                    - queued
+                  priority:
+                    type: integer
+                    enum:
+                    - 0
+                    - 1
+                    description: '1 = the caller presented this domain''s management
+                      token with an active Pro term: the entry is drained first by
+                      GET /api/v1/queue and the per-caller cooldown tiers do not apply.'
+                  etaSeconds:
+                    type: integer
+                  nextAllowedAt:
+                    type: string
               example:
                 status: queued
+                priority: 1
                 etaSeconds: 180
                 nextAllowedAt: '2026-11-18T09:00:00.000Z'
         '400':
@@ -912,10 +968,11 @@ paths:
   /api/v1/verify/start:
     post:
       summary: Start a domain verification
-      description: 'Asks for a one-time verification token and answers the three ways to publish it on
-        the domain (well-known file, DNS TXT record, homepage meta tag). Publish the token, then call
-        GET /api/v1/verify/check. Limits: 3 starts per domain per day and 10 per IP per hour, the hourly
-        IP budget being shared with verify/check; both tiers are pre-checked, so a refused request spends
+      description: 'Asks for a one-time verification token and answers the three ways
+        to publish it on the domain (well-known file, DNS TXT record, homepage meta
+        tag). Publish the token, then call GET /api/v1/verify/check. Limits: 3 starts
+        per domain per day and 10 per IP per hour, the hourly IP budget being shared
+        with verify/check; both tiers are pre-checked, so a refused request spends
         neither. Quota is not consumed by a rejected request.'
       requestBody:
         required: true
@@ -963,7 +1020,8 @@ paths:
                 error: invalid_domain
                 message: expected a bare domain like example.com
         '429':
-          description: rate_limited — carries retryAfter, nextAllowedAt and a Retry-After header
+          description: rate_limited — carries retryAfter, nextAllowedAt and a Retry-After
+            header
           headers:
             Retry-After:
               schema:
@@ -979,10 +1037,11 @@ paths:
   /api/v1/verify/check:
     get:
       summary: Run a domain verification check
-      description: 'Probes the pending token on the domain itself (well-known file, DNS TXT, homepage
-        meta) and answers on the first pass. Unreachable sites surface as failed checks, never as a 500.
-        Limits: 10 probes per IP per hour (shared with verify/start); the quota is spent even when no
-        token is pending, so the endpoint cannot be used as a free probe.'
+      description: 'Probes the pending token on the domain itself (well-known file,
+        DNS TXT, homepage meta) and answers on the first pass. Unreachable sites surface
+        as failed checks, never as a 500. Limits: 10 probes per IP per hour (shared
+        with verify/start); the quota is spent even when no token is pending, so the
+        endpoint cannot be used as a free probe.'
       parameters:
       - name: domain
         in: query
@@ -993,7 +1052,8 @@ paths:
         example: example.com
       responses:
         '200':
-          description: verified true with the method that passed, or verified false with every check
+          description: verified true with the method that passed, or verified false
+            with every check
           content:
             application/json:
               schema:
@@ -1015,7 +1075,8 @@ paths:
                 verified: true
                 method: dns
         '400':
-          description: invalid_domain, or no_pending_verification when no unused token is waiting
+          description: invalid_domain, or no_pending_verification when no unused token
+            is waiting
           content:
             application/json:
               schema:
@@ -1023,7 +1084,8 @@ paths:
               example:
                 error: no_pending_verification
         '429':
-          description: rate_limited — carries retryAfter, nextAllowedAt and a Retry-After header
+          description: rate_limited — carries retryAfter, nextAllowedAt and a Retry-After
+            header
           headers:
             Retry-After:
               schema:
@@ -1039,8 +1101,9 @@ paths:
   /api/v1/queue:
     get:
       summary: List pending submissions
-      description: Public and key-free. Up to 50 oldest queued entries. If a domain you submitted appears
-        here it is waiting its turn - queued is not lost.
+      description: 'Public and key-free. Up to 50 oldest queued entries. If a domain
+        you submitted appears here it is waiting its turn - queued is not lost. Order:
+        priority first (an active-Pro owner''s rescan), then oldest first.'
       responses:
         '200':
           description: Pending queue
@@ -1064,8 +1127,8 @@ paths:
           type: string
       responses:
         '200':
-          description: Published statement and its timestamp, or {"statement":null}. Pending submissions
-            are private.
+          description: Published statement and its timestamp, or {"statement":null}.
+            Pending submissions are private.
           content:
             application/json:
               schema:
@@ -1083,8 +1146,9 @@ paths:
                     - 'null'
     post:
       summary: Submit an owner statement for review
-      description: The domain must be verified. Authenticate with the current management token of its
-        own confirmed mailbox. An AFR agent key cannot replace the owner token.
+      description: The domain must be verified. Authenticate with the current management
+        token of its own confirmed mailbox. An AFR agent key cannot replace the owner
+        token.
       security:
       - ownerMailboxToken: []
       requestBody:
@@ -1103,8 +1167,9 @@ paths:
                 statement:
                   type: string
                   minLength: 1
-                  maxLength: 200
-                  description: Length after trimming
+                  maxLength: 600
+                  description: Length after trimming. 200 for the free tier, 600 with
+                    an active Pro term.
       responses:
         '201':
           description: Pending editorial review. This does not publish the statement.
@@ -1120,23 +1185,45 @@ paths:
         '400':
           description: invalid_json, invalid_domain or invalid_statement
         '401':
-          description: unauthorized — missing, invalid or wrong-domain management token
+          description: unauthorized — missing, invalid or wrong-domain management
+            token
         '403':
           description: not_verified — domain verification required
         '404':
           description: unknown_domain
         '429':
-          description: rate_limited — at most five submissions per domain per UTC day
+          description: rate_limited — at most five submissions per domain per UTC
+            day
           headers:
             Retry-After:
               schema:
                 type: integer
+  /api/v1/claims/published:
+    get:
+      summary: Read every published owner statement
+      description: domain → statement for every published statement (later rows win).
+        The site build reads this once per build and publishes it as /data/claims.json,
+        so the report page shows exactly the moderated text. Pending submissions are
+        private.
+      responses:
+        '200':
+          description: The published statements as a map; an empty object when none
+            exist.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+                  maxLength: 600
+                description: Published owner statements by domain.
   /api/v1/mail/status:
     get:
       summary: Outbound mail channel status
-      description: 'Health check of the mail infrastructure: which channels are configured and how much
-        of the daily outbound quota is left. Only whether a variable is set is reported — no key, host
-        or address is ever echoed back; the answer lists variable names at most.'
+      description: 'Health check of the mail infrastructure: which channels are configured
+        and how much of the daily outbound quota is left. Only whether a variable
+        is set is reported — no key, host or address is ever echoed back; the answer
+        lists variable names at most.'
       responses:
         '200':
           description: Channels, quota and missing configuration
@@ -1169,26 +1256,30 @@ paths:
   /api/v1/owners/email/start:
     post:
       summary: Request a domain-control challenge for an owner mailbox
-      description: 'Starts the owner-mailbox registration of a domain (score-change notifications). The
-        body carries the domain and the address that should receive the notices; AFR answers with a challenge
-        plus the three ways to publish it on the domain (DNS TXT record, well-known file, homepage meta
-        tag). The challenge is bound to the address, valid for 24 hours and can be spent only once. Quotas:
-        3 challenges per domain per day, 5 per IP per hour. A human check is part of the contract: the
-        body must also carry { "turnstile_token": "…" } (a Cloudflare Turnstile token, action ''afr_owner_email'',
-        minted by the widget on the site detail page). A missing, expired or foreign token is answered
-        400 { "error": "turnstile_failed", "reason": "missing_token" | "invalid_token" | "wrong_action"
-        | "verify_failed" } — no challenge is minted and no rate-limit budget is spent. An agent that
-        cannot run the widget may send the ''X-AFR-Agent-Key'' header instead (a key issued by AFR (site
-        owners issue one from their owner panel; others ask AFR)).'
+      description: 'Starts the owner-mailbox registration of a domain (score-change
+        notifications). The body carries the domain and the address that should receive
+        the notices; AFR answers with a challenge plus the three ways to publish it
+        on the domain (DNS TXT record, well-known file, homepage meta tag). The challenge
+        is bound to the address, valid for 24 hours and can be spent only once. Quotas:
+        3 challenges per domain per day, 5 per IP per hour. A human check is part
+        of the contract: the body must also carry { "turnstile_token": "…" } (a Cloudflare
+        Turnstile token, action ''afr_owner_email'', minted by the widget on the site
+        detail page). A missing, expired or foreign token is answered 400 { "error":
+        "turnstile_failed", "reason": "missing_token" | "invalid_token" | "wrong_action"
+        | "verify_failed" } — no challenge is minted and no rate-limit budget is spent.
+        An agent that cannot run the widget may send the ''X-AFR-Agent-Key'' header
+        instead (a key issued by AFR (site owners issue one from their owner panel;
+        others ask AFR)).'
       parameters:
       - name: X-AFR-Agent-Key
         in: header
         required: false
         schema:
           type: string
-        description: 'Agent key issued by AFR. When present and valid — the key''s SHA-256 hash is in
-          the api_keys table and not revoked — the human check is skipped and turnstile_token is not required.
-          Self-service issuance is not open yet: ask AFR for a key.'
+        description: 'Agent key issued by AFR. When present and valid — the key''s
+          SHA-256 hash is in the api_keys table and not revoked — the human check
+          is skipped and turnstile_token is not required. Self-service issuance is
+          not open yet: ask AFR for a key.'
       requestBody:
         required: true
         content:
@@ -1208,10 +1299,12 @@ paths:
                   description: Mailbox that should receive the score-change notices
                 turnstile_token:
                   type: string
-                  description: 'Human-verification token: a Cloudflare Turnstile token (action ''afr_owner_email'')
-                    minted by the widget on the AFR site detail page. Optional in the schema, required
-                    in practice — a request without a valid token is answered 400 turnstile_failed — unless
-                    the caller sends a valid ''X-AFR-Agent-Key'' header, which skips the human check.'
+                  description: 'Human-verification token: a Cloudflare Turnstile token
+                    (action ''afr_owner_email'') minted by the widget on the AFR site
+                    detail page. Optional in the schema, required in practice — a
+                    request without a valid token is answered 400 turnstile_failed
+                    — unless the caller sends a valid ''X-AFR-Agent-Key'' header,
+                    which skips the human check.'
             example:
               domain: example.com
               email: owner@example.com
@@ -1238,9 +1331,10 @@ paths:
                     content: ch-0123456789abcdef0123456789abcdef
                 expiresAt: '2026-11-21T12:00:00.000Z'
         '400':
-          description: 'Invalid parameter (invalid_domain, invalid_email) or a failed human check — {
-            "error": "turnstile_failed", "reason": "missing_token" | "invalid_token" | "wrong_action"
-            | "verify_failed" }. Nothing is minted and no rate-limit budget is spent.'
+          description: 'Invalid parameter (invalid_domain, invalid_email) or a failed
+            human check — { "error": "turnstile_failed", "reason": "missing_token"
+            | "invalid_token" | "wrong_action" | "verify_failed" }. Nothing is minted
+            and no rate-limit budget is spent.'
           content:
             application/json:
               schema:
@@ -1257,7 +1351,8 @@ paths:
               example:
                 error: unknown_domain
         '429':
-          description: Rate limited — 3 challenges per domain per day, 5 per IP per hour
+          description: Rate limited — 3 challenges per domain per day, 5 per IP per
+            hour
           content:
             application/json:
               schema:
@@ -1268,17 +1363,19 @@ paths:
   /api/v1/owners/email:
     post:
       summary: Register the owner mailbox (needs the published challenge)
-      description: AFR checks the domain challenge and delivers the confirmation link exclusively by email.
-        A successful registration consumes the challenge. Pass a Turnstile token or a valid X-AFR-Agent-Key.
+      description: AFR checks the domain challenge and delivers the confirmation link
+        exclusively by email. A successful registration consumes the challenge. Pass
+        a Turnstile token or a valid X-AFR-Agent-Key.
       parameters:
       - name: X-AFR-Agent-Key
         in: header
         required: false
         schema:
           type: string
-        description: 'Agent key issued by AFR. When present and valid — the key''s SHA-256 hash is in
-          the api_keys table and not revoked — the human check is skipped and turnstile_token is not required.
-          Self-service issuance is not open yet: ask AFR for a key.'
+        description: 'Agent key issued by AFR. When present and valid — the key''s
+          SHA-256 hash is in the api_keys table and not revoked — the human check
+          is skipped and turnstile_token is not required. Self-service issuance is
+          not open yet: ask AFR for a key.'
       requestBody:
         required: true
         content:
@@ -1302,10 +1399,12 @@ paths:
                   description: The challenge value published on the domain, e.g. ch-0123456789abcdef0123456789abcdef
                 turnstile_token:
                   type: string
-                  description: 'Human-verification token: a Cloudflare Turnstile token (action ''afr_owner_email'')
-                    minted by the widget on the AFR site detail page. Optional in the schema, required
-                    in practice — a request without a valid token is answered 400 turnstile_failed — unless
-                    the caller sends a valid ''X-AFR-Agent-Key'' header, which skips the human check.'
+                  description: 'Human-verification token: a Cloudflare Turnstile token
+                    (action ''afr_owner_email'') minted by the widget on the AFR site
+                    detail page. Optional in the schema, required in practice — a
+                    request without a valid token is answered 400 turnstile_failed
+                    — unless the caller sends a valid ''X-AFR-Agent-Key'' header,
+                    which skips the human check.'
             example:
               domain: example.com
               email: owner@example.com
@@ -1322,9 +1421,10 @@ paths:
                 status: sent
                 emailed: true
         '400':
-          description: 'Invalid parameter (invalid_domain, invalid_email, invalid_challenge) or a failed
-            human check — { "error": "turnstile_failed", "reason": "missing_token" | "invalid_token" |
-            "wrong_action" | "verify_failed" }. Nothing is stored and no rate-limit budget is spent.'
+          description: 'Invalid parameter (invalid_domain, invalid_email, invalid_challenge)
+            or a failed human check — { "error": "turnstile_failed", "reason": "missing_token"
+            | "invalid_token" | "wrong_action" | "verify_failed" }. Nothing is stored
+            and no rate-limit budget is spent.'
           content:
             application/json:
               schema:
@@ -1333,9 +1433,10 @@ paths:
                 error: turnstile_failed
                 reason: missing_token
         '403':
-          description: 'challenge_not_found, challenge_email_mismatch or domain_control_failed — the platform
-            did not see the challenge on the domain. The answer then carries a "checks" array with one
-            entry per method ({ "method": "dns|file|meta", "detail": "…" }).'
+          description: 'challenge_not_found, challenge_email_mismatch or domain_control_failed
+            — the platform did not see the challenge on the domain. The answer then
+            carries a "checks" array with one entry per method ({ "method": "dns|file|meta",
+            "detail": "…" }).'
           content:
             application/json:
               schema:
@@ -1362,7 +1463,8 @@ paths:
         '503':
           $ref: '#/components/responses/OwnerEmailNotConfigured'
         '429':
-          description: Rate limited — 3 registrations per domain per day, 5 per IP per hour
+          description: Rate limited — 3 registrations per domain per day, 5 per IP
+            per hour
           content:
             application/json:
               schema:
@@ -1372,10 +1474,10 @@ paths:
                 retryAfter: 3600
     get:
       summary: Mailbox status (management token required)
-      description: 'Reads the mailbox of a domain. The management token of that mailbox must be sent as
-        ''Authorization: Bearer <token>'' — without it, with a wrong token, or with the token of another
-        domain the answer is 401 unauthorized. The address is never returned in full: only masked, e.g.
-        ''o***@example.com''.'
+      description: 'Reads the mailbox of a domain. The management token of that mailbox
+        must be sent as ''Authorization: Bearer <token>'' — without it, with a wrong
+        token, or with the token of another domain the answer is 401 unauthorized.
+        The address is never returned in full: only masked, e.g. ''o***@example.com''.'
       parameters:
       - name: domain
         in: query
@@ -1411,7 +1513,8 @@ paths:
               example:
                 error: invalid_domain
         '401':
-          description: unauthorized — the management token is missing, wrong or belongs to another domain
+          description: unauthorized — the management token is missing, wrong or belongs
+            to another domain
           content:
             application/json:
               schema:
@@ -1420,10 +1523,11 @@ paths:
                 error: unauthorized
     delete:
       summary: Unregister the mailbox of a domain
-      description: 'The owner removes the mailbox of a domain: the confirmed row is deleted, so no score-change
-        mail is sent any more. The management token of that mailbox is the lock — without it, with a wrong
-        token, or with the token of another domain nothing is deleted (401 unauthorized). The AFR records
-        (score history, notification outbox) stay untouched.'
+      description: 'The owner removes the mailbox of a domain: the confirmed row is
+        deleted, so no score-change mail is sent any more. The management token of
+        that mailbox is the lock — without it, with a wrong token, or with the token
+        of another domain nothing is deleted (401 unauthorized). The AFR records (score
+        history, notification outbox) stay untouched.'
       parameters:
       - name: domain
         in: query
@@ -1461,7 +1565,8 @@ paths:
               example:
                 error: invalid_domain
         '401':
-          description: unauthorized — the management token is missing, wrong or belongs to another domain
+          description: unauthorized — the management token is missing, wrong or belongs
+            to another domain
           content:
             application/json:
               schema:
@@ -1471,9 +1576,10 @@ paths:
   /api/v1/owners/email/change:
     post:
       summary: Replace the mailbox of an already confirmed domain
-      description: Stage a new address using the current mailbox management token. The old address and
-        management token stay active until the new address confirms by email. The notification preference
-        is preserved. Pass a Turnstile token or a valid X-AFR-Agent-Key.
+      description: Stage a new address using the current mailbox management token.
+        The old address and management token stay active until the new address confirms
+        by email. The notification preference is preserved. Pass a Turnstile token
+        or a valid X-AFR-Agent-Key.
       parameters:
       - name: Authorization
         in: header
@@ -1486,9 +1592,10 @@ paths:
         required: false
         schema:
           type: string
-        description: 'Agent key issued by AFR. When present and valid — the key''s SHA-256 hash is in
-          the api_keys table and not revoked — the human check is skipped and turnstile_token is not required.
-          Self-service issuance is not open yet: ask AFR for a key.'
+        description: 'Agent key issued by AFR. When present and valid — the key''s
+          SHA-256 hash is in the api_keys table and not revoked — the human check
+          is skipped and turnstile_token is not required. Self-service issuance is
+          not open yet: ask AFR for a key.'
       requestBody:
         required: true
         content:
@@ -1508,10 +1615,12 @@ paths:
                   description: The new address — it has to be confirmed once more
                 turnstile_token:
                   type: string
-                  description: 'Human-verification token: a Cloudflare Turnstile token (action ''afr_owner_email'')
-                    minted by the widget on the AFR site detail page. Optional in the schema, required
-                    in practice — a request without a valid token is answered 400 turnstile_failed — unless
-                    the caller sends a valid ''X-AFR-Agent-Key'' header, which skips the human check.'
+                  description: 'Human-verification token: a Cloudflare Turnstile token
+                    (action ''afr_owner_email'') minted by the widget on the AFR site
+                    detail page. Optional in the schema, required in practice — a
+                    request without a valid token is answered 400 turnstile_failed
+                    — unless the caller sends a valid ''X-AFR-Agent-Key'' header,
+                    which skips the human check.'
             example:
               domain: example.com
               email: new-owner@example.com
@@ -1527,9 +1636,10 @@ paths:
                 status: sent
                 emailed: true
         '400':
-          description: 'Invalid parameter (invalid_domain, invalid_email) or a failed human check — {
-            "error": "turnstile_failed", "reason": "missing_token" | "invalid_token" | "wrong_action"
-            | "verify_failed" }. Nothing is stored and no rate-limit budget is spent.'
+          description: 'Invalid parameter (invalid_domain, invalid_email) or a failed
+            human check — { "error": "turnstile_failed", "reason": "missing_token"
+            | "invalid_token" | "wrong_action" | "verify_failed" }. Nothing is stored
+            and no rate-limit budget is spent.'
           content:
             application/json:
               schema:
@@ -1538,7 +1648,8 @@ paths:
                 error: turnstile_failed
                 reason: missing_token
         '401':
-          description: unauthorized — the management token is missing, wrong or belongs to another domain
+          description: unauthorized — the management token is missing, wrong or belongs
+            to another domain
           content:
             application/json:
               schema:
@@ -1558,7 +1669,8 @@ paths:
         '503':
           $ref: '#/components/responses/OwnerEmailNotConfigured'
         '429':
-          description: Rate limited — 3 mailbox writes per domain per day, 5 per IP per hour
+          description: Rate limited — 3 mailbox writes per domain per day, 5 per IP
+            per hour
           content:
             application/json:
               schema:
@@ -1569,10 +1681,11 @@ paths:
   /api/v1/owners/email/verify:
     get:
       summary: Confirm the mailbox and collect the management token
-      description: 'Consumes the single-use confirmation token of the mail link. On success it answers
-        { "verified": true, "domain": "…", "manageToken": "manage-…" }. The management token is returned
-        exactly once — only its hash is stored, so AFR can never show it again. Keep it: it authorises
-        every later read of the mailbox and the notification switch. 400 invalid_or_expired_token, 429
+      description: 'Consumes the single-use confirmation token of the mail link. On
+        success it answers { "verified": true, "domain": "…", "manageToken": "manage-…"
+        }. The management token is returned exactly once — only its hash is stored,
+        so AFR can never show it again. Keep it: it authorises every later read of
+        the mailbox and the notification switch. 400 invalid_or_expired_token, 429
         rate_limited (20 verifications per IP per hour).'
       parameters:
       - name: token
@@ -1584,7 +1697,8 @@ paths:
         example: 0123456789abcdef0123456789abcdef
       responses:
         '200':
-          description: The mailbox is confirmed and the management token is handed out — once
+          description: The mailbox is confirmed and the management token is handed
+            out — once
           content:
             application/json:
               schema:
@@ -1594,7 +1708,8 @@ paths:
                 domain: example.com
                 manageToken: manage-0123456789abcdef0123456789abcdef
         '400':
-          description: invalid_or_expired_token — the token is unknown, expired or already spent
+          description: invalid_or_expired_token — the token is unknown, expired or
+            already spent
           content:
             application/json:
               schema:
@@ -1612,25 +1727,29 @@ paths:
   /api/v1/owners/email/recover:
     post:
       summary: Recover a lost management token
-      description: 'Starts the recovery of a lost management token of a confirmed mailbox. None of the
-        three locks weakens: the domain has to publish a fresh challenge (asked for at POST /api/v1/owners/email/start)
-        and AFR has to observe it there, the reset mail goes to the confirmed address only, and the recovery
-        link hands out a new management token and rotates the stored one — the old token stops working.
-        The answer never carries the link or the token; they exist once, in the mail. Errors: 400 invalid_domain
-        | invalid_email | invalid_challenge | turnstile_failed, 403 recovery_not_available (one opaque
-        code for ''this domain has no confirmed mailbox'' and ''this address is not the confirmed mailbox'')
-        | challenge_not_found | domain_control_failed (the answer carries a per-method ''checks'' summary
-        of what AFR saw on the domain), 429 rate_limited (3 recoveries per domain per day, 5 per IP per
-        hour), 502 email_delivery_failed, 503 email_not_configured.'
+      description: 'Starts the recovery of a lost management token of a confirmed
+        mailbox. None of the three locks weakens: the domain has to publish a fresh
+        challenge (asked for at POST /api/v1/owners/email/start) and AFR has to observe
+        it there, the reset mail goes to the confirmed address only, and the recovery
+        link hands out a new management token and rotates the stored one — the old
+        token stops working. The answer never carries the link or the token; they
+        exist once, in the mail. Errors: 400 invalid_domain | invalid_email | invalid_challenge
+        | turnstile_failed, 403 recovery_not_available (one opaque code for ''this
+        domain has no confirmed mailbox'' and ''this address is not the confirmed
+        mailbox'') | challenge_not_found | domain_control_failed (the answer carries
+        a per-method ''checks'' summary of what AFR saw on the domain), 429 rate_limited
+        (3 recoveries per domain per day, 5 per IP per hour), 502 email_delivery_failed,
+        503 email_not_configured.'
       parameters:
       - name: X-AFR-Agent-Key
         in: header
         required: false
         schema:
           type: string
-        description: 'Agent key issued by AFR. When present and valid — the key''s SHA-256 hash is in
-          the api_keys table and not revoked — the human check is skipped and turnstile_token is not required.
-          Self-service issuance is not open yet: ask AFR for a key.'
+        description: 'Agent key issued by AFR. When present and valid — the key''s
+          SHA-256 hash is in the api_keys table and not revoked — the human check
+          is skipped and turnstile_token is not required. Self-service issuance is
+          not open yet: ask AFR for a key.'
       requestBody:
         required: true
         content:
@@ -1648,17 +1767,20 @@ paths:
                 email:
                   type: string
                   format: email
-                  description: The confirmed address of the mailbox — the reset mail goes there and nowhere
-                    else
+                  description: The confirmed address of the mailbox — the reset mail
+                    goes there and nowhere else
                 challenge:
                   type: string
-                  description: A fresh domain-control challenge, published on the domain, e.g. ch-0123456789abcdef0123456789abcdef
+                  description: A fresh domain-control challenge, published on the
+                    domain, e.g. ch-0123456789abcdef0123456789abcdef
                 turnstile_token:
                   type: string
-                  description: 'Human-verification token: a Cloudflare Turnstile token (action ''afr_owner_email'')
-                    minted by the widget on the AFR site detail page. Optional in the schema, required
-                    in practice — a request without a valid token is answered 400 turnstile_failed — unless
-                    the caller sends a valid ''X-AFR-Agent-Key'' header, which skips the human check.'
+                  description: 'Human-verification token: a Cloudflare Turnstile token
+                    (action ''afr_owner_email'') minted by the widget on the AFR site
+                    detail page. Optional in the schema, required in practice — a
+                    request without a valid token is answered 400 turnstile_failed
+                    — unless the caller sends a valid ''X-AFR-Agent-Key'' header,
+                    which skips the human check.'
             example:
               domain: example.com
               email: owner@example.com
@@ -1675,9 +1797,10 @@ paths:
                 status: sent
                 emailed: true
         '400':
-          description: 'Invalid parameter (invalid_domain, invalid_email, invalid_challenge) or a failed
-            human check — { "error": "turnstile_failed", "reason": "missing_token" | "invalid_token" |
-            "wrong_action" | "verify_failed" }. Nothing is stored and no rate-limit budget is spent.'
+          description: 'Invalid parameter (invalid_domain, invalid_email, invalid_challenge)
+            or a failed human check — { "error": "turnstile_failed", "reason": "missing_token"
+            | "invalid_token" | "wrong_action" | "verify_failed" }. Nothing is stored
+            and no rate-limit budget is spent.'
           content:
             application/json:
               schema:
@@ -1686,10 +1809,12 @@ paths:
                 error: turnstile_failed
                 reason: missing_token
         '403':
-          description: recovery_not_available (the opaque code of a refused recovery — it never says whether
-            the domain has a mailbox or which address it uses), challenge_not_found (no unused, unexpired
-            challenge for this domain and address) or domain_control_failed (the platform did not see
-            the challenge on the domain; the answer then carries a 'checks' array with one entry per method).
+          description: recovery_not_available (the opaque code of a refused recovery
+            — it never says whether the domain has a mailbox or which address it uses),
+            challenge_not_found (no unused, unexpired challenge for this domain and
+            address) or domain_control_failed (the platform did not see the challenge
+            on the domain; the answer then carries a 'checks' array with one entry
+            per method).
           content:
             application/json:
               schema:
@@ -1701,7 +1826,8 @@ paths:
         '503':
           $ref: '#/components/responses/OwnerEmailNotConfigured'
         '429':
-          description: Rate limited — 3 recoveries per domain per day, 5 per IP per hour
+          description: Rate limited — 3 recoveries per domain per day, 5 per IP per
+            hour
           content:
             application/json:
               schema:
@@ -1712,10 +1838,11 @@ paths:
   /api/v1/owners/email/recover/verify:
     get:
       summary: Spend the recovery link and collect the new management token
-      description: 'Consumes the single-use recovery token of the mail link. On success it answers { "verified":
-        true, "domain": "…", "manageToken": "manage-…" } and rotates the management token of the mailbox:
-        the previous token stops working immediately. The link works once — replaying it is answered 400
-        invalid_or_expired_token. 429 rate_limited (20 verifications per IP per hour).'
+      description: 'Consumes the single-use recovery token of the mail link. On success
+        it answers { "verified": true, "domain": "…", "manageToken": "manage-…" }
+        and rotates the management token of the mailbox: the previous token stops
+        working immediately. The link works once — replaying it is answered 400 invalid_or_expired_token.
+        429 rate_limited (20 verifications per IP per hour).'
       parameters:
       - name: token
         in: query
@@ -1726,7 +1853,8 @@ paths:
         example: 0123456789abcdef0123456789abcdef
       responses:
         '200':
-          description: The recovery is done and a new management token is handed out — once
+          description: The recovery is done and a new management token is handed out
+            — once
           content:
             application/json:
               schema:
@@ -1736,7 +1864,8 @@ paths:
                 domain: example.com
                 manageToken: manage-0123456789abcdef0123456789abcdef
         '400':
-          description: invalid_or_expired_token — the token is unknown, expired or already spent
+          description: invalid_or_expired_token — the token is unknown, expired or
+            already spent
           content:
             application/json:
               schema:
@@ -1754,8 +1883,9 @@ paths:
   /api/v1/owners/notify:
     post:
       summary: Switch the score-change notifications on or off
-      description: 'Turns the score-change mails of a domain on or off. The management token of that mailbox
-        must be sent as ''Authorization: Bearer <token>''. 400 invalid_domain | invalid_notify, 401 unauthorized.'
+      description: 'Turns the score-change mails of a domain on or off. The management
+        token of that mailbox must be sent as ''Authorization: Bearer <token>''. 400
+        invalid_domain | invalid_notify, 401 unauthorized.'
       parameters:
       - name: Authorization
         in: header
@@ -1806,19 +1936,188 @@ paths:
               example:
                 error: invalid_notify
         '401':
-          description: unauthorized — the management token is missing, wrong or belongs to another domain
+          description: unauthorized — the management token is missing, wrong or belongs
+            to another domain
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
               example:
                 error: unauthorized
+  /api/v1/owners/domains:
+    get:
+      summary: List every domain of the owner mailbox (multi-domain panel)
+      description: 'The presented management token expands to every domain confirmed
+        under the same mailbox address. Read-only: acting on a domain still requires
+        that domain''s own token.'
+      security:
+      - ownerMailboxToken: []
+      responses:
+        '401':
+          description: Missing, unknown or unconfirmed management token.
+        '200':
+          description: The domains of this mailbox address with their rating facts
+            and Pro state.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - primary
+                - domains
+                properties:
+                  primary:
+                    type: string
+                    description: The domain the presented token belongs to.
+                  domains:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                      - domain
+                      - notify
+                      - pro
+                      properties:
+                        domain:
+                          type: string
+                        title:
+                          type:
+                          - string
+                          - 'null'
+                        grade:
+                          type:
+                          - string
+                          - 'null'
+                        score:
+                          type:
+                          - integer
+                          - 'null'
+                        status:
+                          type: string
+                        notify:
+                          type: boolean
+                        pro:
+                          type: object
+                          required:
+                          - active
+                          - expiresAt
+                          properties:
+                            active:
+                              type: boolean
+                            expiresAt:
+                              type:
+                              - string
+                              - 'null'
+  /api/v1/compare:
+    get:
+      summary: Compare the owner site with its category (Pro)
+      description: 'The owner''s site inside its effective category: the top of the
+        category when the owner sits inside it, the owner''s neighbourhood otherwise.
+        Requires this domain''s management token and an active Pro term.'
+      security:
+      - ownerMailboxToken: []
+      parameters:
+      - name: domain
+        in: query
+        required: true
+        schema:
+          type: string
+        example: example.com
+      responses:
+        '400':
+          description: invalid_domain
+        '401':
+          description: unauthorized — the token does not own this domain.
+        '403':
+          description: pro_required — no active Pro term for this domain.
+        '404':
+          description: unknown_domain
+        '200':
+          description: The category window with the owner row marked.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - domain
+                - you
+                - peers
+                properties:
+                  domain:
+                    type: string
+                  category:
+                    type:
+                    - object
+                    - 'null'
+                    properties:
+                      id:
+                        type: integer
+                      slug:
+                        type:
+                        - string
+                        - 'null'
+                      nameEn:
+                        type:
+                        - string
+                        - 'null'
+                      nameZh:
+                        type:
+                        - string
+                        - 'null'
+                  you:
+                    type: object
+                    required:
+                    - grade
+                    - score
+                    - rank
+                    - total
+                    properties:
+                      grade:
+                        type:
+                        - string
+                        - 'null'
+                      score:
+                        type:
+                        - integer
+                        - 'null'
+                      rank:
+                        type: integer
+                        description: 1-based position in the category; 0 = no comparable
+                          score yet.
+                      total:
+                        type: integer
+                  peers:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                      - domain
+                      - grade
+                      - score
+                      - you
+                      properties:
+                        domain:
+                          type: string
+                        title:
+                          type:
+                          - string
+                          - 'null'
+                        grade:
+                          type:
+                          - string
+                          - 'null'
+                        score:
+                          type:
+                          - integer
+                          - 'null'
+                        you:
+                          type: boolean
   /api/v1/pro/status:
     get:
       summary: Pro status of a site (management token required)
-      description: The Pro state of the owner's domain plus the metadata of its machine key — never the
-        key itself. The key can be issued or rotated with POST /api/v1/pro/api-key; the plaintext exists
-        exactly once, in that answer.
+      description: The Pro state of the owner's domain plus the metadata of its machine
+        key — never the key itself. The key can be issued or rotated with POST /api/v1/pro/api-key;
+        the plaintext exists exactly once, in that answer.
       parameters:
       - name: domain
         in: query
@@ -1832,7 +2131,8 @@ paths:
         required: true
         schema:
           type: string
-        description: Management token of the target domain's confirmed mailbox, e.g. 'Bearer manage-0123456789abcdef0123456789abcdef'
+        description: Management token of the target domain's confirmed mailbox, e.g.
+          'Bearer manage-0123456789abcdef0123456789abcdef'
       security:
       - ownerMailboxToken: []
       responses:
@@ -1898,7 +2198,8 @@ paths:
               example:
                 error: invalid_domain
         '401':
-          description: unauthorized — missing, invalid or wrong-domain management token
+          description: unauthorized — missing, invalid or wrong-domain management
+            token
           content:
             application/json:
               schema:
@@ -1908,19 +2209,21 @@ paths:
   /api/v1/pro/api-key:
     post:
       summary: Issue or rotate the machine key of a site (management token required)
-      description: 'Body { "domain": "example.com" } (or the domain in the query string). The answer carries
-        the plaintext key — it exists exactly once, here: only its hash is stored, so AFR can never show
-        it again. A new key revokes the previous one in the same transaction, so a domain never has two
-        live keys. The key is sent as the X-AFR-Agent-Key request header and unlocks the human check on
-        the scan endpoints; its daily and monthly budgets follow the site''s effective tier (free 100/day,
-        pro 10000/day).'
+      description: 'Body { "domain": "example.com" } (or the domain in the query string).
+        The answer carries the plaintext key — it exists exactly once, here: only
+        its hash is stored, so AFR can never show it again. A new key revokes the
+        previous one in the same transaction, so a domain never has two live keys.
+        The key is sent as the X-AFR-Agent-Key request header and unlocks the human
+        check on the scan endpoints; its daily and monthly budgets follow the site''s
+        effective tier (free 100/day, pro 10000/day).'
       parameters:
       - name: Authorization
         in: header
         required: true
         schema:
           type: string
-        description: Management token of the target domain's confirmed mailbox, e.g. 'Bearer manage-0123456789abcdef0123456789abcdef'
+        description: Management token of the target domain's confirmed mailbox, e.g.
+          'Bearer manage-0123456789abcdef0123456789abcdef'
       security:
       - ownerMailboxToken: []
       requestBody:
@@ -1972,7 +2275,8 @@ paths:
               example:
                 error: invalid_domain
         '401':
-          description: unauthorized — missing, invalid or wrong-domain management token
+          description: unauthorized — missing, invalid or wrong-domain management
+            token
           content:
             application/json:
               schema:
@@ -1989,8 +2293,8 @@ paths:
                 error: api_keys_unavailable
     delete:
       summary: Revoke the machine key of a site (management token required)
-      description: The domain travels in the query string or in the body. The key stops working immediately;
-        the human check on the scan endpoints applies again.
+      description: The domain travels in the query string or in the body. The key
+        stops working immediately; the human check on the scan endpoints applies again.
       parameters:
       - name: domain
         in: query
@@ -2004,7 +2308,8 @@ paths:
         required: true
         schema:
           type: string
-        description: Management token of the target domain's confirmed mailbox, e.g. 'Bearer manage-0123456789abcdef0123456789abcdef'
+        description: Management token of the target domain's confirmed mailbox, e.g.
+          'Bearer manage-0123456789abcdef0123456789abcdef'
       security:
       - ownerMailboxToken: []
       responses:
@@ -2028,7 +2333,8 @@ paths:
               example:
                 error: invalid_domain
         '401':
-          description: unauthorized — missing, invalid or wrong-domain management token
+          description: unauthorized — missing, invalid or wrong-domain management
+            token
           content:
             application/json:
               schema:
@@ -2038,18 +2344,20 @@ paths:
   /api/v1/billing/pro/orders:
     post:
       summary: Open a Pro order (management token required)
-      description: 'Body { "domain": "example.com" }. Creates a non-custodial on-chain order and returns
-        the checkout URL; the link is valid for 15 minutes. One open order per domain — a second checkout
-        for the same term is refused with 409 order_pending. Read the state with GET /api/v1/billing/pro/orders/{reference}
-        and drop an unpaid one with POST /api/v1/billing/pro/orders/{reference}/cancel. Payment never
-        changes a score, a grade or a ranking position.'
+      description: 'Body { "domain": "example.com" }. Creates a non-custodial on-chain
+        order and returns the checkout URL; the link is valid for 15 minutes. One
+        open order per domain — a second checkout for the same term is refused with
+        409 order_pending. Read the state with GET /api/v1/billing/pro/orders/{reference}
+        and drop an unpaid one with POST /api/v1/billing/pro/orders/{reference}/cancel.
+        Payment never changes a score, a grade or a ranking position.'
       parameters:
       - name: Authorization
         in: header
         required: true
         schema:
           type: string
-        description: Management token of the target domain's confirmed mailbox, e.g. 'Bearer manage-0123456789abcdef0123456789abcdef'
+        description: Management token of the target domain's confirmed mailbox, e.g.
+          'Bearer manage-0123456789abcdef0123456789abcdef'
       security:
       - ownerMailboxToken: []
       requestBody:
@@ -2109,7 +2417,8 @@ paths:
               example:
                 error: invalid_domain
         '401':
-          description: unauthorized — missing, invalid or wrong-domain management token
+          description: unauthorized — missing, invalid or wrong-domain management
+            token
           content:
             application/json:
               schema:
@@ -2151,8 +2460,8 @@ paths:
   /api/v1/billing/pro/orders/{reference}:
     get:
       summary: State of one Pro order (management token required)
-      description: :reference is the payment-provider reference of the order; the merchant order id is
-        accepted as well.
+      description: :reference is the payment-provider reference of the order; the
+        merchant order id is accepted as well.
       parameters:
       - name: reference
         in: path
@@ -2165,12 +2474,14 @@ paths:
         required: true
         schema:
           type: string
-        description: Management token of the target domain's confirmed mailbox, e.g. 'Bearer manage-0123456789abcdef0123456789abcdef'
+        description: Management token of the target domain's confirmed mailbox, e.g.
+          'Bearer manage-0123456789abcdef0123456789abcdef'
       security:
       - ownerMailboxToken: []
       responses:
         '200':
-          description: The order state — status, whether it is paid, the amount and the Pro state it grants
+          description: The order state — status, whether it is paid, the amount and
+            the Pro state it grants
           content:
             application/json:
               schema:
@@ -2216,7 +2527,8 @@ paths:
                   active: true
                   expiresAt: '2026-12-26T09:00:00.000Z'
         '401':
-          description: unauthorized — missing, invalid or wrong-domain management token
+          description: unauthorized — missing, invalid or wrong-domain management
+            token
           content:
             application/json:
               schema:
@@ -2234,8 +2546,8 @@ paths:
   /api/v1/billing/pro/orders/{reference}/cancel:
     post:
       summary: Cancel an unpaid Pro order (management token required)
-      description: 'Drops an open order. A paid order cannot be cancelled ({ "cancelled": false }); an
-        already cancelled order answers { "cancelled": true }. No body.'
+      description: 'Drops an open order. A paid order cannot be cancelled ({ "cancelled":
+        false }); an already cancelled order answers { "cancelled": true }. No body.'
       parameters:
       - name: reference
         in: path
@@ -2248,7 +2560,8 @@ paths:
         required: true
         schema:
           type: string
-        description: Management token of the target domain's confirmed mailbox, e.g. 'Bearer manage-0123456789abcdef0123456789abcdef'
+        description: Management token of the target domain's confirmed mailbox, e.g.
+          'Bearer manage-0123456789abcdef0123456789abcdef'
       security:
       - ownerMailboxToken: []
       responses:
@@ -2264,7 +2577,8 @@ paths:
               example:
                 cancelled: true
         '401':
-          description: unauthorized — missing, invalid or wrong-domain management token
+          description: unauthorized — missing, invalid or wrong-domain management
+            token
           content:
             application/json:
               schema:
@@ -2284,7 +2598,8 @@ components:
     ownerMailboxToken:
       type: http
       scheme: bearer
-      description: Current management token issued when confirming the mailbox for the target domain.
+      description: Current management token issued when confirming the mailbox for
+        the target domain.
   schemas:
     Site:
       type: object
@@ -2546,9 +2861,9 @@ components:
           - 'null'
     Ad:
       type: object
-      description: A live sponsored placement. Only paid, operator-approved placements of an active site
-        inside their term are served; the grade and score are the site's real ones and are never influenced
-        by payment.
+      description: A live sponsored placement. Only paid, operator-approved placements
+        of an active site inside their term are served; the grade and score are the
+        site's real ones and are never influenced by payment.
       properties:
         id:
           type: integer
@@ -2564,7 +2879,8 @@ components:
           type:
           - string
           - 'null'
-          description: Category slug, canonicalized search term, or null for the homepage slot.
+          description: Category slug, canonicalized search term, or null for the homepage
+            slot.
         headline:
           type: string
         body:
@@ -2575,7 +2891,8 @@ components:
         ends_at:
           type: string
           format: date-time
-          description: 'The term is half-open: the placement stops being served at this instant.'
+          description: 'The term is half-open: the placement stops being served at
+            this instant.'
         status:
           type: string
           enum:
@@ -2734,10 +3051,11 @@ components:
           - scheduled
           - ok
           - deferred
-          description: Scan-workflow dispatch result (new submissions only). 'scheduled' = handed to the
-            runtime and triggered in the background (production); 'ok' = triggered and confirmed before
-            responding; 'deferred' = trigger did not fire, the nightly run collects the entry anyway.
-            Idempotent 'exists'/'queued' responses omit this field.
+          description: Scan-workflow dispatch result (new submissions only). 'scheduled'
+            = handed to the runtime and triggered in the background (production);
+            'ok' = triggered and confirmed before responding; 'deferred' = trigger
+            did not fire, the nightly run collects the entry anyway. Idempotent 'exists'/'queued'
+            responses omit this field.
     Error:
       type: object
       properties:
@@ -2748,14 +3066,16 @@ components:
           type: string
     OwnerChallenge:
       type: object
-      description: A domain-control challenge and the three ways to publish it on the domain
+      description: A domain-control challenge and the three ways to publish it on
+        the domain
       properties:
         challenge:
           type: string
           description: The challenge value, e.g. ch-0123456789abcdef0123456789abcdef
         methods:
           type: object
-          description: Any one of the three methods is enough — AFR reads it from the domain
+          description: Any one of the three methods is enough — AFR reads it from
+            the domain
           properties:
             dns:
               type: object
@@ -2790,7 +3110,8 @@ components:
         expiresAt:
           type: string
           format: date-time
-          description: When the challenge stops being accepted (24 hours after it was issued)
+          description: When the challenge stops being accepted (24 hours after it
+            was issued)
     OwnerRegistration:
       type: object
       required:
@@ -2807,7 +3128,8 @@ components:
           - true
     OwnerVerification:
       type: object
-      description: The confirmation of a mailbox — the management token is shown exactly once
+      description: The confirmation of a mailbox — the management token is shown exactly
+        once
       properties:
         verified:
           type: boolean
@@ -2815,7 +3137,8 @@ components:
           type: string
         manageToken:
           type: string
-          description: The management token of the mailbox — returned only here, never again
+          description: The management token of the mailbox — returned only here, never
+            again
           example: manage-0123456789abcdef0123456789abcdef
     OwnerMailbox:
       type: object
@@ -2886,7 +3209,8 @@ components:
           type:
           - string
           - 'null'
-          description: sha256 of the lower-cased charity pool address; null while the pool was never published.
+          description: sha256 of the lower-cased charity pool address; null while
+            the pool was never published.
         publishedAt:
           type:
           - string

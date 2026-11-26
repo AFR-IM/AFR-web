@@ -575,6 +575,55 @@ export function renderScoreChangeEmail(args: {
   return { subject, text, html };
 }
 
+/** Subject + body of a directory event mail — the site was retired from
+ * or re-listed in the directory. The Pro half of the live alerts: the
+ * score-change mail stays free, these two go to active Pro mailboxes. */
+export function renderDirectoryEventEmail(args: {
+  domain: string;
+  kind: 'added' | 'removed';
+  reportUrl: string;
+}): { subject: string; text: string; html: string } {
+  const subject =
+    args.kind === 'removed'
+      ? `AFR listing update: ${args.domain} is no longer listed`
+      : `AFR listing update: ${args.domain} is listed again`;
+
+  const headline =
+    args.kind === 'removed'
+      ? `${args.domain} is no longer listed in the AFR directory.`
+      : `${args.domain} is listed in the AFR directory again.`;
+  const detail =
+    args.kind === 'removed'
+      ? 'Its report page now shows a retirement note, and its score is no longer maintained. Nothing else about the site was changed.'
+      : 'Its report page is live again and its score will be maintained by the regular scans.';
+
+  const text = [
+    headline,
+    '',
+    detail,
+    '',
+    `Report: ${args.reportUrl}`,
+    '',
+    'Live listing alerts (additions and removals) are part of AFR Pro.',
+    'You receive this mail because this address is registered as the owner mailbox',
+    `for ${args.domain}.`,
+  ].join('\n');
+
+  const html = [
+    '<!doctype html>',
+    '<html><body style="margin:0;padding:24px;background:#f6f7f9;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#111827;">',
+    '<div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:10px;padding:24px;border:1px solid #e5e7eb;">',
+    `<h1 style="margin:0 0 16px;font-size:20px;line-height:1.4;">${escapeHtml(headline)}</h1>`,
+    `<p style="margin:0 0 20px;font-size:15px;line-height:1.6;">${escapeHtml(detail)}</p>`,
+    `<p style="margin:20px 0;"><a href="${escapeHtml(args.reportUrl)}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:6px;">View the report</a></p>`,
+    `<p style="margin:0 0 8px;color:#6b7280;font-size:13px;line-height:1.5;">Live listing alerts (additions and removals) are part of AFR Pro.</p>`,
+    `<p style="margin:0;color:#6b7280;font-size:13px;line-height:1.5;">You receive this mail because this address is registered as the owner mailbox for ${escapeHtml(args.domain)}.</p>`,
+    '</div></body></html>',
+  ].join('');
+
+  return { subject, text, html };
+}
+
 /** Subject + body of the mailbox verification mail. */
 export function renderVerificationEmail(args: {
   domain: string;
@@ -843,15 +892,21 @@ export async function drainNotifyOutbox(
   const baseUrl = (opts.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, '');
   const from = opts.from ?? DEFAULT_FROM;
 
-  const rows = await db
-    .prepare(
-      `SELECT id, domain, event_key, grade, score_total, prev_grade, prev_score, attempts
+  const rows = await (async () => {
+    const sql = (withType: boolean) =>
+      `SELECT id, domain, event_key, ${withType ? 'event_type, ' : ''}grade, score_total, prev_grade, prev_score, attempts
        FROM notify_outbox
        WHERE status = 'pending' AND attempts < ?
          AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
-       ORDER BY id LIMIT ?`,
-    )
-    .all<Row>(NOTIFY_MAX_ATTEMPTS, now.toISOString(), limit);
+       ORDER BY id LIMIT ?`;
+    try {
+      return await db.prepare(sql(true)).all<Row>(NOTIFY_MAX_ATTEMPTS, now.toISOString(), limit);
+    } catch {
+      // The additions/removals migration is not applied yet: every pending
+      // row is a score change, which is what the drain did before it.
+      return await db.prepare(sql(false)).all<Row>(NOTIFY_MAX_ATTEMPTS, now.toISOString(), limit);
+    }
+  })();
 
   for (const row of rows) {
     const id = Number(row.id);
@@ -884,14 +939,22 @@ export async function drainNotifyOutbox(
       continue;
     }
 
-    const mail = renderScoreChangeEmail({
-      domain,
-      prevGrade: (row.prev_grade as string | null) ?? null,
-      prevScore: row.prev_score === null || row.prev_score === undefined ? null : Number(row.prev_score),
-      grade: (row.grade as string | null) ?? null,
-      score: row.score_total === null || row.score_total === undefined ? null : Number(row.score_total),
-      reportUrl: `${baseUrl}/site/${encodeURIComponent(domain)}`,
-    });
+    const eventType = typeof row.event_type === 'string' ? row.event_type : 'score_change';
+    const mail =
+      eventType === 'added' || eventType === 'removed'
+        ? renderDirectoryEventEmail({
+            domain,
+            kind: eventType,
+            reportUrl: `${baseUrl}/site/${encodeURIComponent(domain)}`,
+          })
+        : renderScoreChangeEmail({
+            domain,
+            prevGrade: (row.prev_grade as string | null) ?? null,
+            prevScore: row.prev_score === null || row.prev_score === undefined ? null : Number(row.prev_score),
+            grade: (row.grade as string | null) ?? null,
+            score: row.score_total === null || row.score_total === undefined ? null : Number(row.score_total),
+            reportUrl: `${baseUrl}/site/${encodeURIComponent(domain)}`,
+          });
 
     const sent = await sendEmailViaResend(
       {

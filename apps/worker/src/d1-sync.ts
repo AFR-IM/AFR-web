@@ -426,6 +426,11 @@ export async function upsertSnapshot(
   // syncing after a newer one (multi-date backfill, cron racing the CI loop)
   // can never downgrade the live score. Equal scanned_at still updates, so an
   // engine re-run of the same scan refreshes in place.
+  // `status` keeps one exception: a delisted entry stays delisted. The
+  // scanner re-reads a site that is still in the data repo, but the
+  // retirement list (delisted.json) is the operator's decision — only the
+  // directory reconcile may lift it, so a snapshot sync can never resurrect
+  // a retired site behind the operator's back.
   const siteRun = await db
     .prepare(
       `INSERT INTO sites (domain, title, lang, strategy_tag, grade, score_total, score_l1, score_l2, score_l3,
@@ -440,7 +445,7 @@ export async function upsertSnapshot(
          score_l1 = excluded.score_l1,
          score_l2 = excluded.score_l2,
          score_l3 = excluded.score_l3,
-         status = excluded.status,
+         status = CASE WHEN sites.status = 'delisted' THEN 'delisted' ELSE excluded.status END,
          updated_at = excluded.updated_at,
          scanned_at = excluded.scanned_at
        WHERE sites.scanned_at IS NULL OR excluded.scanned_at >= sites.scanned_at`,

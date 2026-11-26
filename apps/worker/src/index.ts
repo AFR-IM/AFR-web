@@ -24,9 +24,12 @@ import type { AdminAccessEnv } from './admin-access.ts';
 import type { AdminLoginEnv } from './admin-login.ts';
 import { githubAuthedFetch, runDailySync } from './cron.ts';
 import { DATA_COMMIT_RE } from './d1-sync.ts';
+import { fetchRetirementMap, reconcileDirectoryPresence } from './directory-alerts.ts';
 import { createD1Db, type Db, type Row, type SqlParam } from './db.ts';
 import { normalizeDomain, registrableDomain } from './domain.ts';
+import { computeProEntitlement } from './entitlements.ts';
 import { handleMcpRequest, MCP_RATE_LIMIT, MCP_RATE_WINDOW_MS } from './mcp.ts';
+import { listOwnerDomains, readComparison } from './owner-panel.ts';
 import { DAY_MS, HOUR_MS, RateLimiter, kvStore, memoryStore } from './rate-limit.ts';
 import {
   createVerifyToken,
@@ -205,6 +208,11 @@ export const VERIFY_START_DOMAIN_LIMIT = 3; // verify/start per domain per UTC d
  * never these limits). */
 export const VERIFY_IP_LIMIT = 5;
 export const CLAIMS_DOMAIN_LIMIT = 5; // claims per domain per UTC day
+/** Owner statement ceilings: free tier 200 characters, active Pro 600 (the
+ * longer statement with its evidence references is a Pro benefit). Both
+ * tiers land in the same moderation queue — paying never skips review. */
+export const CLAIM_STATEMENT_LIMIT_FREE = 200;
+export const CLAIM_STATEMENT_LIMIT_PRO = 600;
 
 // Admin self-service login: failed attempts per IP per minute (the password
 // is a 256-bit secret — this only bounds online tryout and makes it visible)
@@ -1944,14 +1952,16 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     return c.json({ status: 'queued', domain, etaSeconds: SCAN_ETA_SECONDS, dispatch });
   });
 
-  // GET /api/v1/queue — oldest queued submissions first (up to 50), public read.
+  // GET /api/v1/queue — highest priority first, then oldest first (up to 50),
+  // public read. An active-Pro owner's rescan inserts with priority 1, so it
+  // is drained by the next run even behind a full backlog.
   app.get('/api/v1/queue', async (c) => {
     const db = dbOf(c, overrides);
     const rows = await db
       .prepare(
         `SELECT domain, submitter_note, source, created_at FROM submissions
          WHERE status IN ('queued', 'pending', 'scanning')
-         ORDER BY created_at ASC, id ASC LIMIT ?`,
+         ORDER BY priority DESC, created_at ASC, id ASC LIMIT ?`,
       )
       .all<SubmissionRow>(QUEUE_LIST_LIMIT);
     return c.json({
@@ -2051,6 +2061,23 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
       // recorded here (cheap, local); the mail itself is delivered off the
       // request path so a rebuild's paging calls stay fast.
       const db = dbOf(c, overrides);
+      // A completed, clean pass also reconciles the directory with the
+      // published retirement list: additions/removals are recorded here
+      // (cheap, local) and delivered by the drain below — the same
+      // invocation. A page with errors is not a completed pass: it may
+      // have seen half a day, and the daily cron reconciles anyway.
+      if (result.nextOffset === null && result.errors.length === 0) {
+        const retirementMap = await fetchRetirementMap(
+          c.env.PUBLIC_SITE_URL ?? '',
+          overrides.fetchImpl ?? fetch,
+        );
+        const reconcile = await reconcileDirectoryPresence(db, retirementMap);
+        if (reconcile.ok && (reconcile.delisted || reconcile.relisted)) {
+          console.log(
+            `directory reconcile: ${reconcile.delisted} retired, ${reconcile.relisted} re-listed, ${reconcile.enqueued} events`,
+          );
+        }
+      }
       await enqueueOwnerNotifications(db, c.env);
       scheduleOwnerNotificationDrain(c, db, c.env, overrides.fetchImpl ?? fetch);
       return c.json({
@@ -2204,6 +2231,23 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
       .get<{ domain: string }>(domain);
     if (!site) return c.json({ error: 'unknown_domain' }, 404);
 
+    // Pro priority path: the management token of THIS domain plus an active
+    // term. The token only ever unlocks the caller's own site, so the
+    // exemption cannot be pointed at somebody else's domain; the IP-day
+    // budget below still bounds the caller. priority 1 makes the entry drain
+    // first (GET /api/v1/queue orders by it).
+    let priority = 0;
+    const manageToken = bearerToken(c);
+    if (manageToken?.trim()) {
+      const tokenHash = await hashToken(manageToken.trim());
+      const mailbox = await db
+        .prepare(
+          'SELECT domain FROM owner_emails WHERE domain = ? AND manage_token_hash = ? AND verified_at IS NOT NULL',
+        )
+        .get<{ domain: string }>(domain, tokenHash);
+      if (mailbox && (await computeProEntitlement(db, domain)).active) priority = 1;
+    }
+
     const limits = scanLimitsOf(c, overrides);
     // Anti-abuse tiers — every tier is pre-checked before any is consumed, so a
     // rejected request never burns quota elsewhere, and all checks run before
@@ -2214,14 +2258,19 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     //   global — RESCAN_GLOBAL_LIMIT per UTC day in its own bucket, so rescans
     //            never crowd out search-triggered scans,
     //   domain — one per domain per 30-minute window (shared with search-scan).
-    // As everywhere else, x-afr-agent-key does not exempt any of these tiers —
-    // it only skips the Turnstile human check, never the rate limits.
-    const tiers: [string, RateLimiter, string][] = [
-      ['global', limits.rescanIp, 'device'],
-      [clientIp(c), limits.rescanDailyIp, 'ip'],
-      ['global', limits.rescanGlobal, 'global'],
-      [domain, limits.domain, 'domain'],
-    ];
+    // The Pro path (priority 1) drops the device, global and domain tiers —
+    // they exist to stop hammering, and the token plus the IP-day budget
+    // already bound a verified owner to their own site. As everywhere else,
+    // x-afr-agent-key exempts none of these tiers.
+    const tiers: [string, RateLimiter, string][] =
+      priority === 1
+        ? [[clientIp(c), limits.rescanDailyIp, 'ip']]
+        : [
+            ['global', limits.rescanIp, 'device'],
+            [clientIp(c), limits.rescanDailyIp, 'ip'],
+            ['global', limits.rescanGlobal, 'global'],
+            [domain, limits.domain, 'domain'],
+          ];
     for (const [key, limiter, scope] of tiers) {
       const decision = await limiter.check(key);
       if (!decision.allowed) {
@@ -2237,10 +2286,10 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
 
     await db
       .prepare(
-        `INSERT INTO submissions (domain, submitter_note, source, status, created_at)
-         VALUES (?, NULL, 'rescan', 'queued', ?)`,
+        `INSERT INTO submissions (domain, submitter_note, source, status, created_at, priority)
+         VALUES (?, NULL, 'rescan', 'queued', ?, ?)`,
       )
-      .run(domain, new Date().toISOString());
+      .run(domain, new Date().toISOString(), priority);
 
     // Soft dispatch (same helper as search-scan): a missing or failed token
     // never fails the request — the daily cron drains the queue anyway.
@@ -2250,6 +2299,7 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     // shared per-UTC-day bucket.
     return c.json({
       status: 'queued',
+      priority,
       etaSeconds: SCAN_ETA_SECONDS,
       nextAllowedAt: new Date(Date.now() + SCAN_DOMAIN_WINDOW_MS).toISOString(),
     });
@@ -2413,8 +2463,17 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
       return c.json({ error: 'invalid_statement', message: 'statement must be a string' }, 400);
     }
     const statement = payload.statement.trim();
-    if (statement.length < 1 || statement.length > 200) {
-      return c.json({ error: 'invalid_statement', message: 'statement must be 1-200 characters' }, 400);
+    if (statement.length < 1) {
+      return c.json({ error: 'invalid_statement', message: 'statement must not be empty' }, 400);
+    }
+    // Absolute ceiling so an absurd body never reaches the auth path. The
+    // real limit (free vs Pro) is checked after the mailbox and the term
+    // are known — an unauthenticated caller learns nothing about tiers.
+    if (statement.length > CLAIM_STATEMENT_LIMIT_PRO) {
+      return c.json(
+        { error: 'invalid_statement', message: `statement must be 1-${CLAIM_STATEMENT_LIMIT_PRO} characters` },
+        400,
+      );
     }
 
     const token = bearerToken(c);
@@ -2432,6 +2491,19 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     ]);
     if (!site && !owner) return c.json({ error: 'unknown_domain' }, 404);
     if (!(site?.verified === 1 || owner)) return c.json({ error: 'not_verified' }, 403);
+
+    // The statement ceiling follows the paid term: 200 characters for
+    // everyone, 600 with an active Pro — the longer statement (with its
+    // evidence references) is one of the Pro benefits. Payment still
+    // never touches the review queue: both tiers land as `pending`.
+    const pro = await computeProEntitlement(db, domain);
+    const maxStatement = pro.active ? CLAIM_STATEMENT_LIMIT_PRO : CLAIM_STATEMENT_LIMIT_FREE;
+    if (statement.length > maxStatement) {
+      return c.json(
+        { error: 'invalid_statement', message: `statement must be 1-${maxStatement} characters` },
+        400,
+      );
+    }
 
     const limits = claimLimitsOf(c, overrides);
     const decision = await limits.domain.check(domain);
@@ -2468,6 +2540,28 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
       .get<{ statement: string | null; created_at: string | null }>(domain);
     if (!row) return c.json({ statement: null });
     return c.json({ statement: row.statement, publishedAt: row.created_at });
+  });
+
+  // GET /api/v1/claims/published — every published statement as a map
+  // (domain → statement), later rows win. The site build reads this once
+  // per build and publishes it as /data/claims.json, so the report page
+  // shows exactly the statement the moderation queue published — the same
+  // bytes the API answers with. Public content, one query.
+  app.get('/api/v1/claims/published', async (c) => {
+    const db = dbOf(c, overrides);
+    const rows = await db
+      .prepare(
+        `SELECT domain, statement FROM claims
+         WHERE status = 'published' AND statement IS NOT NULL
+         ORDER BY id ASC`,
+      )
+      .all<{ domain: string; statement: string }>();
+    const map: Record<string, string> = {};
+    for (const row of rows) {
+      const domain = String(row.domain ?? '').trim().toLowerCase();
+      if (domain && typeof row.statement === 'string' && row.statement.trim()) map[domain] = row.statement;
+    }
+    return c.json(map, 200, { 'Cache-Control': 'public, max-age=300' });
   });
 
   // -------------------------------------------------------------------------
@@ -3351,6 +3445,25 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     return c.json({ cancelled: result.cancelled });
   });
 
+  // GET /api/v1/owners/domains — the multi-domain panel. The presented
+  // management token expands to every domain confirmed under the same
+  // mailbox address (owner_emails.email_hash). Read-only: acting on a
+  // domain still needs that domain's own token.
+  app.get('/api/v1/owners/domains', async (c) => {
+    const result = await listOwnerDomains(dbOf(c, overrides), bearerToken(c));
+    if (!result.ok) return c.json({ error: result.error }, result.status);
+    return c.json({ primary: result.primary, domains: result.domains });
+  });
+
+  // GET /api/v1/compare?domain= — the competitor comparison (Pro benefit):
+  // the owner's site inside its category, with the neighbourhood that shows
+  // the gap. Requires this domain's management token and an active term.
+  app.get('/api/v1/compare', async (c) => {
+    const result = await readComparison(dbOf(c, overrides), c.req.query('domain') ?? '', bearerToken(c));
+    if (!result.ok) return c.json({ error: result.error }, result.status);
+    return c.json(result.view);
+  });
+
   // GET /api/v1/pro/status?domain= — the Pro state of a site and the
   // metadata of its machine key (never the key itself).
   app.get('/api/v1/pro/status', async (c) => {
@@ -3525,6 +3638,18 @@ export default {
       (async () => {
         const db = createD1Db(env.DB);
         try {
+          // Directory additions/removals (the Pro live alerts): reconcile
+          // with the published retirement list FIRST so this run's drain
+          // below can deliver what it just recorded.
+          const retirementMap = await fetchRetirementMap(env.PUBLIC_SITE_URL ?? '', fetch);
+          const reconcile = await reconcileDirectoryPresence(db, retirementMap);
+          if (reconcile.ok && (reconcile.delisted || reconcile.relisted || reconcile.enqueued)) {
+            console.log(
+              `directory reconcile: ${reconcile.delisted} retired, ${reconcile.relisted} re-listed, ${reconcile.enqueued} events`,
+            );
+          } else if (!reconcile.ok) {
+            console.log(`directory reconcile: no signal (${reconcile.reason})`);
+          }
           // Releases own scan ingestion. A mutable branch sync could race a pinned release.
           // Score-change mails for the owners who asked for them (no-op when
           // the mail subsystem is not configured).

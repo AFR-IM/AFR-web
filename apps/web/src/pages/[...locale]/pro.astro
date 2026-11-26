@@ -81,6 +81,7 @@ const PROSE = {
     backBody: 'The Pro panel lives in the owner workspace of your own site.',
     backLink: 'Owner workspace',
     backSearch: 'Find my site',
+    backPanel: 'Multi-domain panel',
     noDomain: 'Open your site’s report page and follow the “site owner” link — the Pro panel is there.',
   },
   'zh-CN': {
@@ -140,6 +141,7 @@ const PROSE = {
     backBody: 'Pro 面板在你自己站点的站主工作区里。',
     backLink: '站主工作区',
     backSearch: '查找我的站点',
+    backPanel: '多域名面板',
     noDomain: '打开你的站点报告页，点「站主管理」——Pro 面板就在那里。',
   },
 } as const;
@@ -209,6 +211,7 @@ const pledge = L.ui.footerPledge as string;
       <p class="lead">{P.backBody}</p>
       <p class="back-links">
         <a class="btn" data-pro-owner-link href={href('/search')}>{P.backSearch}</a>
+        <a class="btn btn-ghost" href={href('/owner/')}>{P.backPanel}</a>
         <span class="fallback">{P.noDomain}</span>
       </p>
     </section>
