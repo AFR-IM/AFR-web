@@ -18,6 +18,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { test, type TestContext } from 'node:test';
 import { API_KEY_QUOTA_LIMITS, apiKeyUsagePeriods, hashApiKey, readDomainApiKeyUsage } from '../src/api-key.ts';
 import { hashToken } from '../src/email.ts';
+import { RateLimiter, memoryStore } from '../src/rate-limit.ts';
 import { DEFAULT_PRO_TERM_DAYS } from '../src/entitlements.ts';
 import { createApp } from '../src/index.ts';
 import { openSeededDb, SCHEMA_SQL } from './helpers.ts';
@@ -686,4 +687,87 @@ test('a machine key authorises public submissions and rotation preserves its dai
   assert.equal(quota.error, 'quota_exceeded');
   assert.equal(quota.limit, API_KEY_QUOTA_LIMITS.free);
   assert.deepEqual(await readDomainApiKeyUsage(db, 'example.com'), { day: 100, month: 1 });
+});
+
+// ---------------------------------------------------------------------------
+// Per-site daily budgets on order creation (audit: bound provider traffic
+// even with a valid owner token).
+// ---------------------------------------------------------------------------
+
+test('Pro order attempts are rate-limited per site per day', async (t) => {
+  const { db } = await fixture(t, ['coolsite.io']);
+  // Unique provider reference per order: two orders in one fixture must not
+  // collide on billing_orders.aipay_reference.
+  mockAipay(t, request => Response.json({ order: {
+    reference: `ap_${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`,
+    status: 'pending',
+    merchantOrderId: String(request.body.merchantOrderId),
+    amount: '12', asset: 'USDC', chainKey: 'base',
+    checkoutUrl: CHECKOUT,
+    expiresAt: Date.now() + 900_000,
+  } }));
+  const limited = createApp({
+    db,
+    proOrderLimit: new RateLimiter(memoryStore(), 1, DAY_MS, 'test-pro-limit'),
+  });
+
+  // An outsider's attempts spend none of the site's budget.
+  for (let i = 0; i < 3; i++) {
+    const outsider = await order(limited, { domain: 'example.com' }, 'not-the-token');
+    assert.equal(outsider.status, 401);
+  }
+  // The owner's first attempt fits the budget (limit 1) and is created.
+  assert.equal((await order(limited, { domain: 'example.com' })).status, 201);
+  // The second is refused by the budget before anything is created.
+  const second = await order(limited, { domain: 'example.com' });
+  assert.equal(second.status, 429);
+  const body = await second.json() as { error: string; scope: string; retryAfter: number };
+  assert.equal(body.error, 'rate_limited');
+  assert.equal(body.scope, 'domain');
+  assert.ok(typeof body.retryAfter === 'number' && body.retryAfter > 0);
+  assert.ok(second.headers.get('retry-after'));
+  // Another site keeps its own budget.
+  const other = await order(limited, { domain: 'coolsite.io' }, 'token-coolsite.io');
+  assert.equal(other.status, 201);
+});
+
+test('ad applications are rate-limited per site per day', async (t) => {
+  const { db } = await fixture(t);
+  const limited = createApp({
+    db,
+    adApplyLimit: new RateLimiter(memoryStore(), 1, DAY_MS, 'test-ad-limit'),
+  });
+  const adsEnv = { ...ENV, ADS_SALES_OPEN: 'true' };
+  const apply = (token: string | null) =>
+    limited.request('/api/v1/ads/apply', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        domain: 'example.com',
+        slot: 'category-top',
+        slot_key: 'dev-tools',
+        headline: 'Fresh tools',
+        body: 'Sponsor this page',
+        months: 1,
+        requestId: crypto.randomUUID(),
+      }),
+    }, adsEnv);
+
+  // An outsider's attempts spend none of the site's budget.
+  for (let i = 0; i < 3; i++) {
+    assert.notEqual((await apply('not-the-token')).status, 429, 'outsiders never hit the budget');
+  }
+  // The owner's first attempt passes the budget gate (whatever the board answers).
+  const first = await apply(MANAGE_TOKEN);
+  assert.notEqual(first.status, 429, 'the first owned attempt is not budget-refused');
+  // The second owned attempt is refused by the budget.
+  const second = await apply(MANAGE_TOKEN);
+  assert.equal(second.status, 429);
+  const body = await second.json() as { error: string; scope: string };
+  assert.equal(body.error, 'rate_limited');
+  assert.equal(body.scope, 'domain');
+  assert.ok(second.headers.get('retry-after'));
 });

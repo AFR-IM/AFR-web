@@ -352,6 +352,7 @@ const en: Catalog = {
     engineVersion: 'Engine version',
     recomputeTitle: 'Recompute any score yourself',
     neutralityStatement: 'Paying never changes a score.',
+    methodRelease: 'Scoring release notes',
     methodLicense: 'AFR v1.0 published under CC BY 4.0.',
 
     // P6 badge page
@@ -799,6 +800,7 @@ const zhCN: Catalog = {
     engineVersion: '引擎版本',
     recomputeTitle: '自己复算任何评分',
     neutralityStatement: '付费不能改分。',
+    methodRelease: '评分规则发布说明',
     methodLicense: 'AFR v1.0 以 CC BY 4.0 发布。',
 
     // P6 badge page

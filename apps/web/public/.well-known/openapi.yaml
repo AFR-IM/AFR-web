@@ -254,8 +254,9 @@ paths:
       summary: Charity settings (beneficiary list and the two receiving addresses)
       description: 'Public charity settings: the beneficiary list and the two receiving
         addresses are edited in the administrator console and published here — this
-        is the data contract for the charity surface behind /charity. The fingerprint is the sha256 of the charity pool address, so a published
-        address can be verified against the audit trail.'
+        is the data contract for the charity surface behind /charity. The fingerprint
+        is the sha256 of the charity pool address, so a published address can be verified
+        against the audit trail.'
       responses:
         '200':
           description: Charity settings
@@ -266,9 +267,9 @@ paths:
   /api/v1/torch/leaderboard:
     get:
       summary: Torch Boost leaderboard (advertising, not assessment)
-      description: 'Paid boost totals per site for one time window, 30 items per
-        page. Advertising only: boosted amounts never enter the AFR score, grade
-        or natural ranking. The response is never cached.'
+      description: 'Paid boost totals per site for one time window, 30 items per page.
+        Advertising only: boosted amounts never enter the AFR score, grade or natural
+        ranking. The response is never cached.'
       parameters:
       - name: tab
         in: query
@@ -449,13 +450,12 @@ paths:
   /api/v1/torch/order:
     post:
       summary: Create a boost order (advertising, not assessment)
-      description: 'Create a boost order for a listed site. The wallet is chosen
-        server-side; the single-wallet $1,000 per-site daily cap is enforced atomically.
-        Advertising only: a boost never affects the score, grade or ranking. Answers
-        403 torch_sales_closed while sales are closed, 409 torch_cap_reached / request_conflict,
-        404 unknown_domain, 503 billing_not_configured / settings_missing / wallet_mismatch,
-        502 billing_unavailable. Reusing the same requestId resumes the same order
-        instead of paying twice.'
+      description: 'Create a boost order for a listed site. The wallet is chosen server-side;
+        the single-wallet $1,000 per-site daily cap is enforced atomically. Advertising
+        only: a boost never affects the score, grade or ranking. Answers 403 torch_sales_closed
+        while sales are closed, 409 torch_cap_reached / request_conflict, 404 unknown_domain,
+        503 billing_not_configured / settings_missing / wallet_mismatch, 502 billing_unavailable.
+        Reusing the same requestId resumes the same order instead of paying twice.'
       requestBody:
         required: true
         content:
@@ -476,7 +476,7 @@ paths:
                   type: number
                   minimum: 1
                   maximum: 1000
-                  description: 'USDC, at most two decimals'
+                  description: USDC, at most two decimals
       responses:
         '201':
           description: Order created
@@ -513,9 +513,9 @@ paths:
   /api/v1/torch/status:
     get:
       summary: Poll one boost order by binding code (advertising, not assessment)
-      description: 'Status of one boost order, claimed with its 8-character binding
+      description: Status of one boost order, claimed with its 8-character binding
         code. The code answers for a pending order for 15 minutes (403 binding_expired
-        afterwards) and for terminal states thereafter. Advertising only.'
+        afterwards) and for terminal states thereafter. Advertising only.
       parameters:
       - name: order
         in: query
@@ -560,7 +560,7 @@ paths:
   /api/v1/promo/apply:
     post:
       summary: Buy a promotion for your own verified site (advertising, not assessment)
-      description: 'Owner-authenticated: Authorization Bearer <manage token>. $19
+      description: 'Owner-authenticated: Authorization: Bearer <manage token>. $19
         / $49 / $149 buys 30 / 90 / 365 days, halved while the site holds Pro (decided
         at order time). The card is served only after AIPAY confirms the payment and
         an operator approves it, and can only link back to the buying site. Answers
@@ -592,7 +592,7 @@ paths:
                   - 19
                   - 49
                   - 149
-                  description: 'USD price; the term follows the tier'
+                  description: USD price; the term follows the tier
                 headline:
                   type: string
                   maxLength: 40
@@ -632,7 +632,8 @@ paths:
                     - string
                     - 'null'
         '400':
-          description: invalid_request_id / invalid_tier / invalid_domain / invalid_copy / disallowed_claim
+          description: invalid_request_id / invalid_tier / invalid_domain / invalid_copy
+            / disallowed_claim
         '401':
           description: unauthorized
         '403':
@@ -647,7 +648,7 @@ paths:
     get:
       summary: Owner view of one promotion order
       description: 'The owner view of one promotion order: status, paid flag, term
-        window and review note. Only the site owner can read it (Authorization Bearer
+        window and review note. Only the site owner can read it (Authorization: Bearer
         <manage token>).'
       parameters:
       - name: orderId
@@ -912,7 +913,10 @@ paths:
         operator approves it. Reusing the same requestId retries the same order instead
         of paying twice. Answers 403 ads_sales_closed while self-serve is closed,
         409 slot_full / slot_unavailable / order_pending / request_conflict, and 400
-        disallowed_claim for misleading copy. There is no refund channel today.'
+        disallowed_claim for misleading copy. There is no refund channel today. Rate-limited
+        to 10 ad applications per site per UTC day (authenticated attempts only —
+        a request that fails the site-owner token check is not counted; 429 rate_limited
+        with a Retry-After header).'
       requestBody:
         required: true
         content:
@@ -963,6 +967,16 @@ paths:
           description: ads_sales_closed
         '409':
           description: Capacity or state conflict
+        '429':
+          description: 'Rate-limited to 10 ad applications per site per UTC day (registrable
+            domain); only authenticated attempts count — a request that fails the
+            site-owner token check is not counted. Answered 429 { "error": "rate_limited",
+            "scope": "domain", "retryAfter", "nextAllowedAt" } with a Retry-After
+            header.'
+          headers:
+            Retry-After:
+              schema:
+                type: integer
   /api/v1/ads/orders/{orderId}:
     get:
       summary: State of one sponsorship order (owner only)
@@ -1112,7 +1126,9 @@ paths:
         | "wrong_action" | "verify_failed" } and nothing is queued. AI agents and
         scripts that cannot run a browser widget may send the ''X-AFR-Agent-Key''
         request header instead: a key issued by AFR and not revoked skips the human
-        check (site owners issue one from their owner panel; others ask AFR).'
+        check (site owners issue one from their owner panel; others ask AFR). A key
+        bound to a site only skips the check for requests about that site; a key issued
+        without a site skips it everywhere.'
       parameters:
       - name: X-AFR-Agent-Key
         in: header
@@ -1122,7 +1138,8 @@ paths:
         description: 'Agent key issued by AFR. When present and valid — the key''s
           SHA-256 hash is in the api_keys table and not revoked — the human check
           is skipped and turnstile_token is not required. Self-service issuance is
-          not open yet: ask AFR for a key.'
+          not open yet: ask AFR for a key. A key bound to a site only skips the check
+          for requests about that site; a key issued without a site skips it everywhere.'
       requestBody:
         required: true
         content:
@@ -1147,7 +1164,8 @@ paths:
                     form. Optional in the schema, required in practice — a request
                     without a valid token is answered 400 turnstile_failed — unless
                     the caller sends a valid ''X-AFR-Agent-Key'' header, which skips
-                    the human check.'
+                    the human check for the site the key was issued for (a key issued
+                    without a site skips it everywhere).'
             example:
               domain: example.com
               note: We ship a public llms.txt and API.
@@ -1253,7 +1271,8 @@ paths:
         | "verify_failed" }. AI agents and scripts that cannot run a browser widget
         may send the ''X-AFR-Agent-Key'' request header instead: a key issued by AFR
         and not revoked skips the human check (site owners issue one from their owner
-        panel; others ask AFR).'
+        panel; others ask AFR). A key bound to a site only skips the check for requests
+        about that site; a key issued without a site skips it everywhere.'
       parameters:
       - name: X-AFR-Agent-Key
         in: header
@@ -1263,7 +1282,8 @@ paths:
         description: 'Agent key issued by AFR. When present and valid — the key''s
           SHA-256 hash is in the api_keys table and not revoked — the human check
           is skipped and turnstile_token is not required. Self-service issuance is
-          not open yet: ask AFR for a key.'
+          not open yet: ask AFR for a key. A key bound to a site only skips the check
+          for requests about that site; a key issued without a site skips it everywhere.'
       requestBody:
         required: true
         content:
@@ -1283,7 +1303,8 @@ paths:
                     page. Optional in the schema, required in practice — a request
                     without a valid token is answered 400 turnstile_failed — unless
                     the caller sends a valid ''X-AFR-Agent-Key'' header, which skips
-                    the human check.'
+                    the human check for the site the key was issued for (a key issued
+                    without a site skips it everywhere).'
             example:
               domain: example.com
               turnstile_token: 0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d
@@ -1709,7 +1730,8 @@ paths:
         | "verify_failed" } — no challenge is minted and no rate-limit budget is spent.
         An agent that cannot run the widget may send the ''X-AFR-Agent-Key'' header
         instead (a key issued by AFR (site owners issue one from their owner panel;
-        others ask AFR)).'
+        others ask AFR)). A key bound to a site only skips the check for requests
+        about that site; a key issued without a site skips it everywhere.'
       parameters:
       - name: X-AFR-Agent-Key
         in: header
@@ -1719,7 +1741,8 @@ paths:
         description: 'Agent key issued by AFR. When present and valid — the key''s
           SHA-256 hash is in the api_keys table and not revoked — the human check
           is skipped and turnstile_token is not required. Self-service issuance is
-          not open yet: ask AFR for a key.'
+          not open yet: ask AFR for a key. A key bound to a site only skips the check
+          for requests about that site; a key issued without a site skips it everywhere.'
       requestBody:
         required: true
         content:
@@ -1744,7 +1767,8 @@ paths:
                     detail page. Optional in the schema, required in practice — a
                     request without a valid token is answered 400 turnstile_failed
                     — unless the caller sends a valid ''X-AFR-Agent-Key'' header,
-                    which skips the human check.'
+                    which skips the human check for the site the key was issued for
+                    (a key issued without a site skips it everywhere).'
             example:
               domain: example.com
               email: owner@example.com
@@ -1815,7 +1839,8 @@ paths:
         description: 'Agent key issued by AFR. When present and valid — the key''s
           SHA-256 hash is in the api_keys table and not revoked — the human check
           is skipped and turnstile_token is not required. Self-service issuance is
-          not open yet: ask AFR for a key.'
+          not open yet: ask AFR for a key. A key bound to a site only skips the check
+          for requests about that site; a key issued without a site skips it everywhere.'
       requestBody:
         required: true
         content:
@@ -1844,7 +1869,8 @@ paths:
                     detail page. Optional in the schema, required in practice — a
                     request without a valid token is answered 400 turnstile_failed
                     — unless the caller sends a valid ''X-AFR-Agent-Key'' header,
-                    which skips the human check.'
+                    which skips the human check for the site the key was issued for
+                    (a key issued without a site skips it everywhere).'
             example:
               domain: example.com
               email: owner@example.com
@@ -2035,7 +2061,8 @@ paths:
         description: 'Agent key issued by AFR. When present and valid — the key''s
           SHA-256 hash is in the api_keys table and not revoked — the human check
           is skipped and turnstile_token is not required. Self-service issuance is
-          not open yet: ask AFR for a key.'
+          not open yet: ask AFR for a key. A key bound to a site only skips the check
+          for requests about that site; a key issued without a site skips it everywhere.'
       requestBody:
         required: true
         content:
@@ -2060,7 +2087,8 @@ paths:
                     detail page. Optional in the schema, required in practice — a
                     request without a valid token is answered 400 turnstile_failed
                     — unless the caller sends a valid ''X-AFR-Agent-Key'' header,
-                    which skips the human check.'
+                    which skips the human check for the site the key was issued for
+                    (a key issued without a site skips it everywhere).'
             example:
               domain: example.com
               email: new-owner@example.com
@@ -2189,7 +2217,8 @@ paths:
         description: 'Agent key issued by AFR. When present and valid — the key''s
           SHA-256 hash is in the api_keys table and not revoked — the human check
           is skipped and turnstile_token is not required. Self-service issuance is
-          not open yet: ask AFR for a key.'
+          not open yet: ask AFR for a key. A key bound to a site only skips the check
+          for requests about that site; a key issued without a site skips it everywhere.'
       requestBody:
         required: true
         content:
@@ -2220,7 +2249,8 @@ paths:
                     detail page. Optional in the schema, required in practice — a
                     request without a valid token is answered 400 turnstile_failed
                     — unless the caller sends a valid ''X-AFR-Agent-Key'' header,
-                    which skips the human check.'
+                    which skips the human check for the site the key was issued for
+                    (a key issued without a site skips it everywhere).'
             example:
               domain: example.com
               email: owner@example.com
@@ -2654,8 +2684,8 @@ paths:
         its hash is stored, so AFR can never show it again. A new key revokes the
         previous one in the same transaction, so a domain never has two live keys.
         The key is sent as the X-AFR-Agent-Key request header and unlocks the human
-        check on the scan endpoints; its daily and monthly budgets follow the site''s
-        effective tier (free 100/day, pro 10000/day).'
+        check on the scan endpoints for that site only; its daily and monthly budgets
+        follow the site''s effective tier (free 100/day, pro 10000/day).'
       parameters:
       - name: Authorization
         in: header
@@ -2789,7 +2819,10 @@ paths:
         open order per domain — a second checkout for the same term is refused with
         409 order_pending. Read the state with GET /api/v1/billing/pro/orders/{reference}
         and drop an unpaid one with POST /api/v1/billing/pro/orders/{reference}/cancel.
-        Payment never changes a score, a grade or a ranking position.'
+        Payment never changes a score, a grade or a ranking position. Rate-limited
+        to 5 Pro order attempts per site per UTC day (authenticated attempts only
+        — a request that fails the site-owner token check is not counted; 429 rate_limited
+        with a Retry-After header).'
       parameters:
       - name: Authorization
         in: header
@@ -2881,6 +2914,16 @@ paths:
                 $ref: '#/components/schemas/Error'
               example:
                 error: order_pending
+        '429':
+          description: 'Rate-limited to 5 Pro order attempts per site per UTC day
+            (registrable domain); only authenticated attempts count — a request that
+            fails the site-owner token check is not counted. Answered 429 { "error":
+            "rate_limited", "scope": "domain", "retryAfter", "nextAllowedAt" } with
+            a Retry-After header.'
+          headers:
+            Retry-After:
+              schema:
+                type: integer
         '502':
           description: billing_unavailable — the payment provider could not be reached
           content:

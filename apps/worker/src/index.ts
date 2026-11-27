@@ -40,7 +40,7 @@ import {
 import {
   API_KEY_HEADER,
   enforceApiKeyQuota,
-  isValidApiKey,
+  resolveApiKey,
   touchApiKeyUsage,
 } from './api-key.ts';
 import {
@@ -49,6 +49,7 @@ import {
   grantProForConfirmedOrders,
   grantProForWebhook,
   issueApiKey,
+  ownerOwnsDomain,
   readProOrder,
   readProStatus,
   revokeApiKeys,
@@ -194,6 +195,9 @@ export interface AppOverrides {
   /** Injected admin self-service login failure limiter (tests use an isolated
    * in-memory store). Missing → an in-memory limiter built per app instance. */
   adminLoginLimit?: RateLimiter;
+  /** Injected paid-order rate limiters (tests use isolated in-memory stores) */
+  adApplyLimit?: RateLimiter;
+  proOrderLimit?: RateLimiter;
   /** Injected fetch for the GitHub dispatch (tests pass a fake) */
   fetchImpl?: typeof fetch;
   /** Injected fetch for the Turnstile siteverify call (tests pass a fake);
@@ -255,6 +259,13 @@ export const EMAIL_VERIFY_IP_LIMIT = 20; // magic-link verifications per IP per 
 export const EMAIL_START_DOMAIN_LIMIT = 3; // domain-control challenges per domain per UTC day
 export const EMAIL_START_IP_LIMIT = 5; // domain-control challenges per IP per hour
 
+// Paid-order creation limits: per site (registrable domain) per UTC day.
+// Only an attempt that proves domain ownership spends the budget, so an
+// outsider cannot exhaust someone else's allowance. Numbers must match the
+// public contract (openapi.json / docs): 10 ad applications, 5 Pro orders.
+export const ADS_APPLY_DOMAIN_LIMIT = 10;
+export const PRO_ORDER_DOMAIN_LIMIT = 5;
+
 // PV pixel: daily D1 write budget, enforced inside the count upsert
 export const PV_DAILY_WRITE_CAP = 20_000; // leave headroom for scans + sync inside the 100k/day free tier
 
@@ -293,14 +304,29 @@ function clientIp(c: Context<AppEnv>): string {
  */
 async function requireTurnstile(
   c: Context<AppEnv>,
-  opts: { action: string; payload?: unknown; fetchImpl?: typeof fetch; db: Db },
+  opts: { action: string; payload?: unknown; fetchImpl?: typeof fetch; db: Db; targetDomain?: string },
 ): Promise<TurnstileCheck> {
   // A machine client (AI agent, script) cannot run a browser widget, so it
   // presents an API key instead. The key is the authorisation, the captcha is
   // only there for humans.
+  //
+  // The exemption is scoped by the site the key was issued for: a key bound
+  // to a site only skips the check for requests about that same site, so one
+  // leaked owner key cannot bypass the human gate everywhere. A key issued
+  // without a site (AFR's own agent keys) exempts every site. Fail closed:
+  // a site-bound key presented where no target domain is known exempts nothing.
   const apiKey = c.req.header(API_KEY_HEADER) ?? null;
-  if (apiKey && (await isValidApiKey(opts.db, apiKey))) {
-    return { ok: true };
+  if (apiKey) {
+    const record = await resolveApiKey(opts.db, apiKey);
+    if (record) {
+      if (!record.domain) return { ok: true };
+      if (
+        opts.targetDomain &&
+        directoryDomain(record.domain) === directoryDomain(opts.targetDomain)
+      ) {
+        return { ok: true };
+      }
+    }
   }
   let payload = opts.payload;
   if (payload === undefined) {
@@ -1260,6 +1286,24 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     c.env?.KV && !overrides.adminLoginLimit
       ? new RateLimiter(kvStore(c.env.KV), ADMIN_LOGIN_FAIL_LIMIT, ADMIN_LOGIN_FAIL_WINDOW_MS, 'admin-login-fail')
       : adminLoginFallback;
+  // Paid-order guards (per app instance — same reasoning as adminLoginFallback):
+  // only an attempt that proves domain ownership spends the budget, so an
+  // outsider cannot exhaust someone else's allowance. Numbers must match the
+  // public contract (openapi.json / docs): 10 ad applications, 5 Pro orders.
+  const adApplyFallback =
+    overrides.adApplyLimit ??
+    new RateLimiter(memoryStore(), ADS_APPLY_DOMAIN_LIMIT, DAY_MS, 'ads-apply');
+  const proOrderFallback =
+    overrides.proOrderLimit ??
+    new RateLimiter(memoryStore(), PRO_ORDER_DOMAIN_LIMIT, DAY_MS, 'pro-order');
+  const adApplyLimitOf = (c: Context<AppEnv>): RateLimiter =>
+    c.env?.KV && !overrides.adApplyLimit
+      ? new RateLimiter(kvStore(c.env.KV), ADS_APPLY_DOMAIN_LIMIT, DAY_MS, 'ads-apply')
+      : adApplyFallback;
+  const proOrderLimitOf = (c: Context<AppEnv>): RateLimiter =>
+    c.env?.KV && !overrides.proOrderLimit
+      ? new RateLimiter(kvStore(c.env.KV), PRO_ORDER_DOMAIN_LIMIT, DAY_MS, 'pro-order')
+      : proOrderFallback;
   const admin = (c: Context<AppEnv>) =>
     handleAdmin(c.req.raw, c.env ?? {}, () => dbOf(c, overrides), adminLoginLimitOf(c));
   app.all('/admin', admin);
@@ -1845,6 +1889,7 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     const turnstile = await requireTurnstile(c, {
       action: TURNSTILE_ACTIONS.submit,
       payload,
+      targetDomain: domain,
       fetchImpl: overrides.turnstileFetch,
       db: dbOf(c, overrides),
     });
@@ -1947,6 +1992,7 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     const turnstile = await requireTurnstile(c, {
       action: TURNSTILE_ACTIONS.searchScan,
       payload,
+      targetDomain: domain,
       fetchImpl: overrides.turnstileFetch,
       db: dbOf(c, overrides),
     });
@@ -2230,8 +2276,28 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     }
     return next();
   }, smallBody, async (c) => {
+    const input = await c.req.json<unknown>().catch(() => null);
+    // Per-site daily budget: only an attempt that proves domain ownership
+    // spends it, so an outsider cannot exhaust someone else's allowance.
+    const raw = input && typeof input === 'object' && !Array.isArray(input)
+      ? (input as { domain?: unknown }).domain : undefined;
+    const requested = typeof raw === 'string' ? normalizeDomain(raw) : null;
+    if (requested && await ownerOwnsDomain(dbOf(c, overrides), requested, bearerToken(c))) {
+      const limiter = adApplyLimitOf(c);
+      const key = directoryDomain(requested);
+      const decision = await limiter.check(key);
+      if (!decision.allowed) {
+        const { retryAfter, nextAllowedAt } = retryPayload(limiter);
+        return c.json(
+          { error: 'rate_limited', scope: 'domain', retryAfter, nextAllowedAt },
+          429,
+          { 'Retry-After': String(retryAfter) },
+        );
+      }
+      await limiter.consume(key);
+    }
     const result = await createAdOrder(dbOf(c, overrides), {
-      input: await c.req.json<unknown>().catch(() => null), manageToken: bearerToken(c),
+      input, manageToken: bearerToken(c),
       env: c.env, fetchImpl: overrides.fetchImpl ?? fetch,
     });
     return result.ok ? c.json({ order: result.order }, result.status) : c.json({ error: result.error }, result.status);
@@ -2742,6 +2808,7 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     const turnstile = await requireTurnstile(c, {
       action: TURNSTILE_ACTIONS.ownerEmail,
       payload,
+      targetDomain: normalized,
       fetchImpl: overrides.turnstileFetch,
       db: dbOf(c, overrides),
     });
@@ -2856,6 +2923,7 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     const turnstile = await requireTurnstile(c, {
       action: TURNSTILE_ACTIONS.ownerEmail,
       payload,
+      targetDomain: canonical,
       fetchImpl: overrides.turnstileFetch,
       db: dbOf(c, overrides),
     });
@@ -3042,6 +3110,7 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     const turnstile = await requireTurnstile(c, {
       action: TURNSTILE_ACTIONS.ownerEmail,
       payload,
+      targetDomain: canonical,
       fetchImpl: overrides.turnstileFetch,
       db: dbOf(c, overrides),
     });
@@ -3240,6 +3309,7 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     const turnstile = await requireTurnstile(c, {
       action: TURNSTILE_ACTIONS.ownerEmail,
       payload,
+      targetDomain: canonical,
       fetchImpl: overrides.turnstileFetch,
       db: dbOf(c, overrides),
     });
@@ -3547,6 +3617,23 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
     const payload = (body ?? {}) as { domain?: unknown };
     if (typeof payload.domain !== 'string') {
       return c.json({ error: 'invalid_domain' }, 400);
+    }
+    // Per-site daily budget: only an attempt that proves domain ownership
+    // spends it, so an outsider cannot exhaust someone else's allowance.
+    const requested = normalizeDomain(payload.domain);
+    if (requested && await ownerOwnsDomain(dbOf(c, overrides), requested, bearerToken(c))) {
+      const limiter = proOrderLimitOf(c);
+      const key = directoryDomain(requested);
+      const decision = await limiter.check(key);
+      if (!decision.allowed) {
+        const { retryAfter, nextAllowedAt } = retryPayload(limiter);
+        return c.json(
+          { error: 'rate_limited', scope: 'domain', retryAfter, nextAllowedAt },
+          429,
+          { 'Retry-After': String(retryAfter) },
+        );
+      }
+      await limiter.consume(key);
     }
     const result = await createProOrder(dbOf(c, overrides), {
       domain: payload.domain,

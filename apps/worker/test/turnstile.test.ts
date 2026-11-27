@@ -347,3 +347,67 @@ describe('protected POST endpoints', () => {
     assert.equal((await res.json()).error, 'unauthorized');
   });
 });
+
+describe('API key scope', () => {
+  // The exemption follows the key's site (audit item: a leaked owner key must
+  // not bypass the human gate everywhere). A key bound to a site only exempts
+  // requests about that site; a key issued without a site exempts everything.
+  const env = { TURNSTILE_SECRET: 'test-secret' };
+
+  async function keyApp(t: TestContext, domain: string | null) {
+    const seeded = openSeededDb();
+    t.after(() => seeded.raw.close());
+    const key = `scope-key-${domain ?? 'siteless'}`;
+    if (domain) {
+      seeded.raw
+        .prepare('INSERT INTO api_keys (key_hash, domain, tier, created_at, revoked_at) VALUES (?, ?, ?, ?, NULL)')
+        .run(await hashApiKey(key), domain, 'free', new Date().toISOString());
+    } else {
+      seeded.raw
+        .prepare('INSERT INTO api_keys (key_hash, tier, created_at, revoked_at) VALUES (?, ?, ?, NULL)')
+        .run(await hashApiKey(key), 'free', new Date().toISOString());
+    }
+    const siteverify = { calls: 0 };
+    const app = createApp({
+      db: seeded.db,
+      turnstileFetch: (async () => {
+        siteverify.calls += 1;
+        return jsonResponse({ success: false, 'error-codes': ['bad-token'] });
+      }) as typeof fetch,
+    });
+    const submit = (target: string) =>
+      app.request('/api/v1/submissions', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', [API_KEY_HEADER]: key },
+        body: JSON.stringify({ domain: target }),
+      }, env);
+    return { submit, siteverify };
+  }
+
+  it('a key bound to a site exempts that site', async (t) => {
+    const { submit, siteverify } = await keyApp(t, 'example.com');
+    // example.com is listed: passing the gate answers "exists", not 400.
+    const res = await submit('example.com');
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { ok: true, status: 'exists', domain: 'example.com' });
+    assert.equal(siteverify.calls, 0, 'an exempt request never reaches siteverify');
+  });
+
+  it('a key bound to a site does not exempt other sites', async (t) => {
+    const { submit, siteverify } = await keyApp(t, 'example.com');
+    const res = await submit('other.example');
+    assert.equal(res.status, 400);
+    const body = await res.json() as { error: string; reason: string };
+    assert.equal(body.error, 'turnstile_failed');
+    assert.equal(body.reason, 'missing_token');
+    assert.equal(siteverify.calls, 0, 'a missing token is refused before siteverify');
+  });
+
+  it('a key issued without a site exempts every site', async (t) => {
+    const { submit, siteverify } = await keyApp(t, null);
+    const res = await submit('brandnew.test');
+    assert.equal(res.status, 201, 'a siteless key is a general agent key');
+    assert.equal((await res.json()).status, 'queued');
+    assert.equal(siteverify.calls, 0);
+  });
+});

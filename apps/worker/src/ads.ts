@@ -8,6 +8,7 @@ import type { Db, SqlParam } from './db.ts';
 import { normalizeDomain } from './domain.ts';
 
 export const ADS_ADMIN_PATH = '/admin/commercial/ads';
+export const AD_REPORT_CLOSE_PATH = '/admin/commercial/ad-report/close';
 export const AD_REPORT_REASONS = ['misleading', 'spam', 'inappropriate', 'other'] as const;
 const ASSET = 'USDC';
 const CHAIN = 'base';
@@ -378,6 +379,59 @@ export async function moderateAd(db: Db, { requestId, subject, id, decision, sta
   return { result: 'applied' };
 }
 
+export interface CloseAdReportInput {
+  requestId: string;
+  subject: string;
+  reportId: number;
+  decision: string;
+  note?: string | null;
+  now?: Date;
+}
+
+export type CloseAdReportResult = { result: 'applied' | 'replayed' } | { result: 'conflict'; error: string };
+
+/** The console issues a close request as `admin:<uuid>` — the form's UUID,
+ * namespaced the way the admin write paths mark their own requests. A bare
+ * UUID is accepted too, so the helper stays usable the way `moderateAd` is. */
+const ADMIN_REQUEST_ID = /^(?:admin:)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Resolve or dismiss one open ad report. The request is claimed, the status
+ * changes and the audit row land in one `db.batch` (one transaction); a
+ * report that is already closed aborts the whole batch, so a lost race
+ * leaves the report untouched and no receipt behind. */
+export async function closeAdReport(db: Db, { requestId, subject, reportId, decision, note, now = new Date() }:
+  CloseAdReportInput): Promise<CloseAdReportResult> {
+  if (!ADMIN_REQUEST_ID.test(requestId) || !subject.trim() || subject.length > 256 || !validId(reportId)
+    || !['resolve', 'dismiss'].includes(decision)) return { result: 'conflict', error: '举报处理参数无效。' };
+  const requestKey = requestId.toLowerCase();
+  if (await requestReserved(db, requestKey)) return { result: 'replayed' };
+  const text = plainText(note ?? '', 500);
+  if (text === null) return { result: 'conflict', error: '结案备注不能超过 500 字。' };
+  const stamp = now.toISOString();
+  const action = `ads.report_${decision}`;
+  try {
+    await db.batch([
+      reserveRequestStatement({ requestId: requestKey, action, subject, createdAt: stamp }),
+      { sql: `INSERT INTO admin_ad_report_close (request_id, subject, report_id, decision, note, now)
+        VALUES (?, ?, ?, ?, ?, ?)`, params: [requestKey, subject, reportId, decision, text, stamp] },
+    ]);
+  } catch (error) {
+    const message = String(error);
+    if (/UNIQUE constraint failed:\s*admin_requests\.request_id\b/i.test(message) && await requestReserved(db, requestKey)) {
+      return { result: 'replayed' };
+    }
+    if (message.includes('ad_report_state_conflict')) {
+      return { result: 'conflict', error: '举报不存在或已处理，请刷新后重试。' };
+    }
+    if (message.includes('ad_admin_request_required')) {
+      return { result: 'conflict', error: '请求标识无效，请刷新页面重试。' };
+    }
+    if (message.includes('ad_report_decision_invalid')) return { result: 'conflict', error: '举报处理参数无效。' };
+    throw error;
+  }
+  return { result: 'applied' };
+}
+
 interface ReviewRow extends Pick<CheckoutRow, 'id' | 'domain' | 'slot' | 'slot_key' | 'headline' | 'body' | 'starts_at'
   | 'ends_at' | 'status' | 'paid' | 'approved' | 'eligible_site' | 'review_note' | 'reviewed_at' | 'billing_status'
   | 'amount' | 'term_days' | 'checkout_closed' | 'created_at'> {
@@ -440,6 +494,17 @@ function moderationForm(row: ReviewRow, now: string): HtmlEscapedString | '' {
     ${decision}${starts}${adminField('审核备注', h`<input name="note" maxlength="500">`)}`, '保存');
 }
 
+/** The form that closes one open report: resolve or dismiss, with an
+ * optional note that travels into the audit row's after_json. */
+function reportCloseForm(row: ReportRow): HtmlEscapedString {
+  const decision = adminField('处理', h`<select name="decision">
+    <option value="resolve">结案</option>
+    <option value="dismiss">驳回</option>
+  </select>`);
+  return adminForm(AD_REPORT_CLOSE_PATH, crypto.randomUUID(), h`<input type="hidden" name="report_id" value="${row.id}">
+    ${decision}${adminField('备注', h`<input name="note" maxlength="500">`)}`, '提交');
+}
+
 export function renderAdsBoard(board: AdsBoard, canWrite: boolean): HtmlEscapedString {
   const offers = board.offers.map(row => h`<tr><th scope="row">${SLOT_LABEL[row.slot]}</th>
     <td>${row.amount} USDC / ${row.term_days} 天</td><td>${row.capacity}</td><td>${row.available ? '可开售' : '未开放'}</td></tr>`);
@@ -449,7 +514,8 @@ export function renderAdsBoard(board: AdsBoard, canWrite: boolean): HtmlEscapedS
     <td>${row.starts_at ?? '—'}<br>${row.ends_at ?? '—'}</td><td>${row.impressions} / ${row.clicks}</td>
     <td>${row.review_note ?? ''}${canWrite ? moderationForm(row, board.now) : ''}</td></tr>`);
   const reports = board.reports.map(row => h`<tr><th scope="row">#${row.id}</th><td>#${row.ad_id} ${row.domain}</td>
-    <td>${row.reason}</td><td>${row.detail}</td><td>${row.created_at}</td><td>${row.status}</td></tr>`);
+    <td>${row.reason}</td><td>${row.detail}</td><td>${row.created_at}</td>
+    <td>${row.status}${canWrite && row.status === 'open' ? reportCloseForm(row) : ''}</td></tr>`);
   return h`${adminPanel('广告位规格', adminTable(['广告位', '价格', '容量', '状态'], offers))}
     ${adminPanel('广告审核与排期', h`<p class="muted">仅已确认付款的申请可审核。当前没有退款通道。</p>
       ${adminTable(['广告', '内容', '状态', '档期（UTC）', '曝光 / 点击', '审核'], ads)}`)}

@@ -59,7 +59,7 @@ Content-Type: application/json
 - The field is **`domain`** (a bare hostname). A full URL such as `"https://example.com"` is normalized, but a JSON key named `url` is **rejected** with `400 { "error": "invalid_domain", "message": "domain must be a string" }`.
 - Subdomains are refused (`400 subdomain_not_allowed`) — submit the registrable domain.
 - **A human check is part of the contract.** This endpoint is protected by Cloudflare Turnstile: the body must carry `"turnstile_token"`, a token minted by the widget on the AFR submit form (`https://afr.im/submit`). A missing, expired, or foreign token is answered `400 { "error": "turnstile_failed", "reason": "missing_token" | "invalid_token" | "wrong_action" | "verify_failed" }` — nothing is queued and no quota is spent. `wrong_action` means the token was minted for another AFR form (a submit token does not unlock the search endpoint).
-- **If you are an agent that cannot run a browser widget**, send the header `X-AFR-Agent-Key: <key>` instead. A key issued by AFR and not revoked skips the human check entirely — no `turnstile_token` needed. Site owners can issue one from their owner panel; everyone else asks AFR for one (see [§7](#7-contact)), and note that an unknown or revoked key unlocks nothing, the human check still applies.
+- **If you are an agent that cannot run a browser widget**, send the header `X-AFR-Agent-Key: <key>` instead. A key issued by AFR and not revoked skips the human check — no `turnstile_token` needed. The exemption follows the key's site: a key issued from an owner panel skips the check only for requests about its own site (submitting, scanning or registering that site's mailbox); a key issued without a site — the kind AFR hands to agents on request (see [§7](#7-contact)) — skips it for every site. Note that an unknown or revoked key unlocks nothing, the human check still applies.
 - Responses: `201 { "ok": true, "id": 1, "domain": "example.com", "status": "queued", "etaSeconds": 600, "dispatch": "scheduled" }` for a new entry; `200 { "ok": true, "status": "exists" }` when the domain is already rated; `200 { "ok": true, "status": "queued" }` when it is already waiting in the queue (idempotent — no quota burned).
 - Quota: 5 requests per IP per day. `429 { "error": "rate_limited" }` otherwise.
 
@@ -75,7 +75,7 @@ POST https://afr.im/api/v1/search-scan
 
 10 scans per IP per day, 1 per domain per 30-minute window, 50 globally per day.
 
-- **The same human check applies here**: the body must carry `"turnstile_token"`, minted by the widget on the AFR search page (`https://afr.im/search`), otherwise `400 { "error": "turnstile_failed", "reason": "…" }`. The `X-AFR-Agent-Key` header skips it for agents that cannot run a browser widget (see §2.3).
+- **The same human check applies here**: the body must carry `"turnstile_token"`, minted by the widget on the AFR search page (`https://afr.im/search`), otherwise `400 { "error": "turnstile_failed", "reason": "…" }`. The `X-AFR-Agent-Key` header skips it for agents that cannot run a browser widget — for the site the key was issued for (keys issued without a site work everywhere; see §2.3).
 
 **`dispatch` field (new entries only):** `"scheduled"` means the scan pipeline was handed to the runtime and triggered in the background — normal, nothing to retry. `"deferred"` means the trigger did not fire (e.g. the pipeline token is unavailable); the entry is still queued and the nightly run drains it, so the scan still happens, just later (typically within 24 h). The idempotent `exists` / already-`queued` responses omit this field. `etaSeconds` is `600` for a new submission (scan plus rebuild) and `180` for an on-demand re-scan.
 
@@ -189,7 +189,7 @@ Authorization: Bearer manage-…
 → 200 { "domain": "example.com", "notify": false }
 ```
 
-- **A human check is part of the contract**: both write endpoints (`/api/v1/owners/email/start`, `/api/v1/owners/email`) need `"turnstile_token"` (action `afr_owner_email`), otherwise `400 { "error": "turnstile_failed", "reason": "missing_token" | "invalid_token" | "wrong_action" | "verify_failed" }`. The `X-AFR-Agent-Key` header skips the check for agents that cannot run a browser widget. The mailbox change of §2.11 is gated the same way.
+- **A human check is part of the contract**: both write endpoints (`/api/v1/owners/email/start`, `/api/v1/owners/email`) need `"turnstile_token"` (action `afr_owner_email`), otherwise `400 { "error": "turnstile_failed", "reason": "missing_token" | "invalid_token" | "wrong_action" | "verify_failed" }`. The `X-AFR-Agent-Key` header skips the check for agents that cannot run a browser widget — for the site the key was issued for (keys issued without a site work everywhere). The mailbox change of §2.11 is gated the same way.
 - Limits: 3 challenges and 3 registrations per domain per day, 5 per IP per hour.
 - The address is stored encrypted and is only ever reported masked (`o***@example.com`) — AFR never returns the plaintext address.
 - The AFR panel keeps the management token in the browser you used (localStorage). Moving to another machine means pasting the token back into the panel; a lost token can be recovered with §2.12.
@@ -234,7 +234,7 @@ What the change does:
 - Confirmation switches the address and rotates the management token in one operation. Save the new token when the response displays it.
 - The notification preference carries over to the new address.
 
-Limits: 3 mailbox writes per domain per day, 5 per IP per hour (the same bucket as a registration). The human check applies as well — `turnstile_token` (action `afr_owner_email`), or the `X-AFR-Agent-Key` header for agents.
+Limits: 3 mailbox writes per domain per day, 5 per IP per hour (the same bucket as a registration). The human check applies as well — `turnstile_token` (action `afr_owner_email`), or the `X-AFR-Agent-Key` header for agents (for the site the key was issued for; keys issued without a site work everywhere).
 
 ### 2.12 Recover a lost management token
 
@@ -286,8 +286,8 @@ Authorization: Bearer manage-…
 - Prefer the JSON API over scraping HTML — it is cheaper for both sides and its shapes are stable.
 - Use conditional requests (`If-None-Match` / `If-Modified-Since`) where possible and cache responses; re-fetch only pages you detected as changed instead of polling. Static pages are served with `Cache-Control: max-age=60, stale-while-revalidate=600`; `/data/*` with `max-age=300, stale-while-revalidate=86400`; `/og/*`, `/icons/*`, `/fonts/*` are cacheable for a week.
 - Do not retry aggressively: one retry after a `5xx` or timeout, then back off. `4xx` responses are final (except `429`, where `Retry-After` / `nextAllowedAt` is authoritative).
-- POST endpoints are rate-limited as documented per endpoint; public `GET` endpoints need no key. The two POST endpoints that queue a scan also need the human-verification token of §2.3 (`turnstile_token`, or the `X-AFR-Agent-Key` header for agents).
-- The owner-mailbox write endpoints (`/api/v1/owners/email/start`, `/api/v1/owners/email`, `/api/v1/owners/email/change`) carry the same human-verification token — `turnstile_token` (action `afr_owner_email`), or the `X-AFR-Agent-Key` header for agents. See §2.9.
+- POST endpoints are rate-limited as documented per endpoint; public `GET` endpoints need no key. The two POST endpoints that queue a scan also need the human-verification token of §2.3 (`turnstile_token`, or the `X-AFR-Agent-Key` header for agents — for the site the key was issued for, keys issued without a site work everywhere).
+- The owner-mailbox write endpoints (`/api/v1/owners/email/start`, `/api/v1/owners/email`, `/api/v1/owners/email/change`) carry the same human-verification token — `turnstile_token` (action `afr_owner_email`), or the `X-AFR-Agent-Key` header for agents (for the site the key was issued for; keys issued without a site work everywhere). See §2.9.
 
 ## 4. What you may reuse
 

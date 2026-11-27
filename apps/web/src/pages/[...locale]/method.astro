@@ -247,6 +247,34 @@ const faqJsonLd = JSON.stringify({
       </nav>
     </header>
 
+    <!-- Scoring release notes — filled client-side from /api/v1/method when an
+         operator has published one; stays hidden otherwise (no build-time fetch). -->
+    <section class="sec release" id="method-release" hidden>
+      <h2>{L.ui.methodRelease}</h2>
+      <p class="release-ver">
+        <span class="mono" id="method-release-engine"></span>
+      </p>
+      <div class="release-notes" id="method-release-notes"></div>
+    </section>
+    <script is:inline>
+      (() => {
+        fetch('/api/v1/method', { headers: { accept: 'application/json' } })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((data) => {
+            const release = data && data.release;
+            if (!release || typeof release.engineVersion !== 'string') return;
+            const box = document.getElementById('method-release');
+            const engine = document.getElementById('method-release-engine');
+            const notes = document.getElementById('method-release-notes');
+            if (!box || !engine || !notes) return;
+            engine.textContent = release.engineVersion;
+            notes.textContent = typeof release.notes === 'string' ? release.notes : '';
+            box.hidden = false;
+          })
+          .catch(() => {});
+      })();
+    </script>
+
     <!-- (a) three-layer model -->
     <section class="sec" id="layers">
       <h2>{P.layerHeading}</h2>
@@ -730,6 +758,20 @@ const faqJsonLd = JSON.stringify({
     font-size: 12.5px;
     color: var(--text-3);
     margin: 6px 0 0;
+  }
+
+  /* release notes (client-populated) */
+  .release-ver {
+    margin: 0 0 10px;
+    font-size: 13.5px;
+    color: var(--text-2);
+  }
+  .release-notes {
+    white-space: pre-wrap;
+    max-width: 82ch;
+    font-size: 13.5px;
+    line-height: 1.7;
+    color: var(--text-2);
   }
 
   @media (max-width: 767px) {

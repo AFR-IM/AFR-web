@@ -20,7 +20,7 @@ import {
 } from './admin-commercial.ts';
 import { readMonitorBoard, renderMonitorBoard } from './admin-monitor.ts';
 import { listScoringReleases, publishScoringRelease, renderScoringBoard } from './admin-scoring.ts';
-import { ADS_ADMIN_PATH, moderateAd, readAdsBoard, renderAdsBoard } from './ads.ts';
+import { AD_REPORT_CLOSE_PATH, ADS_ADMIN_PATH, closeAdReport, moderateAd, readAdsBoard, renderAdsBoard } from './ads.ts';
 import { moderatePromo } from './promo.ts';
 import { recordCharityDonation } from './charity.ts';
 import {
@@ -68,6 +68,7 @@ const NOTICES: Record<string, string> = {
   pro_revoked: 'Pro 期限已撤销。',
   apikey_revoked: '机器密钥已吊销。',
   ad_moderated: '广告状态已更新。',
+  ad_report_closed: '广告举报已处理。',
   promo_moderated: '推广状态已更新。',
   donation_recorded: '捐赠已登记（台账只追加，不可修改）。',
   scoring_published: '评分版本说明已发布。',
@@ -440,6 +441,17 @@ export async function handleAdmin(request: Request, env: AdminAccessEnv & AdminL
       });
       if (result.result === 'conflict') return errorPage('广告操作未执行', result.error, '/admin/commercial');
       return back('/admin/commercial', result.result === 'replayed' ? 'replayed' : 'ad_moderated');
+    }
+
+    if (url.pathname === AD_REPORT_CLOSE_PATH) {
+      const result = await closeAdReport(db, {
+        // The form's UUID, namespaced the way the console marks its own requests.
+        requestId: `admin:${requestId}`, subject: actor.subject,
+        reportId: Number(form.get('report_id')),
+        decision: form.get('decision') ?? '', note: form.get('note'),
+      });
+      if (result.result === 'conflict') return errorPage('举报结案未执行', result.error, '/admin/commercial');
+      return back('/admin/commercial', result.result === 'replayed' ? 'replayed' : 'ad_report_closed');
     }
 
     if (url.pathname === '/admin/commercial/promo/decide') {

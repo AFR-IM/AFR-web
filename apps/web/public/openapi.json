@@ -988,7 +988,10 @@
                       ]
                     },
                     "endsAt": {
-                      "type": "stringnull"
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     },
                     "reviewNote": {
                       "type": [
@@ -1292,7 +1295,7 @@
     "/api/v1/ads/apply": {
       "post": {
         "summary": "Buy a sponsorship (closed unless the operator opened sales)",
-        "description": "Owner-authenticated: the caller must hold the confirmed mailbox management token of the site, sent as Authorization: Bearer <token>. The price, asset, chain and term are chosen by the server. The placement is created in a pending state and is served only after AIPAY confirms the payment and an operator approves it. Reusing the same requestId retries the same order instead of paying twice. Answers 403 ads_sales_closed while self-serve is closed, 409 slot_full / slot_unavailable / order_pending / request_conflict, and 400 disallowed_claim for misleading copy. There is no refund channel today.",
+        "description": "Owner-authenticated: the caller must hold the confirmed mailbox management token of the site, sent as Authorization: Bearer <token>. The price, asset, chain and term are chosen by the server. The placement is created in a pending state and is served only after AIPAY confirms the payment and an operator approves it. Reusing the same requestId retries the same order instead of paying twice. Answers 403 ads_sales_closed while self-serve is closed, 409 slot_full / slot_unavailable / order_pending / request_conflict, and 400 disallowed_claim for misleading copy. There is no refund channel today. Rate-limited to 10 ad applications per site per UTC day (authenticated attempts only — a request that fails the site-owner token check is not counted; 429 rate_limited with a Retry-After header).",
         "requestBody": {
           "required": true,
           "content": {
@@ -1360,6 +1363,16 @@
           },
           "409": {
             "description": "Capacity or state conflict"
+          },
+          "429": {
+            "description": "Rate-limited to 10 ad applications per site per UTC day (registrable domain); only authenticated attempts count — a request that fails the site-owner token check is not counted. Answered 429 { \"error\": \"rate_limited\", \"scope\": \"domain\", \"retryAfter\", \"nextAllowedAt\" } with a Retry-After header.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
           }
         }
       }
@@ -1555,7 +1568,7 @@
     "/api/v1/submissions": {
       "post": {
         "summary": "Request a scan of a site",
-        "description": "Fully automatic inclusion. Registered domains only (eTLD+1 heuristic): subdomains like blog.example.com are rejected with error subdomain_not_allowed, www is stripped. Already-listed domains return status 'exists' (open the detail page); already-queued domains return status 'queued' (idempotent, no quota burned). New submissions are queued AND immediately dispatch the scan workflow, so a typical listing is searchable within ~10 minutes (etaSeconds covers scan + rebuild); if dispatch is deferred the next daily scan (02:00 UTC) collects it. Rate-limited to 5 new submissions per IP per day. New entries carry etaSeconds 600 (scan plus rebuild) and dispatch 'scheduled' | 'ok' | 'deferred'; the idempotent 'exists'/'queued' responses omit dispatch. The request is gated by a human check: the body field 'turnstile_token' carries a Cloudflare Turnstile token minted by the widget on the AFR submit form (action 'afr_submit'). Without a valid token the endpoint answers 400 { \"error\": \"turnstile_failed\", \"reason\": \"missing_token\" | \"invalid_token\" | \"wrong_action\" | \"verify_failed\" } and nothing is queued. AI agents and scripts that cannot run a browser widget may send the 'X-AFR-Agent-Key' request header instead: a key issued by AFR and not revoked skips the human check (site owners issue one from their owner panel; others ask AFR).",
+        "description": "Fully automatic inclusion. Registered domains only (eTLD+1 heuristic): subdomains like blog.example.com are rejected with error subdomain_not_allowed, www is stripped. Already-listed domains return status 'exists' (open the detail page); already-queued domains return status 'queued' (idempotent, no quota burned). New submissions are queued AND immediately dispatch the scan workflow, so a typical listing is searchable within ~10 minutes (etaSeconds covers scan + rebuild); if dispatch is deferred the next daily scan (02:00 UTC) collects it. Rate-limited to 5 new submissions per IP per day. New entries carry etaSeconds 600 (scan plus rebuild) and dispatch 'scheduled' | 'ok' | 'deferred'; the idempotent 'exists'/'queued' responses omit dispatch. The request is gated by a human check: the body field 'turnstile_token' carries a Cloudflare Turnstile token minted by the widget on the AFR submit form (action 'afr_submit'). Without a valid token the endpoint answers 400 { \"error\": \"turnstile_failed\", \"reason\": \"missing_token\" | \"invalid_token\" | \"wrong_action\" | \"verify_failed\" } and nothing is queued. AI agents and scripts that cannot run a browser widget may send the 'X-AFR-Agent-Key' request header instead: a key issued by AFR and not revoked skips the human check (site owners issue one from their owner panel; others ask AFR). A key bound to a site only skips the check for requests about that site; a key issued without a site skips it everywhere.",
         "parameters": [
           {
             "name": "X-AFR-Agent-Key",
@@ -1564,7 +1577,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Agent key issued by AFR. When present and valid — the key's SHA-256 hash is in the api_keys table and not revoked — the human check is skipped and turnstile_token is not required. Self-service issuance is not open yet: ask AFR for a key."
+            "description": "Agent key issued by AFR. When present and valid — the key's SHA-256 hash is in the api_keys table and not revoked — the human check is skipped and turnstile_token is not required. Self-service issuance is not open yet: ask AFR for a key. A key bound to a site only skips the check for requests about that site; a key issued without a site skips it everywhere."
           }
         ],
         "requestBody": {
@@ -1588,7 +1601,7 @@
                   },
                   "turnstile_token": {
                     "type": "string",
-                    "description": "Human-verification token: a Cloudflare Turnstile token (action 'afr_submit') minted by the widget on the AFR submit form. Optional in the schema, required in practice — a request without a valid token is answered 400 turnstile_failed — unless the caller sends a valid 'X-AFR-Agent-Key' header, which skips the human check."
+                    "description": "Human-verification token: a Cloudflare Turnstile token (action 'afr_submit') minted by the widget on the AFR submit form. Optional in the schema, required in practice — a request without a valid token is answered 400 turnstile_failed — unless the caller sends a valid 'X-AFR-Agent-Key' header, which skips the human check for the site the key was issued for (a key issued without a site skips it everywhere)."
                   }
                 }
               },
@@ -1717,7 +1730,7 @@
     "/api/v1/search-scan": {
       "post": {
         "summary": "Request an on-demand scan of a domain",
-        "description": "Interactive-session variant of a submission: looser quota tiers (10 per IP per day, 1 per domain per 30-minute window, 50 globally per day). Already-listed domains return status 'exists' and already-queued domains return status 'queued' with no quota burned - both omit the dispatch field. The scan workflow is dispatched in the background, so the response never waits for GitHub: 'scheduled' means triggered, 'deferred' means the nightly run will pick it up (still queued, not lost). The same human check as the submission endpoint applies: the body field 'turnstile_token' carries a Cloudflare Turnstile token minted by the widget on the AFR search page (action 'afr_search_scan'), and a missing or invalid token is answered 400 { \"error\": \"turnstile_failed\", \"reason\": \"missing_token\" | \"invalid_token\" | \"wrong_action\" | \"verify_failed\" }. AI agents and scripts that cannot run a browser widget may send the 'X-AFR-Agent-Key' request header instead: a key issued by AFR and not revoked skips the human check (site owners issue one from their owner panel; others ask AFR).",
+        "description": "Interactive-session variant of a submission: looser quota tiers (10 per IP per day, 1 per domain per 30-minute window, 50 globally per day). Already-listed domains return status 'exists' and already-queued domains return status 'queued' with no quota burned - both omit the dispatch field. The scan workflow is dispatched in the background, so the response never waits for GitHub: 'scheduled' means triggered, 'deferred' means the nightly run will pick it up (still queued, not lost). The same human check as the submission endpoint applies: the body field 'turnstile_token' carries a Cloudflare Turnstile token minted by the widget on the AFR search page (action 'afr_search_scan'), and a missing or invalid token is answered 400 { \"error\": \"turnstile_failed\", \"reason\": \"missing_token\" | \"invalid_token\" | \"wrong_action\" | \"verify_failed\" }. AI agents and scripts that cannot run a browser widget may send the 'X-AFR-Agent-Key' request header instead: a key issued by AFR and not revoked skips the human check (site owners issue one from their owner panel; others ask AFR). A key bound to a site only skips the check for requests about that site; a key issued without a site skips it everywhere.",
         "parameters": [
           {
             "name": "X-AFR-Agent-Key",
@@ -1726,7 +1739,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Agent key issued by AFR. When present and valid — the key's SHA-256 hash is in the api_keys table and not revoked — the human check is skipped and turnstile_token is not required. Self-service issuance is not open yet: ask AFR for a key."
+            "description": "Agent key issued by AFR. When present and valid — the key's SHA-256 hash is in the api_keys table and not revoked — the human check is skipped and turnstile_token is not required. Self-service issuance is not open yet: ask AFR for a key. A key bound to a site only skips the check for requests about that site; a key issued without a site skips it everywhere."
           }
         ],
         "requestBody": {
@@ -1745,7 +1758,7 @@
                   },
                   "turnstile_token": {
                     "type": "string",
-                    "description": "Human-verification token: a Cloudflare Turnstile token (action 'afr_search_scan') minted by the widget on the AFR search page. Optional in the schema, required in practice — a request without a valid token is answered 400 turnstile_failed — unless the caller sends a valid 'X-AFR-Agent-Key' header, which skips the human check."
+                    "description": "Human-verification token: a Cloudflare Turnstile token (action 'afr_search_scan') minted by the widget on the AFR search page. Optional in the schema, required in practice — a request without a valid token is answered 400 turnstile_failed — unless the caller sends a valid 'X-AFR-Agent-Key' header, which skips the human check for the site the key was issued for (a key issued without a site skips it everywhere)."
                   }
                 }
               },
@@ -2324,7 +2337,7 @@
     "/api/v1/owners/email/start": {
       "post": {
         "summary": "Request a domain-control challenge for an owner mailbox",
-        "description": "Starts the owner-mailbox registration of a domain (score-change notifications). The body carries the domain and the address that should receive the notices; AFR answers with a challenge plus the three ways to publish it on the domain (DNS TXT record, well-known file, homepage meta tag). The challenge is bound to the address, valid for 24 hours and can be spent only once. Quotas: 3 challenges per domain per day, 5 per IP per hour. A human check is part of the contract: the body must also carry { \"turnstile_token\": \"…\" } (a Cloudflare Turnstile token, action 'afr_owner_email', minted by the widget on the site detail page). A missing, expired or foreign token is answered 400 { \"error\": \"turnstile_failed\", \"reason\": \"missing_token\" | \"invalid_token\" | \"wrong_action\" | \"verify_failed\" } — no challenge is minted and no rate-limit budget is spent. An agent that cannot run the widget may send the 'X-AFR-Agent-Key' header instead (a key issued by AFR (site owners issue one from their owner panel; others ask AFR)).",
+        "description": "Starts the owner-mailbox registration of a domain (score-change notifications). The body carries the domain and the address that should receive the notices; AFR answers with a challenge plus the three ways to publish it on the domain (DNS TXT record, well-known file, homepage meta tag). The challenge is bound to the address, valid for 24 hours and can be spent only once. Quotas: 3 challenges per domain per day, 5 per IP per hour. A human check is part of the contract: the body must also carry { \"turnstile_token\": \"…\" } (a Cloudflare Turnstile token, action 'afr_owner_email', minted by the widget on the site detail page). A missing, expired or foreign token is answered 400 { \"error\": \"turnstile_failed\", \"reason\": \"missing_token\" | \"invalid_token\" | \"wrong_action\" | \"verify_failed\" } — no challenge is minted and no rate-limit budget is spent. An agent that cannot run the widget may send the 'X-AFR-Agent-Key' header instead (a key issued by AFR (site owners issue one from their owner panel; others ask AFR)). A key bound to a site only skips the check for requests about that site; a key issued without a site skips it everywhere.",
         "parameters": [
           {
             "name": "X-AFR-Agent-Key",
@@ -2333,7 +2346,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Agent key issued by AFR. When present and valid — the key's SHA-256 hash is in the api_keys table and not revoked — the human check is skipped and turnstile_token is not required. Self-service issuance is not open yet: ask AFR for a key."
+            "description": "Agent key issued by AFR. When present and valid — the key's SHA-256 hash is in the api_keys table and not revoked — the human check is skipped and turnstile_token is not required. Self-service issuance is not open yet: ask AFR for a key. A key bound to a site only skips the check for requests about that site; a key issued without a site skips it everywhere."
           }
         ],
         "requestBody": {
@@ -2358,7 +2371,7 @@
                   },
                   "turnstile_token": {
                     "type": "string",
-                    "description": "Human-verification token: a Cloudflare Turnstile token (action 'afr_owner_email') minted by the widget on the AFR site detail page. Optional in the schema, required in practice — a request without a valid token is answered 400 turnstile_failed — unless the caller sends a valid 'X-AFR-Agent-Key' header, which skips the human check."
+                    "description": "Human-verification token: a Cloudflare Turnstile token (action 'afr_owner_email') minted by the widget on the AFR site detail page. Optional in the schema, required in practice — a request without a valid token is answered 400 turnstile_failed — unless the caller sends a valid 'X-AFR-Agent-Key' header, which skips the human check for the site the key was issued for (a key issued without a site skips it everywhere)."
                   }
                 }
               },
@@ -2456,7 +2469,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Agent key issued by AFR. When present and valid — the key's SHA-256 hash is in the api_keys table and not revoked — the human check is skipped and turnstile_token is not required. Self-service issuance is not open yet: ask AFR for a key."
+            "description": "Agent key issued by AFR. When present and valid — the key's SHA-256 hash is in the api_keys table and not revoked — the human check is skipped and turnstile_token is not required. Self-service issuance is not open yet: ask AFR for a key. A key bound to a site only skips the check for requests about that site; a key issued without a site skips it everywhere."
           }
         ],
         "requestBody": {
@@ -2486,7 +2499,7 @@
                   },
                   "turnstile_token": {
                     "type": "string",
-                    "description": "Human-verification token: a Cloudflare Turnstile token (action 'afr_owner_email') minted by the widget on the AFR site detail page. Optional in the schema, required in practice — a request without a valid token is answered 400 turnstile_failed — unless the caller sends a valid 'X-AFR-Agent-Key' header, which skips the human check."
+                    "description": "Human-verification token: a Cloudflare Turnstile token (action 'afr_owner_email') minted by the widget on the AFR site detail page. Optional in the schema, required in practice — a request without a valid token is answered 400 turnstile_failed — unless the caller sends a valid 'X-AFR-Agent-Key' header, which skips the human check for the site the key was issued for (a key issued without a site skips it everywhere)."
                   }
                 }
               },
@@ -2755,7 +2768,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Agent key issued by AFR. When present and valid — the key's SHA-256 hash is in the api_keys table and not revoked — the human check is skipped and turnstile_token is not required. Self-service issuance is not open yet: ask AFR for a key."
+            "description": "Agent key issued by AFR. When present and valid — the key's SHA-256 hash is in the api_keys table and not revoked — the human check is skipped and turnstile_token is not required. Self-service issuance is not open yet: ask AFR for a key. A key bound to a site only skips the check for requests about that site; a key issued without a site skips it everywhere."
           }
         ],
         "requestBody": {
@@ -2780,7 +2793,7 @@
                   },
                   "turnstile_token": {
                     "type": "string",
-                    "description": "Human-verification token: a Cloudflare Turnstile token (action 'afr_owner_email') minted by the widget on the AFR site detail page. Optional in the schema, required in practice — a request without a valid token is answered 400 turnstile_failed — unless the caller sends a valid 'X-AFR-Agent-Key' header, which skips the human check."
+                    "description": "Human-verification token: a Cloudflare Turnstile token (action 'afr_owner_email') minted by the widget on the AFR site detail page. Optional in the schema, required in practice — a request without a valid token is answered 400 turnstile_failed — unless the caller sends a valid 'X-AFR-Agent-Key' header, which skips the human check for the site the key was issued for (a key issued without a site skips it everywhere)."
                   }
                 }
               },
@@ -2943,7 +2956,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Agent key issued by AFR. When present and valid — the key's SHA-256 hash is in the api_keys table and not revoked — the human check is skipped and turnstile_token is not required. Self-service issuance is not open yet: ask AFR for a key."
+            "description": "Agent key issued by AFR. When present and valid — the key's SHA-256 hash is in the api_keys table and not revoked — the human check is skipped and turnstile_token is not required. Self-service issuance is not open yet: ask AFR for a key. A key bound to a site only skips the check for requests about that site; a key issued without a site skips it everywhere."
           }
         ],
         "requestBody": {
@@ -2973,7 +2986,7 @@
                   },
                   "turnstile_token": {
                     "type": "string",
-                    "description": "Human-verification token: a Cloudflare Turnstile token (action 'afr_owner_email') minted by the widget on the AFR site detail page. Optional in the schema, required in practice — a request without a valid token is answered 400 turnstile_failed — unless the caller sends a valid 'X-AFR-Agent-Key' header, which skips the human check."
+                    "description": "Human-verification token: a Cloudflare Turnstile token (action 'afr_owner_email') minted by the widget on the AFR site detail page. Optional in the schema, required in practice — a request without a valid token is answered 400 turnstile_failed — unless the caller sends a valid 'X-AFR-Agent-Key' header, which skips the human check for the site the key was issued for (a key issued without a site skips it everywhere)."
                   }
                 }
               },
@@ -3596,7 +3609,7 @@
     "/api/v1/pro/api-key": {
       "post": {
         "summary": "Issue or rotate the machine key of a site (management token required)",
-        "description": "Body { \"domain\": \"example.com\" } (or the domain in the query string). The answer carries the plaintext key — it exists exactly once, here: only its hash is stored, so AFR can never show it again. A new key revokes the previous one in the same transaction, so a domain never has two live keys. The key is sent as the X-AFR-Agent-Key request header and unlocks the human check on the scan endpoints; its daily and monthly budgets follow the site's effective tier (free 100/day, pro 10000/day).",
+        "description": "Body { \"domain\": \"example.com\" } (or the domain in the query string). The answer carries the plaintext key — it exists exactly once, here: only its hash is stored, so AFR can never show it again. A new key revokes the previous one in the same transaction, so a domain never has two live keys. The key is sent as the X-AFR-Agent-Key request header and unlocks the human check on the scan endpoints for that site only; its daily and monthly budgets follow the site's effective tier (free 100/day, pro 10000/day).",
         "parameters": [
           {
             "name": "Authorization",
@@ -3793,7 +3806,7 @@
     "/api/v1/billing/pro/orders": {
       "post": {
         "summary": "Open a Pro order (management token required)",
-        "description": "Body { \"domain\": \"example.com\" }. Creates a non-custodial on-chain order and returns the checkout URL; the link is valid for 15 minutes. One open order per domain — a second checkout for the same term is refused with 409 order_pending. Read the state with GET /api/v1/billing/pro/orders/{reference} and drop an unpaid one with POST /api/v1/billing/pro/orders/{reference}/cancel. Payment never changes a score, a grade or a ranking position.",
+        "description": "Body { \"domain\": \"example.com\" }. Creates a non-custodial on-chain order and returns the checkout URL; the link is valid for 15 minutes. One open order per domain — a second checkout for the same term is refused with 409 order_pending. Read the state with GET /api/v1/billing/pro/orders/{reference} and drop an unpaid one with POST /api/v1/billing/pro/orders/{reference}/cancel. Payment never changes a score, a grade or a ranking position. Rate-limited to 5 Pro order attempts per site per UTC day (authenticated attempts only — a request that fails the site-owner token check is not counted; 429 rate_limited with a Retry-After header).",
         "parameters": [
           {
             "name": "Authorization",
@@ -3928,6 +3941,16 @@
                 },
                 "example": {
                   "error": "order_pending"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate-limited to 5 Pro order attempts per site per UTC day (registrable domain); only authenticated attempts count — a request that fails the site-owner token check is not counted. Answered 429 { \"error\": \"rate_limited\", \"scope\": \"domain\", \"retryAfter\", \"nextAllowedAt\" } with a Retry-After header.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
                 }
               }
             }
