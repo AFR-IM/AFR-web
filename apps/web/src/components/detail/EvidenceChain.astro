@@ -6,7 +6,7 @@
 // its source snapshot / excerpt.
 
 import type { SiteDetail } from '../../data/types.ts';
-import { gradeVar } from '../../utils/grade.ts';
+import { gradeTextVar } from '../../utils/grade.ts';
 import { getCatalog } from '../../i18n/loader.ts';
 import EvidenceRow from './EvidenceRow.astro';
 
@@ -19,7 +19,7 @@ const { site, locale } = Astro.props;
 const L = getCatalog(locale);
 const isZh = locale === 'zh-CN';
 const T = (en: string, zh: string) => (isZh ? zh : en);
-const gc = gradeVar(site.grade);
+const gc = gradeTextVar(site.grade); // g-id label text
 const totalChecks = site.layers.reduce((n, l) => n + l.checks.length, 0);
 const principle = L.ui.evidencePrinciple ?? T(
   'No evidence, no points: every awarded point above links to its raw source.',
@@ -86,7 +86,7 @@ const principle = L.ui.evidencePrinciple ?? T(
     word-break: break-all;
   }
   .prompt {
-    color: var(--brand);
+    color: var(--brand-link);
   }
   .hint {
     margin-left: auto;

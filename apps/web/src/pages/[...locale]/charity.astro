@@ -85,7 +85,7 @@ const COPY = {
 };
 ---
 
-<Base title={`${COPY.title} · AFR.IM`} description={COPY.description}>
+<Base title={COPY.title} description={COPY.description}>
   <div class="container charity" data-charity data-locale={locale}>
     <header class="ch-head">
       <h1>{COPY.title}</h1>
@@ -387,11 +387,11 @@ const COPY = {
     color: var(--brand-link);
   }
   .ch-kind-in {
-    color: var(--grade-a);
+    color: var(--grade-a-text);
     font-weight: 700;
   }
   .ch-kind-out {
-    color: var(--brand);
+    color: var(--brand-link);
     font-weight: 700;
   }
   .ch-ledger-note {

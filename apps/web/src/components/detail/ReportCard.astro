@@ -4,7 +4,7 @@
 // site's grade color, then one EvidenceRow per check.
 
 import type { SiteDetail } from '../../data/types.ts';
-import { gradeVar } from '../../utils/grade.ts';
+import { gradeTextVar, gradeVar } from '../../utils/grade.ts';
 import { getCatalog } from '../../i18n/loader.ts';
 import EvidenceRow from './EvidenceRow.astro';
 
@@ -17,7 +17,8 @@ const { site, locale } = Astro.props;
 const L = getCatalog(locale);
 const isZh = locale === 'zh-CN';
 const T = (en: string, zh: string) => (isZh ? zh : en);
-const gc = gradeVar(site.grade);
+const gc = gradeVar(site.grade); // bar fill (graphical)
+const gcText = gradeTextVar(site.grade); // score text
 const hasChecks = site.layers.some((l) => l.checks.length > 0);
 ---
 
@@ -40,7 +41,7 @@ const hasChecks = site.layers.some((l) => l.checks.length > 0);
               <div class="layer-top">
                 <span class="layer-id mono">{layer.layer}</span>
                 <span class="layer-name">{name}</span>
-                <span class="layer-score mono" style={`color:${gc}`}>
+                <span class="layer-score mono" style={`color:${gcText}`}>
                   {layer.awarded} / {layer.max}
                 </span>
               </div>

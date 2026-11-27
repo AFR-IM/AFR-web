@@ -335,7 +335,7 @@ const faqJsonLd = JSON.stringify({
                 <tr>
                   <td>
                     <span class="sw" style={`background:var(--grade-${g.grade.toLowerCase()});`} />
-                    <span class="mono g-letter" style={`color:var(--grade-${g.grade.toLowerCase()});`}>
+                    <span class="mono g-letter" style={`color:var(--grade-${g.grade.toLowerCase()}-text);`}>
                       {g.grade}
                     </span>
                   </td>
@@ -396,9 +396,9 @@ const faqJsonLd = JSON.stringify({
       <h2>{L.ui.recomputeTitle ?? P.recomputeHeading}</h2>
       <p>{P.recomputeIntro}</p>
       <p class="step">{P.recomputeClone}</p>
-      <pre class="mono"><code>{cloneSnippet}</code></pre>
+      <pre class="mono" tabindex="0"><code>{cloneSnippet}</code></pre>
       <p class="step">{P.recomputeRun}</p>
-      <pre class="mono"><code>{runSnippet}</code></pre>
+      <pre class="mono" tabindex="0"><code>{runSnippet}</code></pre>
     </section>
 
     <!-- (f) neutrality pledge -->
@@ -454,7 +454,7 @@ const faqJsonLd = JSON.stringify({
     font-size: 12px;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: var(--brand);
+    color: var(--brand-link);
   }
   .hero h1 {
     font-size: clamp(28px, 4.4vw, 42px);
@@ -478,7 +478,7 @@ const faqJsonLd = JSON.stringify({
   }
   .toc .chip:hover {
     border-color: var(--brand);
-    color: var(--brand);
+    color: var(--brand-link);
   }
 
   .sec {
@@ -576,7 +576,7 @@ const faqJsonLd = JSON.stringify({
     border-bottom: 1px solid var(--line);
   }
   .lid {
-    color: var(--brand);
+    color: var(--brand-link);
     font-size: 14px;
   }
   .w {
@@ -697,7 +697,7 @@ const faqJsonLd = JSON.stringify({
     padding-top: 12px;
     border-top: 1px dashed var(--line);
     font-size: 12.5px;
-    color: var(--brand);
+    color: var(--brand-link);
   }
 
   .sources {

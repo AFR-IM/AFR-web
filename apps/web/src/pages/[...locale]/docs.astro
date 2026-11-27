@@ -567,7 +567,7 @@ const endpoints: Endpoint[] = [
 
     <section class="sec">
       <h2>{P.baseTitle}</h2>
-      <pre class="mono"><code>https://afr.im</code></pre>
+      <pre class="mono" tabindex="0"><code>https://afr.im</code></pre>
     </section>
 
     <section class="sec">
@@ -597,7 +597,7 @@ const endpoints: Endpoint[] = [
           <p class="ep-desc">{ep.desc}</p>
           {ep.params && <p class="ep-params mono">{ep.params}</p>}
           {ep.example && (
-            <pre class="mono"><code>{ep.example}</code></pre>
+            <pre class="mono" tabindex="0"><code>{ep.example}</code></pre>
           )}
         </div>
       ))}
@@ -606,7 +606,7 @@ const endpoints: Endpoint[] = [
     <section class="sec">
       <h2>{P.errorsTitle}</h2>
       <p class="body">{P.errorsBody}</p>
-      <pre class="mono"><code>{`{ "error": "not_found", "domain": "unknown.example" }`}</code></pre>
+      <pre class="mono" tabindex="0"><code>{`{ "error": "not_found", "domain": "unknown.example" }`}</code></pre>
     </section>
 
     <section class="sec">
@@ -617,7 +617,7 @@ const endpoints: Endpoint[] = [
     <section class="sec">
       <h2>{P.humanTitle}</h2>
       <p class="body">{P.humanBody}</p>
-      <pre class="mono"><code>{`{ "error": "turnstile_failed", "reason": "missing_token" }`}</code></pre>
+      <pre class="mono" tabindex="0"><code>{`{ "error": "turnstile_failed", "reason": "missing_token" }`}</code></pre>
     </section>
 
     <section class="sec">
@@ -625,7 +625,7 @@ const endpoints: Endpoint[] = [
       <p class="body">{P.ownerBody}</p>
       <h3>{P.ownerErrorsTitle}</h3>
       <p class="body">{P.ownerErrorsBody}</p>
-      <pre class="mono"><code>{`{ "error": "domain_control_failed",
+      <pre class="mono" tabindex="0"><code>{`{ "error": "domain_control_failed",
   "checks": [ { "method": "dns", "detail": "no TXT record" },
               { "method": "file", "detail": "404" },
               { "method": "meta", "detail": "tag not found" } ] }`}</code></pre>
@@ -662,7 +662,7 @@ const endpoints: Endpoint[] = [
     font-size: 12px;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--brand);
+    color: var(--brand-link);
   }
   .hero h1 {
     font-size: clamp(26px, 4vw, 38px);
@@ -736,15 +736,15 @@ const endpoints: Endpoint[] = [
     border: 1px solid var(--line);
   }
   .m-get {
-    color: var(--grade-a, #22c55e);
+    color: var(--grade-a-text, #22c55e);
     border-color: color-mix(in srgb, var(--grade-a, #22c55e) 45%, transparent);
   }
   .m-post {
-    color: var(--grade-c, #eab308);
+    color: var(--grade-c-text, #eab308);
     border-color: color-mix(in srgb, var(--grade-c, #eab308) 45%, transparent);
   }
   .m-delete {
-    color: var(--grade-f, #ef4444);
+    color: var(--grade-f-text, #ef4444);
     border-color: color-mix(in srgb, var(--grade-f, #ef4444) 45%, transparent);
   }
   .ep-desc {

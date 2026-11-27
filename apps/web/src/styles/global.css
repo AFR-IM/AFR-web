@@ -36,8 +36,28 @@ a {
   text-decoration: none;
 }
 
+/* Keyboard skip link: visually hidden until focused. */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 200;
+  padding: 10px 16px;
+  background: var(--bg-elevated);
+  color: var(--text-1);
+  border: 1px solid var(--line);
+  border-radius: 0 0 var(--r-2) 0;
+  font-size: 14px;
+}
+.skip-link:focus {
+  left: 0;
+}
+main:focus {
+  outline: none;
+}
+
 a:hover {
-  color: var(--brand);
+  color: var(--brand-link);
 }
 
 img,
@@ -124,7 +144,7 @@ code,
 
 .btn-ghost:hover {
   border-color: var(--brand);
-  color: var(--brand);
+  color: var(--brand-link);
   filter: none;
 }
 

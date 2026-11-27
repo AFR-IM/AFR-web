@@ -145,13 +145,20 @@ const ldJson = (obj: unknown) => JSON.stringify(obj).replace(/</g, '\\u003c');
     }
   </head>
   <body>
+    <a class="skip-link" href="#main">{L.ui.skipToContent as string}</a>
     <header class="nav" id="nav">
       <div class="container nav-inner">
         <a class="brand" href={href('/')} aria-label="AFR.IM home">
           <Logo size={30} wordmark />
         </a>
 
-        <form class="nav-search" action={href('/search')} method="get" role="search">
+        <form
+          class="nav-search"
+          action={href('/search')}
+          method="get"
+          role="search"
+          aria-label={L.ui.searchNavLabel as string}
+        >
           <input
             class="mono"
             type="search"
@@ -191,7 +198,7 @@ const ldJson = (obj: unknown) => JSON.stringify(obj).replace(/</g, '\\u003c');
     {/* PWA install prompt — hidden until the browser offers an install. */}
     <InstallBanner locale={locale} />
 
-    <main>
+    <main id="main" tabindex="-1">
       <slot />
     </main>
 
@@ -329,7 +336,7 @@ const ldJson = (obj: unknown) => JSON.stringify(obj).replace(/</g, '\\u003c');
         color: var(--text-2);
       }
       .lang-switch:hover {
-        color: var(--brand);
+        color: var(--brand-link);
         border-color: var(--brand);
       }
       .nav-burger {

@@ -104,7 +104,7 @@ const showcase = 'github.com';
             <figure class="cell">
               <BadgePreview grade={s.grade} score={s.score} />
               <figcaption class="mono">
-                <span class="g" style={`color:var(--grade-${s.grade.toLowerCase()});`}>
+                <span class="g" style={`color:var(--grade-${s.grade.toLowerCase()}-text);`}>
                   {s.grade}
                 </span>
                 <span class="lab">{L.grades[s.grade]?.label}</span>
@@ -154,7 +154,7 @@ const showcase = 'github.com';
     font-size: 12px;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: var(--brand);
+    color: var(--brand-link);
   }
   .hero h1 {
     font-size: clamp(28px, 4.4vw, 40px);

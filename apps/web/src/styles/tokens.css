@@ -172,6 +172,20 @@
   --grade-d: #f2994a; /* orange */
   --grade-f: #eb5757; /* red */
 
+  /* Text-safe variants of the grade band. On dark surfaces the vivid AQI
+     colours already clear WCAG AA, so the variants simply alias them; the
+     light theme below swaps in darkened values that keep the hue but reach
+     4.5:1 on every light surface. Use these wherever a grade colour lands
+     on TEXT (scores, letters, labels); borders, dots, bars and rings keep
+     the vivid originals — they are graphical identity, not reading text. */
+  --grade-a-text: var(--grade-a);
+  --grade-b-text: var(--grade-b);
+  --grade-c-text: var(--grade-c);
+  --grade-d-text: var(--grade-d);
+  --grade-f-text: var(--grade-f);
+  --violet-text: var(--violet);
+  --verified-text: var(--verified);
+
   /* aux */
   --violet: #a78bfa; /* AI feature / interaction marker */
   --verified: #4da3ff; /* verified-owner blue */
@@ -213,6 +227,14 @@
     --text-3: #5a6c8d; /* AA on all light surfaces (ink 5.0 / surface 5.3 / elevated 4.7) */
     --brand-dim: #2a9e80;
     --brand-link: #17705e; /* deeper teal: >=4.5:1 on light surfaces */
+    /* darkened grade text (>=4.5:1 on #fff / #f6f8fc / #eef2f9; hue kept) */
+    --grade-a-text: #17705e;
+    --grade-b-text: #4f792e;
+    --grade-c-text: #806b28;
+    --grade-d-text: #98602f;
+    --grade-f-text: #b84040;
+    --violet-text: #7561af;
+    --verified-text: #3570b0;
   }
 }
 
@@ -226,4 +248,12 @@
   --text-3: #5a6c8d; /* AA on all light surfaces (ink 5.0 / surface 5.3 / elevated 4.7) */
   --brand-dim: #2a9e80;
   --brand-link: #17705e; /* deeper teal: >=4.5:1 on light surfaces */
+  /* darkened grade text (>=4.5:1 on #fff / #f6f8fc / #eef2f9; hue kept) */
+  --grade-a-text: #17705e;
+  --grade-b-text: #4f792e;
+  --grade-c-text: #806b28;
+  --grade-d-text: #98602f;
+  --grade-f-text: #b84040;
+  --violet-text: #7561af;
+  --verified-text: #3570b0;
 }

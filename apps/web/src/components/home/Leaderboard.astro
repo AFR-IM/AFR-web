@@ -6,7 +6,7 @@
 
 import { getCatalog, pathFor, type Locale } from '../../i18n/loader.ts';
 import type { SiteCard } from '../../data/types.ts';
-import { gradeVar } from '../../utils/grade.ts';
+import { gradeTextVar } from '../../utils/grade.ts';
 
 interface Props {
   sites: SiteCard[];
@@ -25,7 +25,7 @@ const L = getCatalog(locale);
         <span class="lb-domain mono">{s.domain}</span>
         <span class="lb-title">{s.title}</span>
         <span class="lb-strategy chip">{L.strategies[s.strategyTag]?.label ?? s.strategyTag}</span>
-        <span class="lb-grade mono" style={`color:${gradeVar(s.grade)}`}>{s.grade}</span>
+        <span class="lb-grade mono" style={`color:${gradeTextVar(s.grade)}`}>{s.grade}</span>
         <span class="lb-score mono">{s.score}</span>
       </a>
     </li>
@@ -70,7 +70,7 @@ const L = getCatalog(locale);
     white-space: nowrap;
   }
   .lb-row:hover .lb-domain {
-    color: var(--brand);
+    color: var(--brand-link);
   }
   .lb-title {
     font-size: 13px;

@@ -8,7 +8,7 @@
 
 import { getCatalog, pathFor, type Locale } from '../../i18n/loader.ts';
 import type { SiteCard } from '../../data/types.ts';
-import { gradeVar } from '../../utils/grade.ts';
+import { gradeTextVar } from '../../utils/grade.ts';
 
 interface Props {
   sites: SiteCard[];
@@ -39,7 +39,7 @@ const items = sites.map((s) => ({
   data-hint={hint}
   data-submit={submitHref}
 >
-  <form class="sb-form" role="search" action={searchAction} method="get">
+  <form class="sb-form" role="search" aria-label={placeholder} action={searchAction} method="get">
     <svg class="sb-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
       <circle cx="11" cy="11" r="7"></circle>
       <path d="m20 20-3.6-3.6"></path>
@@ -156,13 +156,13 @@ const items = sites.map((s) => ({
   }
   .sb-empty a {
     font-size: 13px;
-    color: var(--brand);
+    color: var(--brand-link);
   }
 </style>
 
 <script>
   // Instant local autocomplete — vanilla JS, no service, no network.
-  import { gradeVar } from '../../utils/grade.ts';
+  import { gradeTextVar } from '../../utils/grade.ts';
   import type { Grade } from '../../data/types.ts';
 
   interface SbItem {
@@ -246,7 +246,7 @@ const items = sites.map((s) => ({
           const grade = document.createElement('span');
           grade.className = 'sb-grade mono';
           grade.textContent = it.grade;
-          grade.style.color = gradeVar(it.grade);
+          grade.style.color = gradeTextVar(it.grade);
           a.append(domain, title, grade);
           list.append(a);
         });

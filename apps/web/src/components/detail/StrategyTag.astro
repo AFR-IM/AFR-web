@@ -25,9 +25,26 @@ const colorVar =
         : tag === 'AI-Closed'
           ? 'var(--grade-f)'
           : 'var(--text-3)';
+// Text sits on light surfaces in the light theme: use the darkened variant
+// for the label while the border keeps the vivid AQI colour.
+const colorTextVar =
+  tag === 'AI-Open'
+    ? 'var(--grade-a-text)'
+    : tag === 'Middle-Path'
+      ? 'var(--grade-c-text)'
+      : tag === 'Training-Open'
+        ? 'var(--violet-text)'
+        : tag === 'AI-Closed'
+          ? 'var(--grade-f-text)'
+          : 'var(--text-3)';
 ---
 
-<span class="tag mono" style={`--tag-color:${colorVar};`} title={desc} aria-label={`${label} — ${desc}`}>
+<span
+  class="tag mono"
+  style={`--tag-color:${colorVar};--tag-color-text:${colorTextVar};`}
+  title={desc}
+  aria-label={`${label} — ${desc}`}
+>
   {label}
 </span>
 
@@ -40,7 +57,7 @@ const colorVar =
     border-radius: 999px;
     font-size: 12px;
     line-height: 1.4;
-    color: var(--tag-color);
+    color: var(--tag-color-text, var(--tag-color));
     white-space: nowrap;
   }
 </style>

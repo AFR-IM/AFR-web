@@ -27,7 +27,7 @@ import Turnstile from '../../components/security/Turnstile.astro';
 import { getCatalog, pathFor, toLocale } from '../../i18n/loader.ts';
 import { listSites } from '../../data/loader.ts';
 import { uiText } from '../../components/home/fallbacks.ts';
-import { GRADE_VAR } from '../../utils/grade.ts';
+import { GRADE_VAR, GRADE_TEXT_VAR } from '../../utils/grade.ts';
 // The grade table is NOT written into the search index any more: the browser
 // derives the grade from the score with these thresholds. They are the
 // engine's own table (packages/shared), serialized into the page — the page
@@ -94,7 +94,7 @@ const loadMoreErrorText = uiText(L.ui, 'loadMoreError', locale);
   <div class="container page">
     <h1 class="page-title">{title}</h1>
 
-    <form class="search-form" id="search-form" role="search" action={href('/search')} method="get">
+    <form class="search-form" id="search-form" role="search" aria-label={title} action={href('/search')} method="get">
       <input
         class="search-input mono"
         id="search-input"
@@ -174,7 +174,7 @@ const loadMoreErrorText = uiText(L.ui, 'loadMoreError', locale);
       data-label-score={scoreLabel}
       data-label-strategy={strategyLabel}
       data-strategies={strategyLabels}
-      data-grade-vars={JSON.stringify(GRADE_VAR)}
+      data-grade-vars={JSON.stringify(GRADE_TEXT_VAR)}
     >
       <h2 class="scan-kicker mono">{scanHeading}</h2>
       <p class="scan-domain mono" data-scan-domain></p>
@@ -1027,6 +1027,15 @@ const loadMoreErrorText = uiText(L.ui, 'loadMoreError', locale);
             var txt = countTpl.replace('{n}', String(visible));
             if (visible === 1) txt = txt.replace(/\bsites\b/, 'site'); /* EN singular */
             countEl.textContent = txt;
+            /* Zero hits: also announce the empty-state copy and its next step
+               (submit CTA) so screen-reader users hear what to do, not just
+               the count (audit P2). */
+            if (visible === 0 && empty && !empty.hidden) {
+              var emptyMsg = (empty.querySelector('p') || {}).textContent || '';
+              var emptyCta = (empty.querySelector('a') || {}).textContent || '';
+              if (emptyMsg) txt = txt + '. ' + emptyMsg.trim();
+              if (emptyCta) txt = txt + ' ' + emptyCta.trim();
+            }
             announceCount(txt);
           }
         }
@@ -1145,7 +1154,7 @@ const loadMoreErrorText = uiText(L.ui, 'loadMoreError', locale);
     text-align: center;
   }
   .more-status.is-err {
-    color: var(--grade-f);
+    color: var(--grade-f-text);
   }
 
   .empty {
@@ -1195,7 +1204,7 @@ const loadMoreErrorText = uiText(L.ui, 'loadMoreError', locale);
     margin: 0;
     font-size: 17px;
     font-weight: 700;
-    color: var(--brand);
+    color: var(--brand-link);
     overflow-wrap: anywhere;
   }
   .scan-desc {
@@ -1248,7 +1257,7 @@ const loadMoreErrorText = uiText(L.ui, 'loadMoreError', locale);
     color: var(--text-3);
   }
   .scan-status.is-err {
-    color: var(--grade-f);
+    color: var(--grade-f-text);
   }
   .scan-status.is-busy::before {
     content: '';
