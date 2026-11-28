@@ -2254,6 +2254,28 @@ export function createApp(overrides: AppOverrides = {}): Hono<AppEnv> {
       console.error('cron report failed:', err);
       return c.json({ error: 'report_failed' }, 500);
     }
+    // The pipelines report after their deploy, which is the first moment the
+    // published retirement list carries this run's changes: the sync-endpoint
+    // hook runs before the assets are live and the daily cron is a day
+    // later. Reconcile here (idempotent, guarded updates) so a pushed
+    // delisted.json flips on the same run that publishes it. A failure here
+    // must never fail the report the monitoring board is waiting for.
+    if (status === 'ok') {
+      try {
+        const retirementMap = await fetchRetirementMap(
+          c.env?.PUBLIC_SITE_URL ?? '',
+          overrides.fetchImpl ?? fetch,
+        );
+        const reconcile = await reconcileDirectoryPresence(dbOf(c, overrides), retirementMap);
+        if (reconcile.ok && (reconcile.delisted || reconcile.relisted)) {
+          console.log(
+            `cron-report reconcile: ${reconcile.delisted} retired, ${reconcile.relisted} re-listed, ${reconcile.enqueued} events`,
+          );
+        }
+      } catch (err) {
+        console.error('cron-report reconcile failed:', err);
+      }
+    }
     return c.json({ ok: true });
   });
 
@@ -3867,8 +3889,15 @@ export default {
         // grant the term it paid for.
         await grantProForConfirmedOrders(db);
       })().catch((error) => {
-        console.error('AIPAY reconciliation failed; checkpoint not advanced for failed page');
-        throw error;
+        // A failed optional reconciliation must not reject the invocation:
+        // an unhandled rejection here takes the whole scheduled run down
+        // with it — observed 2026-11-27, where the daily directory reconcile
+        // never ran because this branch threw first. Log and move on; the
+        // checkpoint advances on the next page anyway.
+        console.error(
+          'AIPAY reconciliation failed:',
+          error instanceof Error ? error.message : String(error),
+        );
       }));
     }
     const startedAt = new Date().toISOString();

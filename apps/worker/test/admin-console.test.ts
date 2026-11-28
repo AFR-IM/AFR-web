@@ -230,6 +230,46 @@ test('a scheduled job reports its outcome and the board shows it', async t => {
   assert.match(html, /失败/);
 });
 
+test('a successful pipeline report reconciles the published retirement list', async t => {
+  const { db, raw } = openSeededDb();
+  t.after(() => raw.close());
+  // The pipelines report after their deploy, so this hook is the first
+  // moment the published delisted.json carries the run's changes — the
+  // reconcile has to happen right here, not a day later on the cron.
+  const publishedFetch = (() =>
+    Response.json({ 'example.com': { noteEn: 'Retired', noteZh: '已下线' } })) as unknown as typeof fetch;
+  const app = createApp({ db, fetchImpl: publishedFetch });
+
+  const reported = await app.request(base + '/api/v1/ops/cron-report', {
+    method: 'POST',
+    headers: { 'X-Queue-Token': env.QUEUE_TOKEN, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ job: 'sync-site', status: 'ok' }),
+  }, env);
+  assert.equal(reported.status, 200);
+  const row = raw.prepare('SELECT status FROM sites WHERE domain = ?').get('example.com') as
+    | { status: string }
+    | undefined;
+  assert.equal(row?.status, 'delisted', 'the publish that reports its outcome also applies it');
+
+  // A failed run must not touch the directory: its deploy may never have
+  // happened, and its fetch would read the previous release's list.
+  const other = createApp({
+    db,
+    fetchImpl: (() => Response.json({})) as unknown as typeof fetch,
+  });
+  raw.prepare("UPDATE sites SET status = 'active' WHERE domain = 'example.com'").run();
+  const failed = await other.request(base + '/api/v1/ops/cron-report', {
+    method: 'POST',
+    headers: { 'X-Queue-Token': env.QUEUE_TOKEN, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ job: 'scan', status: 'failed', detail: 'boom' }),
+  }, env);
+  assert.equal(failed.status, 200);
+  const after = raw.prepare('SELECT status FROM sites WHERE domain = ?').get('example.com') as
+    | { status: string }
+    | undefined;
+  assert.equal(after?.status, 'active', 'a failed report never flips the directory');
+});
+
 test('a badge request counts its referrer', async t => {
   const { db, raw } = openSeededDb();
   t.after(() => raw.close());

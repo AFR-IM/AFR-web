@@ -43,7 +43,11 @@ export async function fetchRetirementMap(
 ): Promise<Record<string, unknown> | null> {
   const base = (baseUrl || 'https://afr.im').replace(/\/+$/, '');
   try {
-    const res = await fetchImpl(`${base}/data/delisted.json`, {
+    // Cache-bust on purpose: this runs right after a deploy, and the
+    // published list is a CDN-cached asset (max-age=300 plus a long stale
+    // window) — without the query the reconcile would read the previous
+    // release's list and miss exactly the entry that release added.
+    const res = await fetchImpl(`${base}/data/delisted.json?_cb=${Date.now()}`, {
       signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) return null;
