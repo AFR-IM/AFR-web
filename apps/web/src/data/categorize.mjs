@@ -2827,6 +2827,178 @@ const RULES = [
   ['ibtimes.co.uk', 'news'],
   ['stiripesurse.ro', 'news'],
   ['keepersecurity.com', 'dev-tools'],
+
+  // ── manual review batch 2026-11-27 #14 (Tranco segment 12,001-13,000;  
+  //    48 reviewed: 14 decisive + 24 borderline settled here + 10 left as
+  //    other for thin evidence) ────────────────────────────────────────
+  ['1cupis.ru', 'finance'], // borderline — evidence-based decision
+  ['1gb.ru', 'dev-tools'],
+  ['adsinteractive.com', 'dev-tools'], // borderline — evidence-based decision
+  ['aeaweb.org', 'education'],
+  ['aeon.co', 'news'], // borderline — evidence-based decision
+  ['agenturserver.de', 'dev-tools'], // borderline — evidence-based decision
+  ['airarabia.com', 'travel'],
+  ['allure.com', 'news'],
+  ['alternet.org', 'news'],
+  ['ansible.com', 'dev-tools'],
+  ['antenna.gr', 'entertainment'], // borderline — evidence-based decision
+  ['anthill.farm', 'dev-tools'], // borderline — evidence-based decision
+  ['anydns.com', 'dev-tools'], // borderline — evidence-based decision
+  ['apify.com', 'dev-tools'],
+  ['appbaqend.com', 'dev-tools'], // borderline — evidence-based decision
+  ['appcues.com', 'dev-tools'], // borderline — evidence-based decision
+  ['as.me', 'dev-tools'],
+  ['asterdex.com', 'finance'], // borderline — evidence-based decision
+  ['authy.com', 'dev-tools'], // borderline — evidence-based decision
+  ['avasecurity.com', 'dev-tools'], // borderline — evidence-based decision
+  ['awwwards.com', 'dev-tools'], // borderline — evidence-based decision
+  ['axept.io', 'dev-tools'], // borderline — evidence-based decision
+  ['bankbazaar.com', 'finance'],
+  ['barmer.de', 'health'],
+  ['bca.co.id', 'finance'],
+  ['belwue.de', 'education'], // borderline — evidence-based decision
+  ['bfi.org.uk', 'entertainment'], // borderline — evidence-based decision
+  ['biletinial.com', 'entertainment'],
+  ['bjx.com.cn', 'news'], // borderline — evidence-based decision
+  ['blackline.com', 'finance'], // borderline — evidence-based decision
+  ['blog.com', 'dev-tools'], // borderline — evidence-based decision
+  ['blog.jp', 'social'], // borderline — evidence-based decision
+  ['bme.hu', 'education'],
+  ['bpb.de', 'government'], // borderline — evidence-based decision
+  ['bridgebase.com', 'entertainment'],
+  ['broadsign.com', 'dev-tools'], // borderline — evidence-based decision
+  ['bsigroup.com', 'reference'], // borderline — evidence-based decision
+  ['calix.com', 'dev-tools'], // borderline — evidence-based decision
+
+  // ── manual review batch 2026-11-27 #15 (segment 12,001-13,000) ───
+  ['cambiumnetworks.com', 'dev-tools'], // borderline — evidence-based decision
+  ['carnegieendowment.org', 'education'], // borderline — evidence-based decision
+  ['ccleaner.com', 'dev-tools'],
+  ['cdw.com', 'dev-tools'], // borderline — evidence-based decision
+  ['ceskatelevize.cz', 'entertainment'], // borderline — evidence-based decision
+  ['chargebee.com', 'finance'], // borderline — evidence-based decision
+  ['chickensmoothie.com', 'entertainment'],
+  ['clickmeeting.com', 'dev-tools'], // borderline — evidence-based decision
+  ['cloudbeds.com', 'travel'], // borderline — evidence-based decision
+  ['cmoney.tw', 'finance'],
+  ['comfylink.com', 'dev-tools'], // borderline — evidence-based decision
+  ['comic-walker.com', 'entertainment'],
+  ['consentframework.com', 'dev-tools'], // borderline — evidence-based decision
+  ['contentstack.com', 'dev-tools'], // borderline — evidence-based decision
+  ['cookieinformation.com', 'dev-tools'], // borderline — evidence-based decision
+  ['coreweave.com', 'ai-tools'], // borderline — evidence-based decision
+  ['country.is', 'dev-tools'],
+  ['crowdin.com', 'dev-tools'], // borderline — evidence-based decision
+  ['csfloat.com', 'ecommerce'],
+  ['csoonline.com', 'news'], // borderline — evidence-based decision
+  ['ctan.org', 'reference'], // borderline — evidence-based decision
+  ['ctyun.cn', 'dev-tools'],
+  ['curbed.com', 'news'], // borderline — evidence-based decision
+  ['dailycaller.com', 'news'],
+  ['dataroid.com', 'dev-tools'], // borderline — evidence-based decision
+  ['dedyn.io', 'dev-tools'],
+  ['devicenative.com', 'dev-tools'], // borderline — evidence-based decision
+  ['dishanywhere.com', 'entertainment'],
+  ['dnevno.hr', 'news'],
+  ['dnswl.org', 'dev-tools'], // borderline — evidence-based decision
+  ['dollargeneral.com', 'ecommerce'], // borderline — evidence-based decision
+  ['doviz.com', 'finance'],
+  ['draugas.lt', 'social'], // borderline — evidence-based decision
+  ['duetapp.net', 'social'], // borderline — evidence-based decision
+  ['e1.ru', 'news'],
+  ['engagelab.cc', 'dev-tools'], // borderline — evidence-based decision
+  ['epo.org', 'government'], // borderline — evidence-based decision
+  ['epoq.de', 'ai-tools'], // borderline — evidence-based decision
+  ['epubgame.com', 'entertainment'], // borderline — evidence-based decision
+  ['facct.ru', 'dev-tools'], // borderline — evidence-based decision
+  ['fanbox.cc', 'social'], // borderline — evidence-based decision
+
+  // ── manual review batch 2026-11-27 #16 (segment 12,001-13,000) ───
+  ['ferrari.com', 'ecommerce'], // borderline — evidence-based decision
+  ['first-id.fr', 'dev-tools'], // borderline — evidence-based decision
+  ['fish.audio', 'ai-tools'],
+  ['fishki.net', 'entertainment'],
+  ['flourish.studio', 'dev-tools'], // borderline — evidence-based decision
+  ['forth.gr', 'education'], // borderline — evidence-based decision
+  ['freesound.org', 'entertainment'], // borderline — evidence-based decision
+  ['fupa.net', 'entertainment'], // borderline — evidence-based decision
+  ['gale.com', 'reference'], // borderline — evidence-based decision
+  ['gatesfoundation.org', 'government'], // borderline — evidence-based decision
+  ['getcontact.com', 'social'], // borderline — evidence-based decision
+  ['gid.ru', 'dev-tools'],
+  ['goadopt.io', 'dev-tools'], // borderline — evidence-based decision
+  ['gracenote.com', 'entertainment'], // borderline — evidence-based decision
+  ['grandstream.com', 'dev-tools'], // borderline — evidence-based decision
+  ['groovinads.com', 'dev-tools'], // borderline — evidence-based decision
+  ['guardsquare.com', 'dev-tools'], // borderline — evidence-based decision
+  ['happ.su', 'dev-tools'], // borderline — evidence-based decision
+  ['hitta.se', 'reference'],
+  ['hse.de', 'ecommerce'],
+  ['hypotheses.org', 'education'], // borderline — evidence-based decision
+  ['i-mobile.co.jp', 'dev-tools'], // borderline — evidence-based decision
+  ['ilivedata.com', 'dev-tools'], // borderline — evidence-based decision
+  ['ilportaledellautomobilista.it', 'news'], // borderline — evidence-based decision
+  ['imperva.com', 'dev-tools'], // borderline — evidence-based decision
+  ['indigo.ca', 'ecommerce'],
+  ['inshot.cc', 'dev-tools'], // borderline — evidence-based decision
+  ['instrument.ru', 'ecommerce'],
+  ['ixdzs8.com', 'reference'],
+  ['jabra.com', 'ecommerce'], // borderline — evidence-based decision
+  ['jalbum.net', 'dev-tools'], // borderline — evidence-based decision
+  ['jekyllrb.com', 'dev-tools'],
+  ['jftechsoft.com', 'dev-tools'], // borderline — evidence-based decision
+  ['jp.sharp', 'ecommerce'], // borderline — evidence-based decision
+  ['jpn.com', 'dev-tools'],
+  ['jup.ag', 'finance'],
+  ['k12.com', 'education'],
+
+  // ── manual review batch 2026-11-27 #17 (segment 12,001-13,000) ───
+  ['keenetic.ru', 'ecommerce'], // borderline — evidence-based decision
+  ['kfintech.com', 'finance'],
+  ['khan.co.kr', 'news'],
+  ['kindred.co', 'dev-tools'], // borderline — evidence-based decision
+  ['korrespondent.net', 'news'],
+  ['kpnmail.nl', 'dev-tools'], // borderline — evidence-based decision
+  ['kubiobuilder.com', 'dev-tools'],
+  ['labcorp.com', 'health'],
+  ['languagetool.org', 'ai-tools'],
+  ['lastwar.com', 'entertainment'],
+  ['lavoixdunord.fr', 'news'],
+  ['lefrecce.it', 'travel'], // borderline — evidence-based decision
+  ['leroymerlin.com', 'ecommerce'], // borderline — evidence-based decision
+  ['letyshops.com', 'ecommerce'], // borderline — evidence-based decision
+  ['lidl.es', 'ecommerce'],
+  ['lightwidget.com', 'dev-tools'], // borderline — evidence-based decision
+  ['limitlesstcg.com', 'entertainment'],
+  ['livestrong.com', 'health'],
+  ['lojasrenner.com.br', 'ecommerce'],
+  ['loksatta.com', 'news'],
+  ['lotteryusa.com', 'entertainment'],
+  ['lucidmotors.com', 'ecommerce'], // borderline — evidence-based decision
+  ['lung.org', 'health'],
+  ['lyricstranslate.com', 'entertainment'], // borderline — evidence-based decision
+  ['mangalib.me', 'entertainment'],
+  ['manuals.plus', 'reference'], // borderline — evidence-based decision
+  ['matrix.to', 'social'], // borderline — evidence-based decision
+  ['maxon.net', 'dev-tools'],
+  ['measurementlab.net', 'dev-tools'], // borderline — evidence-based decision
+  ['megapath.com', 'dev-tools'], // borderline — evidence-based decision
+  ['meltwater.com', 'dev-tools'], // borderline — evidence-based decision
+  ['metunic.com.tr', 'dev-tools'],
+  ['micron.com', 'dev-tools'], // borderline — evidence-based decision
+  ['miguvideo.com', 'entertainment'],
+  ['minecraft.wiki', 'reference'],
+  ['ministrybrands.com', 'dev-tools'], // borderline — evidence-based decision
+  ['mix.com', 'social'], // borderline — evidence-based decision
+  ['moneris.com', 'finance'],
+  ['movoto.com', 'finance'], // borderline — evidence-based decision
+  ['musicbrainz.org', 'reference'], // borderline — evidence-based decision
+  ['myavlive.com', 'entertainment'],
+  ['myfonts.com', 'ecommerce'], // borderline — evidence-based decision
+  ['mystnodes.com', 'finance'], // borderline — evidence-based decision
+  ['nationstates.net', 'entertainment'], // borderline — evidence-based decision
+  ['nextersglobal.com', 'entertainment'],
+
 ];
 
 const TITLE_RULES = RULES.filter((r) => r[2] === true && !r[0].includes('.'));
