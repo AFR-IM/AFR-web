@@ -18,6 +18,7 @@ import Sorter from '../../../components/home/Sorter.astro';
 import SponsoredCard from '../../../components/home/SponsoredCard.astro';
 import { getCatalog, pathFor, toLocale } from '../../../i18n/loader.ts';
 import { listCategories, loadCategory } from '../../../data/loader.ts';
+import { normalizeLang } from '../../../utils/lang.ts';
 import { GRADES, GRADE_VAR, gradeVar } from '../../../utils/grade.ts';
 import { sitesLabel, uiText } from '../../../components/home/fallbacks.ts';
 
@@ -54,11 +55,14 @@ const PAGE_SIZE = 50;
 const firstPage = sites.slice(0, PAGE_SIZE);
 
 const tags = [...new Set(sites.flatMap((s) => s.tags ?? []))].sort();
-const langs = [
-  ...new Set(sites.map((s) => s.lang).filter((v): v is string => Boolean(v))),
-].sort();
+// One normalization for chips and the serialized index (utils/lang.ts):
+// lowercase merges case duplicates (en-US + en-us), unusable codes (eng,
+// en-EN, jp…) drop out, real variants (zh, zh-cn, zh-hant, zh-hant-tw)
+// stay distinct chips.
+const langs = [...new Set(sites.map((s) => normalizeLang(s.lang)))].filter(Boolean).sort();
 
 const countTpl = uiText(L.ui, 'siteCount', locale);
+const filteredCountTpl = uiText(L.ui, 'filteredCount', locale);
 const countText = sitesLabel(L.ui, locale, count);
 const sortOptions = [
   { value: 'score', label: L.ui.sortScore ?? 'Score' },
@@ -73,7 +77,7 @@ const loadMoreLabel = L.ui.loadMore ?? 'Load more';
 const doneTpl = uiText(L.ui, 'loadMoreDone', locale);
 const progressTpl = uiText(L.ui, 'loadMoreProgress', locale);
 const categoryIndex = JSON.stringify(sites.map(({ domain, title, score, grade, strategyTag, category, lang, rankSource, scannedAt, tags }) => ({
-  domain, title, score, grade, strategyTag, category, lang, rankSource, scannedAt, tags,
+  domain, title, score, grade, strategyTag, category, lang: normalizeLang(lang), rankSource, scannedAt, tags,
 }))).replace(/</g, '\\u003c');
 ---
 
@@ -83,7 +87,7 @@ const categoryIndex = JSON.stringify(sites.map(({ domain, title, score, grade, s
       <p class="crumb mono">
         <a href={href('/categories')}>{L.ui.navCategories}</a>
         <span aria-hidden="true"> / </span>
-        <span>{slug}</span>
+        <span>{name}</span>
       </p>
       <h1>{name}</h1>
       <p class="cat-meta">
@@ -148,7 +152,7 @@ const categoryIndex = JSON.stringify(sites.map(({ domain, title, score, grade, s
         </div>
 
         <div class="list-bar">
-          <p class="list-count mono" data-count role="status" aria-atomic="true" data-count-template={countTpl}>{countText}</p>
+          <p class="list-count mono" data-count role="status" aria-atomic="true" data-count-template={countTpl} data-count-filtered={filteredCountTpl}></p>
           <Sorter options={sortOptions} active="score" label={uiText(L.ui, 'sortBy', locale)} />
         </div>
 
@@ -216,11 +220,19 @@ const categoryIndex = JSON.stringify(sites.map(({ domain, title, score, grade, s
       var countEl = document.querySelector('[data-count]');
       var countTpl = (countEl && countEl.getAttribute('data-count-template')) || '{n} sites';
 
+      /* mirrored from src/utils/lang.ts — an is:inline script cannot import;
+         an incoming ?lang= may carry the raw corpus spelling (en-US, en-EN) */
+      function normalizeLang(v) {
+        var raw = String(v || '').trim().toLowerCase();
+        if (!/^[a-z]{2}(-([a-z]{2}|[a-z]{4}|[0-9]{3}))*$/.test(raw)) return '';
+        return raw === 'en-en' || raw === 'jp' ? '' : raw;
+      }
+
       var params = new URLSearchParams(location.search);
       var state = {
         grade: params.get('grade') || '',
         tag: params.get('tag') || '',
-        lang: params.get('lang') || '',
+        lang: normalizeLang(params.get('lang')),
         sort: params.get('sort') || 'score'
       };
       if (['score', 'rank', 'new'].indexOf(state.sort) === -1) state.sort = 'score';
@@ -268,8 +280,15 @@ const categoryIndex = JSON.stringify(sites.map(({ domain, title, score, grade, s
         grid.replaceChildren(fragment);
         if (empty) empty.hidden = matched.length > 0;
         if (countEl) {
-          var txt = countTpl.replace('{n}', String(matched.length));
-          if (matched.length === 1) txt = txt.replace(/\bsites\b/, 'site');
+          /* the header already carries the category total — the list row only
+             speaks up when a filter narrows the list, as "filtered N / total M" */
+          var narrowed = !!(state.grade || state.tag || state.lang);
+          var txt = '';
+          if (narrowed) {
+            var ftpl = countEl.getAttribute('data-count-filtered') || countTpl;
+            txt = ftpl.replace('{n}', String(matched.length)).replace('{m}', String(index.length));
+            if (index.length === 1) txt = txt.replace(/\bsites\b/, 'site');
+          }
           if (countEl.textContent !== txt) countEl.textContent = txt;
         }
         if (moreWrap) {

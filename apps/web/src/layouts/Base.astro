@@ -194,6 +194,24 @@ const ldJson = (obj: unknown) => JSON.stringify(obj).replace(/</g, '\\u003c');
       </div>
 
       <div class="drawer" id="nav-drawer" hidden>
+        {/* mobile-only search entry — the desktop nav-search is display:none
+            below 768px, so the drawer is the only search door on a phone */}
+        <form
+          class="drawer-search"
+          action={href('/search')}
+          method="get"
+          role="search"
+          aria-label={L.ui.searchNavLabel as string}
+        >
+          <input
+            class="mono"
+            type="search"
+            name="q"
+            placeholder={L.ui.searchPlaceholder as string}
+            autocomplete="off"
+            aria-label={L.ui.searchPlaceholder as string}
+          />
+        </form>
         {navItems.map((n) => <a href={n.href}>{n.label}</a>)}
         <a href={otherHref}>{otherLabel}</a>
       </div>
@@ -244,11 +262,22 @@ const ldJson = (obj: unknown) => JSON.stringify(obj).replace(/</g, '\\u003c');
       // mobile drawer
       const burger = document.getElementById('nav-burger');
       const drawer = document.getElementById('nav-drawer');
+      const setDrawer = (open: boolean) => {
+        if (!drawer) return;
+        if (open) drawer.removeAttribute('hidden');
+        else drawer.setAttribute('hidden', '');
+        burger?.setAttribute('aria-expanded', String(open));
+      };
       burger?.addEventListener('click', () => {
-        const open = drawer?.hasAttribute('hidden') ?? false;
-        if (open) drawer?.removeAttribute('hidden');
-        else drawer?.setAttribute('hidden', '');
-        burger.setAttribute('aria-expanded', String(open));
+        setDrawer(drawer?.hasAttribute('hidden') ?? false);
+      });
+      // Esc closes the drawer and returns focus to the burger (keyboard users
+      // never get stranded inside an open drawer)
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && drawer && !drawer.hasAttribute('hidden')) {
+          setDrawer(false);
+          burger?.focus();
+        }
       });
 
       // scrolled state: backdrop blur + 1px --line
@@ -357,6 +386,24 @@ const ldJson = (obj: unknown) => JSON.stringify(obj).replace(/</g, '\\u003c');
       /* class display must not beat the UA [hidden] rule (it did — drawer leaked into the layout) */
       .drawer[hidden] {
         display: none;
+      }
+      .drawer-search input {
+        width: 100%;
+        padding: 9px 12px;
+        background: var(--bg-ink);
+        border: 1px solid var(--line);
+        border-radius: var(--r-2);
+        font-size: 14px;
+        color: var(--text-1);
+        transition: border-color var(--t-micro) var(--ease);
+      }
+      .drawer-search input::placeholder {
+        color: var(--text-3);
+      }
+      .drawer-search input:hover,
+      .drawer-search input:focus {
+        border-color: var(--brand);
+        outline: none;
       }
       .footer {
         margin-top: 64px;

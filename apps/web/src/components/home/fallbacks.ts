@@ -13,6 +13,7 @@ export interface Copy {
 export const COPY = {
   // counts (catalog source of truth; COPY kept as fallback)
   siteCount: { en: '{n} sites', zh: '{n} 个站点' },
+  filteredCount: { en: '{n} of {m} sites', zh: '筛选后 {n} / 共 {m} 个站点' },
   // homepage hero stats
   avgScore: { en: 'avg score', zh: '平均分' },
   pendingCount: { en: 'pending', zh: '待评定' },

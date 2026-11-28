@@ -427,7 +427,8 @@ async function main() {
   //     the engine's own thresholds (packages/shared GRADE_THRESHOLDS), which
   //     the page serializes into the DOM;
   //   · 'other' renders no chip, so the category key is omitted;
-  //   · the title is cut on a word boundary (SEARCH_TITLE_MAX characters).
+  //   · the title is cut at a separator or word boundary within
+  //     SEARCH_TITLE_MAX characters and always carries an "…" when cut.
   //
   // The grade rule is checked here, at build time: if the thresholds moved
   // after a snapshot was taken, the derived grade and the snapshot grade

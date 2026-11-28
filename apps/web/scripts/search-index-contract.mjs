@@ -19,8 +19,9 @@
 //   s  the AFR score, 0..100 (always present)
 //   c  the category slug — OMITTED for 'other': that category renders no
 //      chip, so the key would only cost wire bytes
-//   t  the page title, cut on a word boundary at SEARCH_TITLE_MAX chars —
-//      OMITTED when the page title is unknown
+//   t  the page title, cut at a title separator (— | · :) or a word
+//      boundary within SEARCH_TITLE_MAX chars, always carrying an "…" when
+//      it was cut — OMITTED when the page title is unknown
 //
 // Two things are deliberately NOT in the payload:
 //
@@ -256,16 +257,42 @@ if (!CATEGORY_SLUGS.includes(UNCATEGORIZED)) {
   );
 }
 
-/** Cut a title to `max` characters without cutting a word in half. */
+/** Separators that mark a semantic boundary inside a title. The cut prefers
+ *  the last one inside the window: a head cut there never ends on a
+ *  dangling mark ("TokensHubs —", "New Atlas:"). */
+const TITLE_SEPARATORS = ['—', '|', '·', ':'];
+
+/** Marks a truncated head must never end with — including a plain hyphen
+ *  ("Vanity Fair -"), which the cut never lands on but can still be left
+ *  hanging at the end of a word-boundary cut. */
+const TRAILING_MARKS = /[\s—|·:-]+$/;
+
+/**
+ * Cut a title to `max` characters, appending "…" whenever it was cut.
+ *
+ * The boundary chain inside the truncation window: the last separator
+ * (— | · :), else the last space, else a hard cut — and whatever dangling
+ * mark sits at the end of that head is stripped first. The ellipsis is
+ * reserved inside `max`, so a truncated title still satisfies the
+ * `SEARCH_TITLE_MAX` check in validateSearchEntry.
+ */
 export function truncateTitle(title, max = SEARCH_TITLE_MAX) {
   if (!title) return undefined;
   if (title.length <= max) return title;
-  const cut = title.slice(0, max);
-  const space = cut.lastIndexOf(' ');
-  /* No space in the head means the first word alone is longer than the
-     budget — a hard cut is the only option left. */
-  const head = space > 0 ? cut.slice(0, space) : cut;
-  return head.trim() || undefined;
+  const cut = title.slice(0, max - 1); /* reserve the ellipsis */
+  let head = '';
+  let sepAt = -1;
+  for (const sep of TITLE_SEPARATORS) sepAt = Math.max(sepAt, cut.lastIndexOf(sep));
+  if (sepAt > 0) head = cut.slice(0, sepAt);
+  if (!head.trim()) {
+    /* No separator in the window — fall back to the word boundary. */
+    const space = cut.lastIndexOf(' ');
+    head = space > 0 ? cut.slice(0, space) : cut;
+  }
+  head = head.replace(TRAILING_MARKS, '').trim();
+  /* A head that is all marks carries no information — drop the title, the
+     same contract as before (an entry simply omits `t`). */
+  return head ? `${head}…` : undefined;
 }
 
 /** Build one index entry. */

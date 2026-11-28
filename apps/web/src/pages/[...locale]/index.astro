@@ -31,12 +31,12 @@ const href = (p: string) => pathFor(locale, p);
 const home = loadHome();
 const parsed = new Date(home.generatedAt);
 const generated = Number.isNaN(parsed.getTime())
-  ? home.generatedAt
-  : new Intl.DateTimeFormat(locale === 'zh-CN' ? 'zh-CN' : 'en-US', {
+  ? home.generatedAt // a raw ISO timestamp carries its own Z (UTC)
+  : `${new Intl.DateTimeFormat(locale === 'zh-CN' ? 'zh-CN' : 'en-US', {
       dateStyle: 'medium',
       timeStyle: 'short',
       timeZone: 'UTC',
-    }).format(parsed);
+    }).format(parsed)} UTC`;
 
 /* ── "How we rate" explainer: short labels are catalog keys (L.ui.*), the
       body paragraphs below stay inline EN/ZH as page content ── */
@@ -99,11 +99,7 @@ const COPY = {
       <p class="hero-stats mono">
         <span>{sitesLabel(L.ui, locale, home.total)}</span>
         <span>{uiText(L.ui, 'avgScore', locale)} {home.avgScore}</span>
-        {home.pendingCount !== undefined && <span>{uiText(L.ui, 'pendingCount', locale)} {home.pendingCount}</span>}
-        {home.verifiedCount !== undefined && <span>{uiText(L.ui, 'verifiedCount', locale)} {home.verifiedCount}</span>}
-        {home.totalViews !== undefined && <span>{uiText(L.ui, 'totalViews', locale)} {home.totalViews.toLocaleString(locale)}</span>}
         <span>{L.ui.scanTime} <time datetime={home.generatedAt}>{generated}</time></span>
-        {home.statsCapturedAt && <span>{uiText(L.ui, 'statsAsOf', locale)} <time datetime={home.statsCapturedAt}>{new Intl.DateTimeFormat(locale === 'zh-CN' ? 'zh-CN' : 'en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' }).format(new Date(home.statsCapturedAt))} UTC</time></span>}
       </p>
     </div>
 
@@ -148,7 +144,9 @@ const COPY = {
   <section class="section container">
     <div class="sec-head">
       <h2>{L.ui.latestTitle}</h2>
-      <a class="sec-more" href={href('/search')}>{L.ui.viewAll} →</a>
+      {/* no "View all" here: the index carries no time field, so the only
+          honest destination is the category index — the copy names it */}
+      <a class="sec-more" href={href('/categories')}>{L.ui.navCategories} →</a>
     </div>
     {home.latest.length > 0 ? (
       <div class="grid">
@@ -164,7 +162,7 @@ const COPY = {
     <div class="sec-head">
       <h2>{L.ui.leaderboardTitle}</h2>
       <div class="sec-tools">
-        <a class="sec-more" href={href('/categories')}>{L.ui.viewAll} →</a>
+        <a class="sec-more" href={href('/categories')}>{L.ui.navCategories} →</a>
         <span class="sec-note">{L.ui.neutralityStatement}</span>
       </div>
     </div>
