@@ -38,6 +38,8 @@ const PROSE = {
     priceTitle: 'Price',
     priceLead: '$12 for one 30-day term, paid in USDC on the Base chain.',
     priceNote: 'One term at a time — there is no auto-renewal. When the term ends, Pro ends with it and the account returns to the free tier. Nothing of yours is deleted.',
+    ctaBuy: 'Activate Pro',
+    ctaHint: 'Opens the owner workspace of your site — confirm the mailbox, then press Activate Pro.',
     benefitsTitle: 'What you get',
     benefits: [
       ['Multi-domain panel', 'Many sites in one account, one management token per site.'],
@@ -98,6 +100,8 @@ const PROSE = {
     priceTitle: '价格',
     priceLead: '$12 一个 30 天周期，用 USDC 在 Base 链上支付。',
     priceNote: '一次只买一个周期——没有自动续费。周期结束后 Pro 一同结束，账号回到免费档；你的数据不会被删除。',
+    ctaBuy: '开通 Pro',
+    ctaHint: '将打开你站点的站主工作区——先确认站主邮箱，再点「开通 Pro」。',
     benefitsTitle: '你得到什么',
     benefits: [
       ['多域名面板', '一个账号管多个站点，每站一把管理令牌。'],
@@ -162,6 +166,14 @@ const pledge = L.ui.footerPledge as string;
         <span class="asset mono">USDC · Base</span>
       </p>
       <p class="lead">{P.priceLead}</p>
+      {/* Purchase CTA — the order flow itself lives in the owner workspace
+          (OwnerPro → POST /api/v1/billing/pro/orders); with ?domain= this
+          button deep-links straight to it, without a domain it sends the
+          visitor to search first (the script below rewrites the href). */}
+      <p class="buy-row">
+        <a class="btn" data-pro-buy href={href('/search')}>{P.ctaBuy}</a>
+        <span class="buy-hint">{P.ctaHint}</span>
+      </p>
     </header>
 
     <section class="sec">
@@ -266,6 +278,18 @@ const pledge = L.ui.footerPledge as string;
     border: 1px solid var(--line);
     border-radius: 999px;
     padding: 2px 10px;
+  }
+  .buy-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin: 16px 0 0;
+  }
+  .buy-hint {
+    font-size: 12.5px;
+    color: var(--text-3);
+    max-width: 46ch;
   }
 
   .sec {
@@ -409,6 +433,9 @@ const pledge = L.ui.footerPledge as string;
         owner.setAttribute('href', `${base}/owner/${domain}/`);
         owner.textContent = page.dataset.proOwnerLabel ?? owner.textContent;
       }
+      // Purchase CTA → the owner workspace where the order flow lives.
+      const buy = document.querySelector<HTMLAnchorElement>('[data-pro-buy]');
+      if (buy) buy.setAttribute('href', `${base}/owner/${domain}/#owner-pro-title`);
       const fallback = page.querySelector<HTMLElement>('.fallback');
       if (fallback) fallback.textContent = '';
     }

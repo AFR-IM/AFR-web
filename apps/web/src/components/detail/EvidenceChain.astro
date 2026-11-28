@@ -7,7 +7,7 @@
 
 import type { SiteDetail } from '../../data/types.ts';
 import { gradeTextVar } from '../../utils/grade.ts';
-import { getCatalog } from '../../i18n/loader.ts';
+import { getCatalog, pathFor, toLocale } from '../../i18n/loader.ts';
 import EvidenceRow from './EvidenceRow.astro';
 
 interface Props {
@@ -25,6 +25,14 @@ const principle = L.ui.evidencePrinciple ?? T(
   'No evidence, no points: every awarded point above links to its raw source.',
   '无证据不给分：上方每个得分点都可展开查看原始证据。',
 );
+const methodHref = pathFor(toLocale(locale), '/method');
+const layersTitle = L.ui.layersLinkTitle ?? 'How each layer is scored — see Method';
+const legend = [
+  ['pass', L.ui.dotPass ?? 'Pass'],
+  ['partial', L.ui.dotPartial ?? 'Partial'],
+  ['fail', L.ui.dotFail ?? 'Fail'],
+  ['unknown', L.ui.dotUnknown ?? 'Unknown'],
+] as const;
 ---
 
 <section class="chain" aria-label={L.ui.evidenceTitle}>
@@ -32,6 +40,14 @@ const principle = L.ui.evidencePrinciple ?? T(
     <span class="prompt">$</span> evidence --domain {site.domain} --engine {site.engineVersion}
     <span class="hint">{totalChecks} {L.ui.checksLabel ?? T('checks', '项检查')}</span>
   </header>
+
+  {totalChecks > 0 && (
+    <p class="legend mono" aria-label={L.ui.statusLegend ?? T('Status legend', '状态图例')}>
+      {legend.map(([s, label]) => (
+        <span class="lg-item"><span class={`lg-dot ${s}`} aria-hidden="true" />{label}</span>
+      ))}
+    </p>
+  )}
 
   <div class="term-body">
     {
@@ -46,7 +62,7 @@ const principle = L.ui.evidencePrinciple ?? T(
                 <span class="g-id" style={`color:${gc};`}>
                   {layer.layer}
                 </span>
-                <span class="g-name">{name}</span>
+                <a class="g-name" href={`${methodHref}#layers`} title={layersTitle}>{name}</a>
                 <span class="g-score">
                   {layer.awarded} / {layer.max}
                 </span>
@@ -100,6 +116,41 @@ const principle = L.ui.evidencePrinciple ?? T(
     grid-template-columns: minmax(0, 1fr); /* content can never stretch the column */
     gap: 18px;
   }
+
+  /* status legend — explains the dots every EvidenceRow carries */
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    margin: 0;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--line);
+    font-size: 11.5px;
+    color: var(--text-3);
+  }
+  .lg-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .lg-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-3);
+  }
+  .lg-dot.pass {
+    background: var(--grade-b);
+  }
+  .lg-dot.partial {
+    background: var(--grade-c);
+  }
+  .lg-dot.fail {
+    background: var(--grade-f);
+  }
+  .lg-dot.unknown {
+    background: var(--text-3);
+  }
   .empty {
     margin: 0;
     color: var(--text-3);
@@ -120,6 +171,10 @@ const principle = L.ui.evidencePrinciple ?? T(
   .g-name {
     flex: 1;
     color: var(--text-2);
+  }
+  .g-name:hover {
+    color: var(--brand-link);
+    text-decoration: underline;
   }
   .g-score {
     color: var(--text-2);

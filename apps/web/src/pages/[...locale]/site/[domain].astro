@@ -82,7 +82,10 @@ const scannedAt = site
 const tabs = [
   { id: 'report', label: L.ui.reportTitle ?? T('Report', '报告') },
   { id: 'evidence', label: L.ui.evidenceTitle ?? T('Evidence', '证据') },
-  { id: 'statement', label: L.ui.statementTitle ?? T('Statement', '声明') },
+  // Mobile: the third tab holds the whole right column (statement, badge,
+  // history, rescan, owner tools) — a neutral name, with "Owner's statement"
+  // kept as its own sub-heading inside ClaimBlock.
+  { id: 'statement', label: L.ui.siteTools ?? T('Site tools', '站点工具') },
 ];
 const viewsLabel = uiText(L.ui, 'viewsLabel', locale);
 const notFound = !site;
@@ -132,7 +135,8 @@ const description = notFound
         <header class="head">
           <div class="head-main">
             <p class="crumb mono">
-              <a href={href('/')}>AFR.IM</a> <span>/</span> <span>site</span>
+              <a href={href('/')}>AFR.IM</a> <span>/</span>{' '}
+              <span>{L.ui.crumbSite ?? T('site', '站点')}</span>
             </p>
             <div class="head-row">
               {/* The domain itself is a sponsorship link (rel="nofollow
@@ -146,9 +150,9 @@ const description = notFound
             {site.title && <p class="title">{site.title}</p>}
             <div class="meta">
               <StrategyTag tag={site.strategyTag} locale={locale} />
-              <span class="chip mono">
+              <a class="chip mono" href={`${href('/method')}#grades`} title={L.ui.gradesLinkTitle}>
                 {`${L.ui.grade}: ${site.grade}${gradeInfo ? ` · ${gradeInfo.slogan}` : ''}`}
-              </span>
+              </a>
               <span class="chip mono">
                 {L.ui.scanTime}{' '}
                 <time datetime={site.scannedAt} data-scan-time>{scannedAt}</time>
@@ -189,14 +193,17 @@ const description = notFound
           </p>
         )}
 
-        <div class="tabbar" role="tablist" aria-label={L.ui.reportTitle}>
+        <div class="tabbar" role="tablist" aria-label={L.ui.sectionsLabel ?? T('Report sections', '报告分区')}>
           {tabs.map((t, i) => (
             <button
               class="tab mono"
               type="button"
               role="tab"
+              id={`tab-${t.id}`}
+              aria-controls={`panel-${t.id}`}
               data-tab-btn={t.id}
               aria-selected={i === 0 ? 'true' : 'false'}
+              tabindex={i === 0 ? '0' : '-1'}
             >
               {t.label}
             </button>
@@ -204,20 +211,21 @@ const description = notFound
         </div>
 
         <div class="grid" data-tab="report">
-          <div class="col col-left">
+          <div class="col col-left" id="panel-report" role="tabpanel" aria-labelledby="tab-report">
             <ReportCard site={site} locale={locale} />
             {/* Paid promotion — never part of the score (see PromoCard). */}
             <PromoCard domain={site.domain} locale={locale} />
           </div>
-          <div class="col col-center">
+          <div class="col col-center" id="panel-evidence" role="tabpanel" aria-labelledby="tab-evidence">
             <ObservationPanel site={site} locale={locale} />
             <EvidenceChain site={site} locale={locale} />
           </div>
-          <div class="col col-right">
+          <div class="col col-right" id="panel-statement" role="tabpanel" aria-labelledby="tab-statement">
             <ClaimBlock claim={site.claim} locale={locale} />
             <BadgeEmbed domain={site.domain} grade={site.grade} locale={locale} badgeHref={href('/badges')} />
+            {/* Ghost, not solid: Re-scan below stays the single primary action. */}
             {!site.delistedNote && (
-              <a class="btn" href={href(`/owner/${site.domain}/`)}>{T('Site owner tools', '站主管理')}</a>
+              <a class="btn btn-ghost" href={href(`/owner/${site.domain}/`)}>{T('Site owner tools', '站主管理')}</a>
             )}
             <HistorySpark site={site} locale={locale} />
             <TorchBadge domain={site.domain} locale={locale} />
@@ -456,11 +464,14 @@ const description = notFound
       padding-top: 20px;
     }
     .head {
-      flex-direction: column-reverse;
+      /* domain/h1 first — the ring no longer pushes the title down */
+      flex-direction: column;
       gap: 16px;
     }
     .head-ring {
-      justify-items: start;
+      /* ring sits below the title, right-aligned — never above the domain */
+      justify-items: end;
+      align-self: stretch;
     }
     .tabbar {
       display: flex;
@@ -506,15 +517,35 @@ const description = notFound
 
 <script>
   // ≤767 tab switcher (vanilla, no framework) — desktop shows all three columns.
+  // Roving tabindex: only the selected tab is in the tab order.
   const grid = document.querySelector<HTMLElement>('.grid[data-tab]');
   if (grid) {
     const buttons = document.querySelectorAll<HTMLButtonElement>('[data-tab-btn]');
-    for (const btn of buttons) {
-      btn.addEventListener('click', () => {
-        grid.dataset.tab = btn.dataset.tabBtn ?? 'report';
-        for (const other of buttons) other.setAttribute('aria-selected', String(other === btn));
+    const select = (btn: HTMLButtonElement) => {
+      grid.dataset.tab = btn.dataset.tabBtn ?? 'report';
+      for (const other of buttons) {
+        other.setAttribute('aria-selected', String(other === btn));
+        other.tabIndex = other === btn ? 0 : -1;
+      }
+    };
+    buttons.forEach((btn, i) => {
+      btn.addEventListener('click', () => select(btn));
+      btn.addEventListener('keydown', (e) => {
+        const key = e.key;
+        if (key !== 'ArrowLeft' && key !== 'ArrowRight' && key !== 'Home' && key !== 'End') return;
+        e.preventDefault();
+        let next = i;
+        if (key === 'ArrowLeft') next = (i - 1 + buttons.length) % buttons.length;
+        else if (key === 'ArrowRight') next = (i + 1) % buttons.length;
+        else if (key === 'Home') next = 0;
+        else if (key === 'End') next = buttons.length - 1;
+        const target = buttons[next];
+        if (target) {
+          target.focus();
+          select(target);
+        }
       });
-    }
+    });
   }
 
   // PV beacon (T3 write cut): count each site at most once per browser per

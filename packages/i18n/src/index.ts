@@ -136,6 +136,17 @@ const en: Catalog = {
     reportTitle: 'AFR report',
     evidenceTitle: 'Evidence chain',
     statementTitle: "Owner's statement",
+    // detail page — explainability (method links, status legend, mobile tabs)
+    siteTools: 'Site tools',
+    crumbSite: 'site',
+    sectionsLabel: 'Report sections',
+    statusLegend: 'Status legend',
+    dotPass: 'Pass',
+    dotPartial: 'Partial',
+    dotFail: 'Fail',
+    dotUnknown: 'Unknown',
+    layersLinkTitle: 'How each layer is scored — see Method',
+    gradesLinkTitle: 'What the grades mean — see Method',
     statementEmpty: 'The owner has not left a statement yet.',
     verifiedOwner: 'Verified owner',
     scanTime: 'Scanned',
@@ -250,6 +261,8 @@ const en: Catalog = {
     turnstileRequired: 'Please complete the human verification, then try again.',
     turnstileFailed: 'Human verification failed — please try again.',
     turnstileUnavailable: 'The human check could not be loaded — check your connection and try again.',
+    turnstileVerifying: 'Verifying…',
+    turnstileRetry: 'Retry',
 
     // owner mailbox self-service (site detail page) — score-change notices
     ownerMailTitle: 'Owner notifications',
@@ -615,6 +628,17 @@ const zhCN: Catalog = {
     reportTitle: 'AFR 检测报告',
     evidenceTitle: '证据链',
     statementTitle: '站方声明',
+    // detail page — explainability (method links, status legend, mobile tabs)
+    siteTools: '站点工具',
+    crumbSite: '站点',
+    sectionsLabel: '报告分区',
+    statusLegend: '状态图例',
+    dotPass: '通过',
+    dotPartial: '部分',
+    dotFail: '未通过',
+    dotUnknown: '未知',
+    layersLinkTitle: '各层如何计分——见方法页',
+    gradesLinkTitle: '等级含义——见方法页',
     statementEmpty: '站方还没有留下声明。',
     verifiedOwner: '已验证站方',
     scanTime: '扫描时间',
@@ -722,6 +746,8 @@ const zhCN: Catalog = {
     turnstileRequired: '请先完成人机验证，然后重试。',
     turnstileFailed: '人机验证失败——请重试。',
     turnstileUnavailable: '人机验证组件加载失败——请检查网络后重试。',
+    turnstileVerifying: '验证中……',
+    turnstileRetry: '重试',
 
     // owner mailbox self-service (site detail page) — score-change notices
     ownerMailTitle: '站主通知',

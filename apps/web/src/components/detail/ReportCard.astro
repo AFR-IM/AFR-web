@@ -5,7 +5,7 @@
 
 import type { SiteDetail } from '../../data/types.ts';
 import { gradeTextVar, gradeVar } from '../../utils/grade.ts';
-import { getCatalog } from '../../i18n/loader.ts';
+import { getCatalog, pathFor, toLocale } from '../../i18n/loader.ts';
 import EvidenceRow from './EvidenceRow.astro';
 
 interface Props {
@@ -20,6 +20,14 @@ const T = (en: string, zh: string) => (isZh ? zh : en);
 const gc = gradeVar(site.grade); // bar fill (graphical)
 const gcText = gradeTextVar(site.grade); // score text
 const hasChecks = site.layers.some((l) => l.checks.length > 0);
+const methodHref = pathFor(toLocale(locale), '/method');
+const layersTitle = L.ui.layersLinkTitle ?? 'How each layer is scored — see Method';
+const legend = [
+  ['pass', L.ui.dotPass ?? 'Pass'],
+  ['partial', L.ui.dotPartial ?? 'Partial'],
+  ['fail', L.ui.dotFail ?? 'Fail'],
+  ['unknown', L.ui.dotUnknown ?? 'Unknown'],
+] as const;
 ---
 
 <section class="card" aria-label={L.ui.reportTitle}>
@@ -27,6 +35,14 @@ const hasChecks = site.layers.some((l) => l.checks.length > 0);
     <h2>{L.ui.reportTitle}</h2>
     <span class="cap mono">{L.ui.outOf100 ?? T('out of 100', '满分 100')}</span>
   </header>
+
+  {hasChecks && (
+    <p class="legend mono" aria-label={L.ui.statusLegend ?? T('Status legend', '状态图例')}>
+      {legend.map(([s, label]) => (
+        <span class="lg-item"><span class={`lg-dot ${s}`} aria-hidden="true" />{label}</span>
+      ))}
+    </p>
+  )}
 
   {
     !hasChecks ? (
@@ -40,7 +56,7 @@ const hasChecks = site.layers.some((l) => l.checks.length > 0);
             <div class="layer">
               <div class="layer-top">
                 <span class="layer-id mono">{layer.layer}</span>
-                <span class="layer-name">{name}</span>
+                <a class="layer-name" href={`${methodHref}#layers`} title={layersTitle}>{name}</a>
                 <span class="layer-score mono" style={`color:${gcText}`}>
                   {layer.awarded} / {layer.max}
                 </span>
@@ -95,6 +111,39 @@ const hasChecks = site.layers.some((l) => l.checks.length > 0);
     font-size: 13px;
   }
 
+  /* status legend — explains the dots every EvidenceRow carries */
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    margin: -6px 0 12px;
+    font-size: 11px;
+    color: var(--text-3);
+  }
+  .lg-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .lg-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-3);
+  }
+  .lg-dot.pass {
+    background: var(--grade-b);
+  }
+  .lg-dot.partial {
+    background: var(--grade-c);
+  }
+  .lg-dot.fail {
+    background: var(--grade-f);
+  }
+  .lg-dot.unknown {
+    background: var(--text-3);
+  }
+
   .layers {
     display: grid;
     /* minmax(0,1fr): a plain auto column stretches to the content's min-content
@@ -122,6 +171,10 @@ const hasChecks = site.layers.some((l) => l.checks.length > 0);
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--text-1);
+  }
+  .layer-name:hover {
+    color: var(--brand-link);
+    text-decoration: underline;
   }
   .layer-score {
     flex: none;

@@ -54,6 +54,10 @@ const locale = toLocale(localeProp);
 const L = getCatalog(locale);
 const label = L.ui.turnstileLabel ?? 'Human verification';
 const hint = L.ui.turnstileHint ?? 'A quick check that you are human.';
+const verifying = L.ui.turnstileVerifying ?? 'Verifying…';
+const retryText = L.ui.turnstileRetry ?? 'Retry';
+const unavailable =
+  L.ui.turnstileUnavailable ?? 'The human check could not be loaded — check your connection and try again.';
 // Cloudflare renders the widget in the browser language on its own; only the
 // Chinese catalog needs an explicit hint.
 const language = locale === 'zh-CN' ? 'zh-cn' : undefined;
@@ -61,15 +65,30 @@ const language = locale === 'zh-CN' ? 'zh-cn' : undefined;
 
 {
   key && (
-    <div class="turnstile" data-afr-turnstile>
+    <div class="turnstile" data-afr-turnstile data-ts-state="loading">
       <span class="turnstile-label">{label}</span>
-      <div
-        class="cf-turnstile"
-        data-sitekey={key}
-        data-action={action}
-        data-theme={theme}
-        data-language={language}
-      />
+      <div class="ts-box">
+        <div
+          class="cf-turnstile"
+          data-sitekey={key}
+          data-action={action}
+          data-theme={theme}
+          data-language={language}
+        />
+        {/* Loading skeleton — fills the widget's 65px slot until Cloudflare's
+            iframe lands; without it the form shows a blank hole. */}
+        <div class="ts-skel" data-ts-skel>
+          <span class="ts-spin" aria-hidden="true" />
+          <span class="ts-skel-txt">{verifying}</span>
+        </div>
+        {/* Failure state — shown when the CF script never loads (see
+            markScriptFailed); offers a visible retry instead of failing only
+            at submit time. */}
+        <div class="ts-err" data-ts-err hidden role="alert">
+          <span class="ts-err-txt">{unavailable}</span>
+          <button type="button" class="ts-retry" data-ts-retry>{retryText}</button>
+        </div>
+      </div>
       <p class="turnstile-hint">{hint}</p>
     </div>
   )
@@ -111,6 +130,9 @@ const language = locale === 'zh-CN' ? 'zh-cn' : undefined;
    * offline) — the visitor must be told that the check is unavailable
    * instead of staring at an empty box. */
   let scriptFailed = false;
+  /** Bumped on every (re)load attempt so a stale 12s timeout from a previous
+   * attempt cannot mark a healthy retry as failed. */
+  let loadAttempt = 0;
 
   function api(): TurnstileApi | undefined {
     return (window as unknown as { turnstile?: TurnstileApi }).turnstile;
@@ -157,6 +179,18 @@ const language = locale === 'zh-CN' ? 'zh-cn' : undefined;
     }
     el.setAttribute('data-afr-rendered', '1');
     widgets.set(action, { widgetId, token: '' });
+    setState(el, 'ready');
+  }
+
+  /** loading → ready → failed on the component root; drives the skeleton and
+   * the inline error/retry block. */
+  function setState(el: HTMLElement, state: 'loading' | 'ready' | 'failed'): void {
+    const root = el.closest<HTMLElement>('[data-afr-turnstile]');
+    if (root) root.setAttribute('data-ts-state', state);
+    const skel = root?.querySelector<HTMLElement>('[data-ts-skel]');
+    if (skel) skel.hidden = state !== 'loading';
+    const err = root?.querySelector<HTMLElement>('[data-ts-err]');
+    if (err) err.hidden = state !== 'failed';
   }
 
   /** The site theme (light/dark) wins over "auto" when the visitor picked one. */
@@ -205,7 +239,26 @@ const language = locale === 'zh-CN' ? 'zh-cn' : undefined;
   function markScriptFailed(): void {
     if (scriptFailed) return;
     scriptFailed = true;
-    for (const el of containers()) el.setAttribute('data-afr-turnstile-failed', '1');
+    for (const el of containers()) {
+      el.setAttribute('data-afr-turnstile-failed', '1');
+      setState(el, 'failed');
+    }
+  }
+
+  /** Retry after a failure: drop the dead script tag, clear the failed
+   * attributes and start a fresh load attempt. */
+  function retry(): void {
+    scriptFailed = false;
+    for (const el of containers()) {
+      el.removeAttribute('data-afr-turnstile-failed');
+      setState(el, 'loading');
+    }
+    if (api()) {
+      renderAll(); // the script did load — only the render failed
+      return;
+    }
+    document.querySelector('script[data-afr-turnstile]')?.remove();
+    loadScript();
   }
 
   function loadScript(): void {
@@ -228,8 +281,9 @@ const language = locale === 'zh-CN' ? 'zh-cn' : undefined;
     document.head.appendChild(s);
     // A blocked script never fires 'error' (the request simply hangs) — give
     // up after a while so the page can say the check is unavailable.
+    const attempt = ++loadAttempt;
     setTimeout(() => {
-      if (!api()) markScriptFailed();
+      if (attempt === loadAttempt && !api()) markScriptFailed();
     }, 12000);
   }
 
@@ -274,6 +328,11 @@ const language = locale === 'zh-CN' ? 'zh-cn' : undefined;
   };
 
   loadScript();
+
+  // Inline retry — one listener per button (the script runs once per page).
+  for (const btn of document.querySelectorAll<HTMLButtonElement>('[data-ts-retry]')) {
+    btn.addEventListener('click', () => retry());
+  }
 </script>
 
 <style>
@@ -293,11 +352,89 @@ const language = locale === 'zh-CN' ? 'zh-cn' : undefined;
     font-size: 12.5px;
     color: var(--text-3);
   }
+  /* The widget slot: reserved height for skeleton → iframe → error block, so
+     the form never collapses or leaves a hole between label and hint. */
+  .ts-box {
+    position: relative;
+    min-height: 65px;
+    max-width: 100%;
+  }
   /* The widget is an iframe from Cloudflare — keep it from overflowing a
      narrow form and let it inherit the page background. */
   .cf-turnstile {
     min-height: 65px;
     max-width: 100%;
     overflow: hidden;
+  }
+  .ts-skel {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 12px;
+    background: var(--bg-ink);
+    border: 1px dashed var(--line);
+    border-radius: var(--r-2);
+    font-size: 12.5px;
+    color: var(--text-3);
+  }
+  .ts-skel[hidden] {
+    display: none;
+  }
+  .ts-spin {
+    width: 14px;
+    height: 14px;
+    flex: none;
+    border: 2px solid var(--line);
+    border-top-color: var(--brand);
+    border-radius: 50%;
+    animation: ts-spin 0.8s linear infinite;
+  }
+  @keyframes ts-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  .ts-err {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--bg-ink);
+    border: 1px solid var(--grade-f);
+    border-radius: var(--r-2);
+    font-size: 12.5px;
+    color: var(--text-2);
+  }
+  .ts-err[hidden] {
+    display: none;
+  }
+  .ts-err-txt {
+    flex: 1;
+    min-width: 160px;
+  }
+  .ts-retry {
+    padding: 5px 12px;
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: var(--r-1);
+    font: inherit;
+    font-size: 12.5px;
+    color: var(--text-1);
+    cursor: pointer;
+  }
+  .ts-retry:hover {
+    border-color: var(--brand);
+    color: var(--brand-link);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ts-spin {
+      animation: none;
+    }
   }
 </style>
