@@ -1222,6 +1222,13 @@ const loadMoreErrorText = uiText(L.ui, 'loadMoreError', locale);
     min-height: 38px; /* reserved: button ↔ hidden swap must not shift layout */
     margin-top: 4px;
   }
+  @media (max-width: 767px) {
+    /* .btn grows to min-height 44px here — keep the reserved height in sync
+       so the button ↔ hidden swap still never shifts the layout. */
+    .scan-row {
+      min-height: 44px;
+    }
+  }
   .scan-btn[disabled] {
     cursor: not-allowed;
     opacity: 0.85;

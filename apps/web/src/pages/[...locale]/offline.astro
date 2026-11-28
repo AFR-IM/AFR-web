@@ -48,6 +48,9 @@ const cta = L.ui.backToDirectory ?? T('Back to the directory', '返回目录');
       <a class="btn" href={href('/')} data-reload>
         {cta} →
       </a>
+      <p class="back-status" role="status" data-back-status hidden>
+        {L.ui.offlineBackWait ?? T('The directory page is not cached on this device yet — reconnect and try again.', '目录页尚未缓存到本设备——恢复网络后即可返回。')}
+      </p>
     </div>
   </div>
 </Base>
@@ -98,11 +101,22 @@ const cta = L.ui.backToDirectory ?? T('Back to the directory', '返回目录');
     color: var(--text-3);
   }
   .local {
+    /* No opacity dimming here: .8 pushed this 12.5px line to 3.52:1 (light)
+       and 4.21:1 (dark) — below WCAG AA. --text-3 already clears 4.5:1 on
+       every surface at full opacity. */
     color: var(--text-3);
-    opacity: 0.8;
   }
   .btn {
     margin-top: 18px;
+  }
+  .back-status {
+    margin: 10px 0 0;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-2);
+  }
+  .back-status[hidden] {
+    display: none;
   }
 
   @media (max-width: 767px) {
@@ -114,8 +128,25 @@ const cta = L.ui.backToDirectory ?? T('Back to the directory', '返回目录');
 
 <script>
   // Offline route: a normal navigation when the network is back (the service
-  // worker serves this page while offline).
+  // worker serves this page while offline). While offline the click is never
+  // swallowed silently: park the default action, ask the Cache Storage whether
+  // the SW already cached the directory — navigate to the cached copy when it
+  // has, otherwise show a visible status line instead of a dead button.
   document.querySelector('[data-reload]')?.addEventListener('click', (e) => {
-    if (!navigator.onLine) e.preventDefault();
+    if (navigator.onLine) return;
+    e.preventDefault();
+    const anchor = e.currentTarget as HTMLAnchorElement;
+    const href = anchor.getAttribute('href') || '/';
+    const status = document.querySelector('[data-back-status]');
+    const showStatus = () => {
+      if (status) status.hidden = false;
+    };
+    const go = typeof caches !== 'undefined'
+      ? caches.match(href).catch(() => null)
+      : Promise.resolve(null);
+    go.then((hit) => {
+      if (hit) location.assign(anchor.href); // SW answers from its runtime cache
+      else showStatus();
+    }).catch(showStatus);
   });
 </script>

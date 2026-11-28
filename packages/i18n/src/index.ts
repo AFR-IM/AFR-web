@@ -43,6 +43,11 @@ const en: Catalog = {
     searchEmpty: 'No site matches that search.',
     searchSubmitHint: 'Not found? Submit it for scanning.',
     themeToggle: 'Toggle theme',
+    brandHomeLabel: 'AFR.IM home',
+    mainNavLabel: 'Main navigation',
+    menuLabel: 'Menu',
+    footerBadgeLabel: 'AFR.IM AFR rating',
+    footerNavLabel: 'Footer navigation',
     footerPledge: 'Scores cannot be bought: payments never affect ratings.',
     footerRights: '© 2026 AFR.IM · All rights reserved.',
 
@@ -120,6 +125,11 @@ const en: Catalog = {
     sponsored: 'Sponsored',
     notFound: 'Site not found.',
     notFoundCta: 'Submit it for scanning',
+    // 404 fallback page (SSR — src/pages/404.astro)
+    pageNotFound: 'Page not found',
+    pageNotFoundDesc:
+      'The page you are looking for does not exist, has been moved, or the address is wrong. Try a search, or head back to the home page.',
+    nfLinksLabel: 'Quick links',
 
     // P3 detail page
     reportTitle: 'AFR report',
@@ -370,6 +380,8 @@ const en: Catalog = {
     backToDirectory: 'Back to the directory',
     lastSync: 'Last sync',
     cachedSites: 'Cached sites',
+    offlineBackWait:
+      'The directory page is not cached on this device yet — reconnect and try again.',
 
     // PWA install prompt (InstallBanner.astro)
     installPrompt: 'Install AFR for faster browsing and offline access.',
@@ -514,6 +526,11 @@ const zhCN: Catalog = {
     searchEmpty: '没有匹配的站点。',
     searchSubmitHint: '没找到？提交它进入扫描。',
     themeToggle: '切换主题',
+    brandHomeLabel: 'AFR.IM 首页',
+    mainNavLabel: '主导航',
+    menuLabel: '菜单',
+    footerBadgeLabel: 'AFR.IM AFR 评级',
+    footerNavLabel: '页脚导航',
     footerPledge: '付费不能改分：评分永远不受付费影响。',
     footerRights: '© 2026 AFR.IM · 保留所有权利。',
 
@@ -586,6 +603,11 @@ const zhCN: Catalog = {
     sponsored: '赞助',
     notFound: '未找到该站点。',
     notFoundCta: '提交扫描',
+    // 404 兜底页（SSR — src/pages/404.astro）
+    pageNotFound: '页面不存在',
+    pageNotFoundDesc:
+      '你访问的页面不存在、已被移动，或地址有误。可以搜索一下，或返回首页。',
+    nfLinksLabel: '快捷入口',
 
     // P3 detail page
     reportTitle: 'AFR 检测报告',
@@ -817,6 +839,7 @@ const zhCN: Catalog = {
     backToDirectory: '返回目录',
     lastSync: '上次同步',
     cachedSites: '已缓存站点',
+    offlineBackWait: '目录页尚未缓存到本设备——恢复网络后即可返回。',
 
     // PWA 安装引导（InstallBanner.astro）
     installPrompt: '安装 AFR，浏览更快，离线也能看。',

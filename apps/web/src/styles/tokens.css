@@ -157,8 +157,14 @@
 
   /* text */
   --text-1: #e6edf7;
-  --text-2: #8ca0bf;
-  --text-3: #8498bd; /* WCAG-AA+ on --bg-ink 6.4:1, --bg-surface 5.8:1, --bg-elevated 5.1:1 */
+  /* Dark hierarchy (revised 2026-11-28, UI review P1): the old pair
+     #8ca0bf / #8498bd measured only 1.10:1 against each other — the
+     secondary/tertiary steps were invisible. Both steps now clear WCAG AA
+     (≥4.5:1) on every dark surface AND stay 1.55:1 apart:
+     --text-2 #a8b8d4 → ink 9.34 / surface 8.49 / elevated 7.42
+     --text-3 #7f93b5 → ink 6.01 / surface 5.47 / elevated 4.78 */
+  --text-2: #a8b8d4;
+  --text-3: #7f93b5;
 
   /* brand (teal = "AI signal") */
   --brand: #3ecfad;

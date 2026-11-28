@@ -154,8 +154,25 @@ code,
   align-items: center;
   gap: 4px;
   padding: 2px 8px;
+  min-height: 32px; /* desktop touch/visual baseline (UI review P1) */
   border: 1px solid var(--line);
   border-radius: 999px;
   font-size: 12px;
   color: var(--text-2);
+}
+
+/* Mobile touch targets (≤767px): WCAG 2.5.5 asks for ≥44px; the pill button
+   measured 34–36px tall at padding 8px 16px, tabs and Copy buttons were
+   smaller still. Chips take 40px so a row of pills stays compact. */
+@media (max-width: 767px) {
+  .btn {
+    min-height: 44px;
+  }
+  .chip {
+    min-height: 40px;
+  }
+  .tab,
+  .copy {
+    min-height: 44px;
+  }
 }

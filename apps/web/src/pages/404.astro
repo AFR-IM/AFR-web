@@ -1,0 +1,93 @@
+---
+// P0 brand 404 — Astro's default fallback (black page + Astro logo, English
+// only) is off-brand. This page is rendered on demand for any unmatched route
+// (output:'server'); locale comes from the request pathname because this route
+// has no [...locale] param of its own (same rule the detail pages use).
+export const prerender = false;
+
+import Base from '../layouts/Base.astro';
+import SearchBox from '../components/home/SearchBox.astro';
+import { getCatalog, pathFor, type Locale } from '../i18n/loader.ts';
+import { FIXTURE_HOME } from '../data/fixtures.ts';
+import type { SiteCard } from '../data/types.ts';
+
+const locale: Locale =
+  Astro.url.pathname === '/zh-CN' || Astro.url.pathname.startsWith('/zh-CN/') ? 'zh-CN' : 'en';
+const L = getCatalog(locale);
+const href = (p: string) => pathFor(locale, p);
+
+// Leaderboard slice for the search box's local autocomplete. Deliberately NOT
+// data/loader.ts: that module eagerly globs every detail snapshot (9,800+
+// files), which must never enter the SSR bundle. home.json is 15 KB; when the
+// generated directory is absent (fresh clone) the fixtures fill in.
+const homeMods = import.meta.glob<{ default: { leaderboard?: SiteCard[] } }>(
+  '../data/generated/home.json',
+  { eager: true },
+);
+const home = Object.values(homeMods)[0]?.default;
+const sites: SiteCard[] = home?.leaderboard ?? FIXTURE_HOME.leaderboard;
+
+const title = L.ui.pageNotFound as string;
+const desc = L.ui.pageNotFoundDesc as string;
+---
+
+<Base title={title} description={desc} locale={locale}>
+  <div class="container nf">
+    <p class="nf-code mono" aria-hidden="true">404</p>
+    <h1>{title}</h1>
+    <p class="nf-desc">{desc}</p>
+    <div class="nf-sb">
+      <SearchBox sites={sites} locale={locale} />
+    </div>
+    <nav class="nf-links" aria-label={L.ui.nfLinksLabel as string}>
+      <a class="btn" href={href('/')}>{L.ui.navHome} →</a>
+      <a class="btn btn-ghost" href={href('/search')}>{L.ui.searchTitle}</a>
+      <a class="btn btn-ghost" href={href('/categories')}>{L.ui.navCategories}</a>
+    </nav>
+  </div>
+</Base>
+
+<style>
+  .nf {
+    padding-top: 64px;
+    padding-bottom: 56px;
+    text-align: center;
+    max-width: 720px;
+  }
+  .nf-code {
+    margin: 0 0 8px;
+    font-size: clamp(48px, 10vw, 88px);
+    font-weight: 700;
+    line-height: 1;
+    color: var(--text-3);
+    letter-spacing: 0.04em;
+  }
+  .nf h1 {
+    font-size: clamp(24px, 4vw, 34px);
+    margin-bottom: 10px;
+  }
+  .nf-desc {
+    margin: 0 auto 28px;
+    max-width: 56ch;
+    color: var(--text-2);
+    line-height: 1.7;
+  }
+  .nf-sb {
+    max-width: 560px;
+    margin: 0 auto 24px;
+    text-align: left;
+  }
+  .nf-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: center;
+  }
+
+  @media (max-width: 767px) {
+    .nf {
+      padding-top: 40px;
+      padding-bottom: 40px;
+    }
+  }
+</style>
